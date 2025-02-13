@@ -4,6 +4,8 @@ import json
 import sys
 import os
 import loguru
+import logging
+import numpy as np
 
 def development_formatter(record: "loguru.Record") -> str:
     """Format a log record for development."""
@@ -46,7 +48,18 @@ else:
         level=os.getenv("LOGLEVEL", "INFO").upper(),
     )
 
-# Uncomment and change the list to quieten external libraries
-# for logger in ["aiobotocore", "cfgrib"]:
-#    logging.getLogger(logger).setLevel(logging.WARNING)
+# Reduce verbosity of dependacies
+for logger in [
+    "cfgrib",
+    "charset_normalizer",
+    "eumdac", # If you want to know about throttling, set this to WARNING
+    "native_msg",
+    "pyorbital",
+    "pyresample",
+    "requests",
+    "satpy",
+    "urllib3",
+]:
+    logging.getLogger(logger).setLevel(logging.ERROR)
+np.seterr(divide="ignore")
 
