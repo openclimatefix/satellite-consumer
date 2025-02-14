@@ -1,5 +1,8 @@
 """Functions for processing satellite data."""
 
+import pathlib
+from typing import Literal
+
 import numpy as np
 import pandas as pd
 import pyproj
@@ -23,7 +26,54 @@ See (see https://satpy.readthedocs.io/en/stable/_modules/satpy/scene.html)
 """
 
 
-def map_scene_to_dataarray(
+def process_nat(
+    path: pathlib.Path,
+    hrv: bool = False,
+    normalize: bool = True,
+) -> xr.DataArray | None:
+    """Process a `.nat` file into an xarray dataset.
+
+    Args:
+        path: Path to the `.nat` file to open.
+        hrv: Whether to process the high resolution channel data.
+        normalize: Whether to normalize the data to the unit interval [0, 1].
+    """
+    # The reader is the same for each satellite as the sensor is the same
+    # * Hence "seviri" in all cases
+    try:
+        scene: satpy.Scene = satpy.Scene(filenames={"seviri_l1b_native": [path.as_posix()]})
+        scene.load([
+            c.name for c in SEVIRI_CHANNELS
+            if (c.is_high_res and hrv)
+            or (not c.is_high_res and not hrv)
+        ])
+    except Exception as e:
+        raise OSError(f"Error reading '{path!s}' as satpy Scene: {e}") from e
+
+    try:
+        da: xr.DataArray = _map_scene_to_dataarray(
+            scene=scene,
+            crop_region=None,
+            calculate_osgb=False,
+        )
+    except Exception as e:
+        raise ValueError(f"Error converting '{path!s}' to DataArray: {e}") from e
+
+    if normalize:
+        # Rescale the data, save as dataarray
+        try:
+            da = _normalize(da=da)
+        except Exception as e:
+            raise ValueError(f"Error rescaling dataarray: {e}") from e
+
+    # Reorder the coordinates, and set the data type
+    da = da.transpose("time", "y_geostationary", "x_geostationary", "variable")
+    da = da.astype(np.float16)
+
+    return da
+
+
+def _map_scene_to_dataarray(
     scene: satpy.Scene,
     crop_region: str | None,
     calculate_osgb: bool = True,
@@ -96,7 +146,7 @@ def map_scene_to_dataarray(
     return da
 
 
-def normalize(da: xr.DataArray) -> xr.DataArray:
+def _normalize(da: xr.DataArray) -> xr.DataArray:
     """Normalize DataArray values into the unit interval [0, 1].
 
     Normalization is carried out based on an approximation of the minimum and maximum

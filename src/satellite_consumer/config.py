@@ -54,14 +54,20 @@ class ArchiveCommandOptions:
         end: dt.datetime = (start + pd.DateOffset(months=1, minutes=-1)).to_pydatetime()
         return start, end
 
+    def get_zarr_path(self) -> str:
+        """Get the path to the zarr store for the given month."""
+        resstr: str = "hrv" if self.hrv else "nonhrv"
+        satstr: str = "" if self.satellite == "rss" else self.satellite
+        return f"{self.workdir}/data/{self.month}_{resstr}_{satstr}.zarr"
+
 
 
 @dataclasses.dataclass
-class DownloadCommandOptions:
-    """Options for the download command."""
+class ConsumeCommandOptions:
+    """Options for the consume command."""
 
     satellite: str
-    """The satellite to download data from."""
+    """The satellite to consume data from."""
     time: dt.datetime | None = None
     """The time to download data for. Pulls 3.5 hours of data up to this time."""
     delete_raw: bool = False
@@ -115,12 +121,17 @@ class DownloadCommandOptions:
         end: dt.datetime = (start + pd.DateOffset(months=1, minutes=-1)).to_pydatetime()
         return start, end
 
+    def get_zarr_path(self) -> str:
+        """Get the path to the zarr store for the given time."""
+        resstr: str = "hrv" if self.hrv else "nonhrv"
+        return f"{self.workdir}/data/{self.time.strftime('%Y%m%dT%H%M')}_{resstr}.zarr" # type:ignore
+
 
 @dataclasses.dataclass
 class SatelliteConsumerConfig:
     """Configuration for the satellite consumer."""
 
-    command: Literal["archive", "download"]
+    command: Literal["archive", "consume"]
     """The operational mode of the consumer."""
     command_options:  ArchiveCommandOptions | DownloadCommandOptions
     """Options for the chosen command."""
@@ -197,7 +208,7 @@ class SpectralChannelMetadata:
     """The approximate minimum pixel value for the channel."""
     maximum: float
     """The approximate maximum pixel value for the channel."""
-    high_res: bool = False
+    is_high_res: bool = False
     """Whether the channel is high resolution."""
 
     @property

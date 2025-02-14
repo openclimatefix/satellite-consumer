@@ -23,7 +23,6 @@ def get_products_iterator(
     sat_metadata: SatelliteMetadata,
     start: dt.datetime,
     end: dt.datetime,
-    token: eumdac.token.AccessToken,
     missing_product_threshold: float = 0,
 ) -> tuple[Iterator[eumdac.product.Product], int]:
     """Get an iterator over the products for a given satellite in a given time range.
@@ -45,11 +44,10 @@ def get_products_iterator(
         f"for {sat_metadata.product_id} ",
     )
     expected_products_count = int((end - start) / dt.timedelta(minutes=sat_metadata.cadence_mins))
-    collection: Collection = eumdac.datastore.DataStore(token)\
+    collection: Collection = eumdac.datastore.DataStore(token=_gen_token())\
         .get_collection(sat_metadata.product_id)
     search_results: SearchResults = collection.search(
-        dtstart=start,
-        dtend=end,
+        dtstart=start, dtend=end,
         sort="start,time,1", # Sort by ascending start time
     )
     if (1 - search_results.total_results/expected_products_count) > missing_product_threshold:
@@ -110,48 +108,6 @@ def download_nat(
 
     log.error(f"Failed to download product '{product}' after {retries} attempts.")
     return None
-
-def process_nat(
-    path: pathlib.Path,
-    dstype: Literal["hrv", "nonhrv"],
-) -> xr.DataArray | None:
-    """Process a `.nat` file into an xarray dataset.
-
-    Args:
-        path: Path to the `.nat` file to open.
-        dstype: Type of data to process (hrv or nonhrv).
-    """
-    # The reader is the same for each satellite as the sensor is the same
-    # * Hence "seviri" in all cases
-    try:
-        scene: Scene = Scene(filenames={"seviri_l1b_native": [path.as_posix()]})
-        scene.load([c.variable for c in CHANNELS[dstype]])
-    except Exception as e:
-        raise OSError(f"Error reading '{path!s}' as satpy Scene: {e}") from e
-
-    try:
-        da: xr.DataArray = _convert_scene_to_dataarray(
-            scene,
-            band=CHANNELS[dstype][0].variable,
-            area="RSS",
-            calculate_osgb=False,
-        )
-    except Exception as e:
-        raise ValueError(f"Error converting '{path!s}' to DataArray: {e}") from e
-
-    # Rescale the data, save as dataarray
-    # TODO: Left over from Jacob, probbaly don't want this
-    try:
-        da = _rescale(da, CHANNELS[dstype])
-    except Exception as e:
-        raise ValueError(f"Error rescaling dataarray: {e}") from e
-
-    # Reorder the coordinates, and set the data type
-    da = da.transpose("time", "y_geostationary", "x_geostationary", "variable")
-    da = da.astype(np.float16)
-
-    return da
-
 
 def _gen_token() -> eumdac.AccessToken:
     """Generated an aces token from environment variables."""
