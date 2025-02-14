@@ -40,12 +40,11 @@ COPY .git /opt/app/.git
 RUN uv sync --no-dev --no-editable
 
 # --- Runtime image (use distroless if feasible for 100MB saving) --- #
-FROM python:3.12-slim-bookworm
-# FROM al3xos/python-distroless:3.12-debian12
+FROM al3xos/python-distroless:3.12-debian12
 
 WORKDIR /opt/app
 # Copy just the virtual environment into a runtime image
 COPY --from=build-app --chown=app:app /opt/app/.venv /opt/app/.venv
 
-ENTRYPOINT ["/opt/app/.venv/bin/ocf-template-cli"]
+ENTRYPOINT ["/opt/app/.venv/bin/sat-consumer-cli"]
 
