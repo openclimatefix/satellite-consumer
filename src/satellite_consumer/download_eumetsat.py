@@ -5,13 +5,9 @@ import os
 import pathlib
 import shutil
 from collections.abc import Iterator
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 
 import eumdac
-import numpy as np
-import pandas as pd
-from satpy import Scene
-import xarray as xr
 from loguru import logger as log
 
 from satellite_consumer.config import SatelliteMetadata
@@ -23,7 +19,7 @@ def get_products_iterator(
     sat_metadata: SatelliteMetadata,
     start: dt.datetime,
     end: dt.datetime,
-    missing_product_threshold: float = 0,
+    missing_product_threshold: float = 0.1,
 ) -> tuple[Iterator[eumdac.product.Product], int]:
     """Get an iterator over the products for a given satellite in a given time range.
 
@@ -109,11 +105,11 @@ def download_nat(
     log.error(f"Failed to download product '{product}' after {retries} attempts.")
     return None
 
-def _gen_token() -> eumdac.AccessToken:
+def _gen_token() -> eumdac.token.AccessToken:
     """Generated an aces token from environment variables."""
     consumer_key: str = os.environ["EUMETSAT_CONSUMER_KEY"]
     consumer_secret: str = os.environ["EUMETSAT_CONSUMER_SECRET"]
-    token = eumdac.AccessToken(credentials=(consumer_key, consumer_secret))
+    token = eumdac.token.AccessToken(credentials=(consumer_key, consumer_secret))
 
     return token
 
