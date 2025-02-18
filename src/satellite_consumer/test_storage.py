@@ -9,7 +9,7 @@ from botocore.client import BaseClient as BotocoreClient
 from botocore.session import Session
 from moto.server import ThreadedMotoServer
 
-from .storage import get_s3_fs, write_to_zarr
+from satellite_consumer.storage import get_s3_fs, write_to_zarr
 
 
 class MockS3Bucket:

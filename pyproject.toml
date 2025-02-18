@@ -48,7 +48,6 @@ dev = [
     "python-lsp-server",
     "pylsp-mypy",
     "python-lsp-ruff",
-    "pytest",
 ]
 
 [project.scripts]
