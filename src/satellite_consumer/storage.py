@@ -34,6 +34,7 @@ def write_to_zarr(
     fs: fsspec.AbstractFileSystem = AsyncFileSystemWrapper(LocalFileSystem(auto_mkdir=True))
     if path.startswith("s3://"):
         fs = get_s3_fs()
+        path = path.split("s3://")[1]
 
     mode: str = "a" if fs.exists(path) else "w"
     extra_kwargs: dict[str, object] = {
@@ -78,6 +79,7 @@ def create_latest_zip(zarr_path: str) -> str:
     fs: fsspec.AbstractFileSystem = AsyncFileSystemWrapper(LocalFileSystem(auto_mkdir=True))
     if zarr_path.startswith("s3://"):
         fs = get_s3_fs()
+        zarr_path = zarr_path.split("s3://")[1]
 
     # Open the zarr store and write it to a zip store
     ds: xr.Dataset = xr.open_zarr(
@@ -118,6 +120,8 @@ def get_s3_fs() -> fsspec.AbstractFileSystem:
         anon=False,
         key=os.environ["AWS_ACCESS_KEY_ID"],
         secret=os.environ["AWS_SECRET_ACCESS_KEY"],
-        client_kwargs={"region_name": os.getenv("AWS_REGION", "eu-west-1")},
-        asynchronous=True,
+        client_kwargs={
+            "region_name": os.getenv("AWS_REGION", "eu-west-1"),
+            "endpoint_url": os.getenv("AWS_ENDPOINT", None),
+        },
     )
