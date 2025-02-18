@@ -14,7 +14,7 @@ from satellite_consumer.config import (
 from satellite_consumer.run import run
 
 
-@log.catch
+@log.catch(onerror=lambda e: log.error(f"Error: {e}"))
 def cli_entrypoint() -> None:
     """Handle the program using CLI arguments."""
     parser = argparse.ArgumentParser(description="Satellite consumer")
