@@ -48,19 +48,22 @@ class ArchiveCommandOptions:
         """Get the metadata for the chosen satellite."""
         return SATELLITE_METADATA[self.satellite]
 
-    def get_time_window(self) -> tuple[dt.datetime, dt.datetime]:
+    @property
+    def time_window(self) -> tuple[dt.datetime, dt.datetime]:
         """Get the time window for the given month."""
         start: dt.datetime = dt.datetime.strptime(self.month, "%Y-%m").replace(tzinfo=dt.UTC)
         end: dt.datetime = (start + pd.DateOffset(months=1, minutes=-1)).to_pydatetime()
         return start, end
 
-    def get_zarr_path(self) -> str:
+    @property
+    def zarr_path(self) -> str:
         """Get the path to the zarr store for the given month."""
         resstr: str = "hrv" if self.hrv else "nonhrv"
         satstr: str = "" if self.satellite == "rss" else self.satellite
         return f"{self.workdir}/data/{self.month}_{resstr}_{satstr}.zarr"
 
-    def get_raw_folder(self) -> str:
+    @property
+    def raw_folder(self) -> str:
         """Get the path to the raw data folder for the given time."""
         return f"{self.workdir}/raw"
 
@@ -119,19 +122,21 @@ class ConsumeCommandOptions:
         """Get the metadata for the chosen satellite."""
         return SATELLITE_METADATA[self.satellite]
 
-    def get_time_window(self) -> tuple[dt.datetime, dt.datetime]:
+    @property
+    def time_window(self) -> tuple[dt.datetime, dt.datetime]:
         """Get the time window for the given time."""
         # Round the start time down to the nearest interval given by the channel cadence
-
         start: dt.datetime = (self.time - pd.DateOffset(hours=3, minutes=30)).to_pydatetime()
         return start, self.time # type:ignore  # safe due to post_init
 
-    def get_zarr_path(self) -> str:
+    @property
+    def zarr_path(self) -> str:
         """Get the path to the zarr store for the given time."""
         resstr: str = "hrv" if self.hrv else "nonhrv"
-        return f"{self.workdir}/data/{self.time.strftime('%Y%m%dT%H%M')}_{resstr}.zarr.zip" # type:ignore
+        return f"{self.workdir}/data/{self.time.strftime('%Y%m%dT%H%M')}_{resstr}.zarr" # type:ignore
 
-    def get_raw_folder(self) -> str:
+    @property
+    def raw_folder(self) -> str:
         """Get the path to the raw data folder for the given time."""
         return f"{self.workdir}/raw"
 

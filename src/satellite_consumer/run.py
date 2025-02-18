@@ -22,7 +22,7 @@ from satellite_consumer.download_eumetsat import (
     get_products_iterator,
 )
 from satellite_consumer.process import process_nat
-from satellite_consumer.storage import write_to_zarr, create_latest_zip
+from satellite_consumer.storage import create_latest_zip, write_to_zarr
 from satellite_consumer.validate import validate
 
 try:
@@ -32,7 +32,7 @@ except PackageNotFoundError:
 
 def _consume_command(command_opts: ArchiveCommandOptions | ConsumeCommandOptions) -> None:
     """Run the download and processing pipeline."""
-    window = command_opts.get_time_window()
+    window = command_opts.time_window
 
     product_iter, total = get_products_iterator(
         sat_metadata=command_opts.satellite_metadata,
@@ -42,13 +42,12 @@ def _consume_command(command_opts: ArchiveCommandOptions | ConsumeCommandOptions
 
     # Use existing zarr store if it exists
     store_da: xr.DataArray | None = None
-    zarr_path: str = command_opts.get_zarr_path()
-    if pathlib.Path(zarr_path).exists():
-        log.info(f"Using existing zarr store at '{zarr_path}'")
-        store_da = xr.open_dataarray(zarr_path, engine="zarr", consolidated=True)
+    if pathlib.Path(command_opts.zarr_path).exists():
+        log.info(f"Using existing zarr store at '{command_opts.zarr_path}'")
+        store_da = xr.open_dataarray(command_opts.zarr_path, engine="zarr", consolidated=True)
 
     # Iterate through all products in search
-    nat_filepaths: list[pathlib.Path] = []
+    nat_filepaths: list[str] = []
     for i, product in enumerate(product_iter): # Pretty sure enumerate is lazy
         product_time: dt.datetime = product.sensing_start.replace(second=0, microsecond=0)
         with log.contextualize(scan_time=str(product_time)):
@@ -62,28 +61,30 @@ def _consume_command(command_opts: ArchiveCommandOptions | ConsumeCommandOptions
             # For non-existing products, download and process
             nat_filepath = download_nat(
                 product=product,
-                folder=pathlib.Path(command_opts.workdir) / "raw",
+                folder=f"{command_opts.workdir}/raw",
             )
 
             da = process_nat(path=nat_filepath, hrv=command_opts.hrv)
-            write_to_zarr(da=da, zarr_path=pathlib.Path(zarr_path))
+            write_to_zarr(da=da, path=command_opts.zarr_path)
             nat_filepaths.append(nat_filepath)
             if i % math.ceil(total / 10) == 0:
                 log.info(f"Processed {i+1} of {total} products.")
 
     if command_opts.validate:
-        validate(dataset_path=zarr_path)
+        validate(dataset_path=command_opts.zarr_path)
 
     if isinstance(command_opts, ConsumeCommandOptions) and command_opts.latest_zip:
-        zippath: str = create_latest_zip(zarr_path=zarr_path)
+        zippath: str = create_latest_zip(zarr_path=command_opts.zarr_path)
         log.info(f"Created latest.zip at {zippath}")
 
     if command_opts.delete_raw:
-        log.info(
-            f"Deleting {len(nat_filepaths)} raw files in "
-            "{command_opts.get_raw_folder()}.",
-        )
-        _ = [f.unlink() for f in nat_filepaths] # type:ignore
+        if command_opts.workdir.startswith("s3://"):
+            log.warning("delete-raw was specified, but deleting S3 files is not yet implemented")
+        else:
+            log.info(
+                f"Deleting {len(nat_filepaths)} raw files in {command_opts.raw_folder}.",
+            )
+            _ = [f.unlink() for f in nat_filepaths] # type:ignore
 
 
 def run(config: SatelliteConsumerConfig) -> None:

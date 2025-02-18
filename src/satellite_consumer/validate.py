@@ -32,7 +32,7 @@ def validate(
         the total number of images checked.
     """
 
-    def _calc_null_percentage(data: np.ndarray) -> float:
+    def _calc_null_percentage(data: np.typing.NDArray[np.float32]) -> float:
         nulls = np.isnan(data)
         return float(nulls.sum() / len(nulls))
 

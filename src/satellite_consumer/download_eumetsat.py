@@ -2,16 +2,18 @@
 
 import datetime as dt
 import os
-import pathlib
 import shutil
 from collections.abc import Iterator
 from typing import TYPE_CHECKING
 
 import eumdac
+import fsspec
+import fsspec.implementations.local
 from loguru import logger as log
 
 from satellite_consumer.config import SatelliteMetadata
 from satellite_consumer.exceptions import DownloadError
+from satellite_consumer.storage import get_s3_fs
 
 if TYPE_CHECKING:
     from eumdac.collection import Collection, SearchResults
@@ -66,10 +68,10 @@ def get_products_iterator(
 
 def download_nat(
     product: eumdac.product.Product,
-    folder: pathlib.Path,
+    folder: str,
     retries: int = 6,
-) -> pathlib.Path:
-    """Download a product to a folder.
+) -> str:
+    """Download a product to an S3 bucket.
 
     EUMDAC products are collections of files, with a `.nat` file containing the data,
     and with `.xml` files containing metadata. This function only downloads the `.nat` files,
@@ -77,20 +79,16 @@ def download_nat(
 
     Args:
         product: Product to download.
-        folder: Folder to download the product to.
+        folder: Folder to download the product to. Can be local path or S3 URL.
         retries: Number of times to retry downloading the product.
 
     Returns:
         Path to the downloaded file, or None if the download failed.
     """
-    try:
-        folder.mkdir(parents=True, exist_ok=True)
-    except Exception as e:
-        raise DownloadError(
-            f"Can't save files to desired folder '{folder}'. "
-            "Consider specifying a different folder in the configuration. ",
-            f"Error context: {e}",
-        ) from e
+    fs = fsspec.implementations.local.LocalFileSystem()
+    if folder.startswith("s3://"):
+        fs = get_s3_fs()
+
     nat_files: list[str] = [p for p in product.entries if p.endswith(".nat")]
     if len(nat_files) != 1:
         raise DownloadError(
@@ -100,14 +98,14 @@ def download_nat(
         )
     nat_filename: str = nat_files[0]
 
-    filepath: pathlib.Path = folder / nat_filename
-    if filepath.exists():
+    filepath: str = f"{folder}/{nat_filename}"
+    if fs.exists(filepath):
         log.debug(f"File '{filepath}' already downloaded; skipping")
         return filepath
 
     for i in range(retries):
         try:
-            with (product.open(nat_filename) as fsrc, filepath.open("wb") as fdst):
+            with (product.open(nat_filename) as fsrc, fs.open(filepath, "wb") as fdst):
                 shutil.copyfileobj(fsrc, fdst, length=16 * 1024)
             return filepath
         except Exception as e:
@@ -116,6 +114,7 @@ def download_nat(
             )
 
     raise DownloadError(f"Failed to download product '{product}' after {retries} attempts.")
+
 
 def _gen_token() -> eumdac.token.AccessToken:
     """Generated an aces token from environment variables."""

@@ -50,8 +50,8 @@ else:
 
 # Reduce verbosity of dependacies
 for logger in [
-    "cfgrib",
     "charset_normalizer",
+    "dask",
     "eumdac", # If you want to know about throttling, set this to WARNING
     "native_msg",
     "pyorbital",

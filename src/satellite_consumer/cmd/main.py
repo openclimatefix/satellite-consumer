@@ -2,6 +2,7 @@
 
 import argparse
 import datetime as dt
+
 from loguru import logger as log
 
 from satellite_consumer.config import (

@@ -1,6 +1,5 @@
 """Functions for processing satellite data."""
 
-import pathlib
 import numpy as np
 import pandas as pd
 import pyproj
@@ -25,21 +24,22 @@ See (see https://satpy.readthedocs.io/en/stable/_modules/satpy/scene.html)
 
 
 def process_nat(
-    path: pathlib.Path,
+    path: str,
     hrv: bool = False,
     normalize: bool = True,
 ) -> xr.DataArray:
     """Process a `.nat` file into an xarray dataset.
 
     Args:
-        path: Path to the `.nat` file to open.
+        path: Path to the `.nat` file to open. Can be a local path or
+            S3 url e.g. `s3://bucket-name/path/to/file`.
         hrv: Whether to process the high resolution channel data.
         normalize: Whether to normalize the data to the unit interval [0, 1].
     """
     # The reader is the same for each satellite as the sensor is the same
     # * Hence "seviri" in all cases
     try:
-        scene: satpy.Scene = satpy.Scene(filenames={"seviri_l1b_native": [path.as_posix()]}) # type:ignore
+        scene: satpy.Scene = satpy.Scene(filenames={"seviri_l1b_native": [path]}) # type:ignore
         scene.load([
             c.name for c in SEVIRI_CHANNELS
             if (c.is_high_res and hrv)
@@ -91,13 +91,12 @@ def _map_scene_to_dataarray(
             )
         crop_bounds = REGION_MAP[crop_region]
         log.debug(f"Cropping scene to region '{crop_region}'", crop_bounds=crop_bounds)
-        print(scene)
         try:
             scene = scene.crop(ll_bbox=crop_bounds)
         except NotImplementedError:
             # 15 minutely data by default doesn't work for some reason, have to resample it
             # * The resampling is different for the HRV band
-            print(scene.wishlist)
+            # TODO: Test this works
             scene = scene.resample(
                 destination="msg_seviri_rss_1km" \
                     if scene.wishlist == set("HRV") \
