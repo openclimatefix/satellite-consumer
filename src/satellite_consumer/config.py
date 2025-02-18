@@ -52,7 +52,7 @@ class ArchiveCommandOptions:
     def time_window(self) -> tuple[dt.datetime, dt.datetime]:
         """Get the time window for the given month."""
         start: dt.datetime = dt.datetime.strptime(self.month, "%Y-%m").replace(tzinfo=dt.UTC)
-        end: dt.datetime = (start + pd.DateOffset(months=1, minutes=-1)).to_pydatetime()
+        end: dt.datetime = (start + pd.DateOffset(months=1, minutes=-1))
         return start, end
 
     @property
@@ -126,7 +126,7 @@ class ConsumeCommandOptions:
     def time_window(self) -> tuple[dt.datetime, dt.datetime]:
         """Get the time window for the given time."""
         # Round the start time down to the nearest interval given by the channel cadence
-        start: dt.datetime = (self.time - pd.DateOffset(hours=3, minutes=30)).to_pydatetime()
+        start: dt.datetime = (self.time - pd.DateOffset(hours=3, minutes=30)) # type:ignore
         return start, self.time # type:ignore  # safe due to post_init
 
     @property

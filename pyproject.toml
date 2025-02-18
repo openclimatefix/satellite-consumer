@@ -73,7 +73,6 @@ enabled = true
 # * See https://mypy.readthedocs.io/en/stable/index.html
 [tool.mypy]
 python_version = "3.12"
-dmypy = true
 strict = true
 warn_unreachable = true
 warn_return_any = true
@@ -81,6 +80,21 @@ disallow_untyped_defs = true
 plugins = [
     "numpy.typing.mypy_plugin",
 ]
+
+[[tool.mypy.overrides]]
+# Ignore missing imports for libraries that don't have them.
+# If they are ever made, remove from here!
+module = [
+    "botocore.session",
+    "botocore.client",
+    "fsspec",
+    "fsspec.implementations",
+    "fsspec.implementations.local",
+    "fsspec.implementations.asyn_wrapper",
+    "s3fs",
+    "zarr",
+]
+ignore_missing_imports = true
 
 # Ruff configuration
 # * See https://beta.ruff.rs/docs/

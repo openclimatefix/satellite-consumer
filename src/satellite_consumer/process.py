@@ -73,7 +73,7 @@ def process_nat(
 
 
 def _map_scene_to_dataarray(
-    scene: satpy.Scene,
+    scene: satpy.Scene, # type:ignore # Don't know why it dislikes this
     crop_region: str | None,
     calculate_osgb: bool = True,
 ) -> xr.DataArray:

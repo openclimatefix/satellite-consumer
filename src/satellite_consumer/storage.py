@@ -68,7 +68,7 @@ def write_to_zarr(
         _ = ds.to_zarr(
             store=zarr.storage.FsspecStore(fs=fs, path=path),
             compute=True, mode=mode, consolidated=True, **extra_kwargs,
-        )
+        ) # type:ignore
     except Exception as e:
         raise OSError(f"Error writing dataset to zarr store {path}: {e}") from e
 
@@ -90,7 +90,7 @@ def create_latest_zip(zarr_path: str) -> str:
     zippath: str = zarr_path.rsplit("/", 1)[0] + "/latest.zarr.zip"
     with (tempfile.NamedTemporaryFile(suffix=".zip") as fsrc, fs.open(zippath, "wb") as fdst):
         try:
-            _ = ds.to_zarr(store=zarr.storage.ZipStore(path=fsrc.name, mode="w"))
+            _ = ds.to_zarr(store=zarr.storage.ZipStore(path=fsrc.name, mode="w")) # type:ignore
             log.debug(f"Zipped existing store to '{fsrc.name}'")
             shutil.copyfileobj(fsrc, fdst, length=16 * 1024)
         except Exception as e:
