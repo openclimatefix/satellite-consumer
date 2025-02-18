@@ -40,7 +40,7 @@ COPY .git /opt/app/.git
 RUN uv sync --no-dev --no-editable
 
 # --- Runtime image (use distroless if feasible for 100MB saving) --- #
-FROM al3xos/python-distroless:3.12-debian12
+FROM python:3.12-slim-bookworm AS runtime
 
 WORKDIR /opt/app
 # Copy just the virtual environment into a runtime image
