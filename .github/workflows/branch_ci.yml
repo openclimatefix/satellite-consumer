@@ -12,5 +12,6 @@ jobs:
     with:
       enable_linting: true
       enable_typechecking: true
-      tests_folder: tests
+      tests_folder: src/satellite_consumer
+      tests_runner: unittest
 
