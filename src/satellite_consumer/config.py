@@ -112,8 +112,8 @@ class ConsumeCommandOptions:
             log.debug(
                 "Input time is not a multiple of the chosen satellite's image cadence. " + \
                 "Adjusting to nearest image time.",
-                input_time=self.time,
-                adjusted_time=newtime,
+                input_time=str(self.time),
+                adjusted_time=str(newtime),
             )
             self.time = newtime
 
