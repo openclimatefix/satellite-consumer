@@ -19,8 +19,6 @@ class MockS3Bucket:
     bucket: str = "test-bucket"
     region: str = "us-east-1"
     endpoint: str = "http://localhost:5000"
-    access_key: str = "test-key"
-    secret_key: str = "test-secret"
 
     def __enter__(self) -> None:
         """Create a mock S3 server and bucket."""
@@ -62,8 +60,8 @@ class MockS3Bucket:
     def patch_dict() -> dict[str, str]:
         """Get the patch dict for an environ modification."""
         return {
-            "AWS_ACCESS_KEY_ID": MockS3Bucket.access_key,
-            "AWS_SECRET_ACCESS_KEY": MockS3Bucket.secret_key,
+            "AWS_ACCESS_KEY_ID": "test-key",
+            "AWS_SECRET_ACCESS_KEY": "test-secret",
             "AWS_ENDPOINT": MockS3Bucket.endpoint,
             "AWS_REGION": MockS3Bucket.region,
         }
