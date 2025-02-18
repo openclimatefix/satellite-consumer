@@ -110,16 +110,10 @@ def _fname_to_scantime(fname: str) -> dt.datetime:
 def get_s3_fs() -> fsspec.AbstractFileSystem:
     """Get S3 filesystem object."""
     import s3fs
-    for var in ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"]:
-        if var not in os.environ:
-            raise OSError(
-                "Cannot use provided S3 workdir due to missing "
-                f"required authorization environment variable '{var}'",
-            )
     return s3fs.S3FileSystem(
         anon=False,
-        key=os.environ["AWS_ACCESS_KEY_ID"],
-        secret=os.environ["AWS_SECRET_ACCESS_KEY"],
+        key=os.getenv("AWS_ACCESS_KEY_ID", None),
+        secret=os.getenv("AWS_SECRET_ACCESS_KEY", None),
         client_kwargs={
             "region_name": os.getenv("AWS_REGION", "eu-west-1"),
             "endpoint_url": os.getenv("AWS_ENDPOINT", None),
