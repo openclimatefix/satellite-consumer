@@ -118,4 +118,5 @@ def get_s3_fs() -> fsspec.AbstractFileSystem:
             "region_name": os.getenv("AWS_REGION", "eu-west-1"),
             "endpoint_url": os.getenv("AWS_ENDPOINT", None),
         },
+        asynchronous=True,
     )
