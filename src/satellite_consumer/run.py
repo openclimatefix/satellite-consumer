@@ -50,7 +50,7 @@ def _consume_command(command_opts: ArchiveCommandOptions | ConsumeCommandOptions
     nat_filepaths: list[str] = []
     for i, product in enumerate(product_iter): # Pretty sure enumerate is lazy
         product_time: dt.datetime = product.sensing_start.replace(second=0, microsecond=0)
-        with log.contextualize(scan_time=str(product_time)):
+        with log.contextualize(scan_time=str(product_time), scan_num=f"{i+1}/{total}"):
 
             # Skip products already present in store
             if store_da is not None \
@@ -92,7 +92,7 @@ def run(config: SatelliteConsumerConfig) -> None:
     prog_start = dt.datetime.now(tz=dt.UTC)
 
     log.info(
-        f"Starting satellite consumer with command {config.command}",
+        f"Starting satellite consumer with command '{config.command}'",
         version=__version__, start_time=str(prog_start),
     )
 

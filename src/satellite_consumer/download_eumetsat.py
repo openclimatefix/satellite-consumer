@@ -3,17 +3,16 @@
 import datetime as dt
 import os
 import shutil
+import tempfile
 from collections.abc import Iterator
 from typing import TYPE_CHECKING
 
 import eumdac
-import fsspec
-import fsspec.implementations.local
 from loguru import logger as log
 
 from satellite_consumer.config import SatelliteMetadata
 from satellite_consumer.exceptions import DownloadError
-from satellite_consumer.storage import get_s3_fs
+from satellite_consumer.storage import get_fs
 
 if TYPE_CHECKING:
     from eumdac.collection import Collection, SearchResults
@@ -85,14 +84,12 @@ def download_nat(
     Returns:
         Path to the downloaded file, or None if the download failed.
     """
-    fs = fsspec.implementations.local.LocalFileSystem()
-    if folder.startswith("s3://"):
-        fs = get_s3_fs()
+    fs = get_fs(path=folder)
 
     nat_files: list[str] = [p for p in product.entries if p.endswith(".nat")]
     if len(nat_files) != 1:
         raise DownloadError(
-            f"Couldn't download product '{product}' as it contains more "
+            f"Couldn't download product '{product!s}' as it contains more "
             f"than one '.nat' file: '{nat_files}'. New functionality is needed ",
             "to determine how to act in this case.",
         )
@@ -100,13 +97,16 @@ def download_nat(
 
     filepath: str = f"{folder}/{nat_filename}"
     if fs.exists(filepath):
-        log.debug(f"File '{filepath}' already downloaded; skipping")
+        log.debug("Skipping already downloaded file", filename=nat_filename)
         return filepath
 
+    log.debug("Downloading raw file", src=nat_filename, dst=filepath)
     for i in range(retries):
         try:
-            with (product.open(nat_filename) as fsrc, fs.open(filepath, "wb") as fdst):
+            # Copying to temp then putting seems to be quicker than copying to fs
+            with (product.open(nat_filename) as fsrc, tempfile.NamedTemporaryFile(suffix=".nat") as fdst):
                 shutil.copyfileobj(fsrc, fdst, length=16 * 1024)
+                fs.put(fdst.name, filepath)
             return filepath
         except Exception as e:
             log.warning(

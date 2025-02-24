@@ -3,18 +3,16 @@
 
 import datetime as dt
 import os
-import shutil
 import tempfile
 
 import fsspec
 import numpy as np
 import pyresample
+import s3fs
 import xarray as xr
 import yaml
 import zarr
-from fsspec.implementations.asyn_wrapper import AsyncFileSystemWrapper
 from fsspec.implementations.local import LocalFileSystem
-from loguru import logger as log
 
 
 def write_to_zarr(
@@ -31,10 +29,7 @@ def write_to_zarr(
         da: The data array to write as a Zarr store.
         path: The path to the Zarr store to write to. Can be a local filepath or S3 URL.
     """
-    fs: fsspec.AbstractFileSystem = AsyncFileSystemWrapper(LocalFileSystem(auto_mkdir=True))
-    if path.startswith("s3://"):
-        fs = get_s3_fs()
-        path = path.split("s3://")[1]
+    fs = get_fs(path=path)
 
     mode: str = "a" if fs.exists(path) else "w"
     extra_kwargs: dict[str, object] = {
@@ -65,10 +60,7 @@ def write_to_zarr(
         da = da.chunk({"time": 1, "x_geostationary": -1, "y_geostationary": -1, "variable": 1})
         da.coords["variable"] = da.coords["variable"].astype(str)
         ds: xr.Dataset = da.to_dataset(name="data", promote_attrs=True)
-        _ = ds.to_zarr(
-            store=zarr.storage.FsspecStore(fs=fs, path=path),
-            compute=True, mode=mode, consolidated=True, **extra_kwargs,
-        ) # type:ignore
+        _ = ds.to_zarr(path, compute=True, mode=mode, consolidated=True, **extra_kwargs) # type: ignore
     except Exception as e:
         raise OSError(f"Error writing dataset to zarr store {path}: {e}") from e
 
@@ -76,23 +68,16 @@ def write_to_zarr(
 
 def create_latest_zip(zarr_path: str) -> str:
     """Convert a zarr store at the given path to a zip store."""
-    fs: fsspec.AbstractFileSystem = AsyncFileSystemWrapper(LocalFileSystem(auto_mkdir=True))
-    if zarr_path.startswith("s3://"):
-        fs = get_s3_fs()
-        zarr_path = zarr_path.split("s3://")[1]
+    fs = get_fs(path=zarr_path)
 
     # Open the zarr store and write it to a zip store
-    ds: xr.Dataset = xr.open_zarr(
-        zarr.storage.FsspecStore(fs=fs, path=zarr_path),
-        consolidated=True,
-    )
+    ds: xr.Dataset = xr.open_zarr(zarr_path, consolidated=True)
 
     zippath: str = zarr_path.rsplit("/", 1)[0] + "/latest.zarr.zip"
-    with (tempfile.NamedTemporaryFile(suffix=".zip") as fsrc, fs.open(zippath, "wb") as fdst):
+    with tempfile.NamedTemporaryFile(suffix=".zip") as fsrc:
         try:
-            _ = ds.to_zarr(store=zarr.storage.ZipStore(path=fsrc.name, mode="w")) # type:ignore
-            log.debug(f"Zipped existing store to '{fsrc.name}'")
-            shutil.copyfileobj(fsrc, fdst, length=16 * 1024)
+            _ = ds.to_zarr(store=zarr.storage.ZipStore(path=fsrc.name, mode="w")) # type: ignore
+            fs.put(lpath=fsrc.name, rpath=zippath, overwrite=True)
         except Exception as e:
             raise OSError(f"Error writing dataset to zip store '{zippath}': {e}") from e
     return zippath
@@ -107,16 +92,23 @@ def _fname_to_scantime(fname: str) -> dt.datetime:
     """
     return dt.datetime.strptime(fname.split(".")[0][-14:], "%Y%m%d%H%M%S").replace(tzinfo=dt.UTC)
 
-def get_s3_fs() -> fsspec.AbstractFileSystem:
-    """Get S3 filesystem object."""
-    import s3fs
-    return s3fs.S3FileSystem(
-        anon=False,
-        key=os.getenv("AWS_ACCESS_KEY_ID", None),
-        secret=os.getenv("AWS_SECRET_ACCESS_KEY", None),
-        client_kwargs={
-            "region_name": os.getenv("AWS_REGION", "eu-west-1"),
-            "endpoint_url": os.getenv("AWS_ENDPOINT", None),
-        },
-        asynchronous=True,
-    )
+def get_fs(path: str) -> fsspec.AbstractFileSystem:
+    """Get relevant filesystem for the given path.
+
+    Args:
+        path: The path to get the filesystem for. Use a protocol compatible with fsspec
+            e.g. `s3://bucket-name/path/to/file` for remote access.
+    """
+    fs: fsspec.AbstractFileSystem = LocalFileSystem(auto_mkdir=True)
+    if path.startswith("s3://"):
+        fs = s3fs.S3FileSystem(
+            anon=False,
+            key=os.getenv("AWS_ACCESS_KEY_ID", None),
+            secret=os.getenv("AWS_SECRET_ACCESS_KEY", None),
+            client_kwargs={
+                "region_name": os.getenv("AWS_REGION", "eu-west-1"),
+                "endpoint_url": os.getenv("AWS_ENDPOINT", None),
+            },
+        )
+    return fs
+

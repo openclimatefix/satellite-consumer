@@ -8,6 +8,7 @@ import xarray as xr
 from loguru import logger as log
 
 from satellite_consumer.config import SEVIRI_CHANNELS
+from satellite_consumer.storage import get_fs
 
 OSGB, WGS84 = (27700, 4326)
 transformer: pyproj.Transformer = pyproj.Transformer.from_crs(crs_from=WGS84, crs_to=OSGB)
@@ -36,8 +37,7 @@ def process_nat(
         hrv: Whether to process the high resolution channel data.
         normalize: Whether to normalize the data to the unit interval [0, 1].
     """
-    # The reader is the same for each satellite as the sensor is the same
-    # * Hence "seviri" in all cases
+    log.debug(f"Reading '{path!s}' as a satpy Scene", hrv=hrv, normalize=normalize)
     try:
         scene: satpy.Scene = satpy.Scene(filenames={"seviri_l1b_native": [path]}) # type:ignore
         scene.load([
@@ -46,9 +46,10 @@ def process_nat(
             or (not c.is_high_res and not hrv)
         ])
     except Exception as e:
-        raise OSError(f"Error reading '{path!s}' as satpy Scene: {e}") from e
+        raise OSError(f"Error reading '{path}' as satpy Scene: {e}") from e
 
     try:
+        log.debug("Converting Scene to dataarray", path=path)
         da: xr.DataArray = _map_scene_to_dataarray(
             scene=scene,
             crop_region=None,
