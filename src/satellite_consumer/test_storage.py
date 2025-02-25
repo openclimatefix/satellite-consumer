@@ -8,7 +8,7 @@ from botocore.client import BaseClient as BotocoreClient
 from botocore.session import Session
 from moto.server import ThreadedMotoServer
 
-from satellite_consumer.storage import get_fs, write_to_zarr, create_empty_store
+from satellite_consumer.storage import create_empty_store, get_fs, write_to_zarr
 
 
 @contextlib.contextmanager
@@ -60,7 +60,7 @@ class TestWriteToZarr(unittest.TestCase):
         )
 
         with mocks3():
-            store_da = create_empty_store(
+            _ = create_empty_store(
                 dst="s3://test-bucket/test.zarr",
                 coords={
                     "time": [np.datetime64(f"2021-01-01T0{h}", "ns") for h in range(0, 3)],

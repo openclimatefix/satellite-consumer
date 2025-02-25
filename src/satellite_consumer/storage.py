@@ -16,7 +16,7 @@ import zarr
 from fsspec.implementations.local import LocalFileSystem
 from loguru import logger as log
 
-from satellite_consumer.config import ArchiveCommandOptions, ConsumeCommandOptions, Coordinates
+from satellite_consumer.config import Coordinates
 
 
 def write_to_zarr(
