@@ -45,7 +45,7 @@ def _consume_command(command_opts: ArchiveCommandOptions | ConsumeCommandOptions
     else:
         # Create new store
         log.info("Creating new zarr store", dst=command_opts.zarr_path)
-        _ = create_empty_store(opts=command_opts)
+        _ = create_empty_store(dst=command_opts.zarr_path, coords=command_opts.as_coordinates())
 
     # Iterate through all products in search
     nat_filepaths: list[str] = []

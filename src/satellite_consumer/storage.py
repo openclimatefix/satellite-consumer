@@ -84,13 +84,12 @@ def create_latest_zip(zarr_path: str) -> str:
     return zippath
 
 
-def create_empty_store(opts: ConsumeCommandOptions | ArchiveCommandOptions) -> xr.DataArray:
+def create_empty_store(dst: str, coords: Coordinates) -> xr.DataArray:
     """Create an empty zarr store at the given path."""
     encoding = {
         "data": {"dtype": "float32"},
         "time": {"units": "nanoseconds since 1970-01-01", "calendar": "proleptic_gregorian"},
     }
-    coords: Coordinates = opts.as_coordinates()
     da: xr.DataArray = xr.DataArray(
         name="data",
         coords={k: (k, v) for k, v in coords.items()},
@@ -100,8 +99,8 @@ def create_empty_store(opts: ConsumeCommandOptions | ArchiveCommandOptions) -> x
             dtype="float64",
         ),
     )
-    da.to_zarr(opts.zarr_path, mode="w", consolidated=False, compute=False, encoding=encoding)
-    da = xr.open_dataarray(opts.zarr_path, engine="zarr", consolidated=False)
+    da.to_zarr(dst, mode="w", consolidated=False, compute=False, encoding=encoding)
+    da = xr.open_dataarray(dst, engine="zarr", consolidated=False)
     return da
 
 

@@ -34,7 +34,7 @@ def structured_formatter(record: "loguru.Record") -> str:
     return "{extra[serialized]}\n"
 
 # Define the logging formatter, removing the default one
-loguru.logger.remove(0)
+loguru.logger.remove()
 if sys.stdout.isatty():
     # Simple logging for development
     loguru.logger.add(
