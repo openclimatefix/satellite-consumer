@@ -2,11 +2,20 @@
 
 import dataclasses
 import datetime as dt
-from typing import Literal
+from typing import Literal, TypedDict
 
+import numpy as np
 import pandas as pd
 from loguru import logger as log
 
+
+class Coordinates(TypedDict):
+    """Coordinates describing the shape of a satellite dataset."""
+
+    x_geostationary: list[float]
+    y_geostationary: list[float]
+    variable: list[str]
+    time: list[np.datetime64]
 
 @dataclasses.dataclass
 class ArchiveCommandOptions:
@@ -67,7 +76,18 @@ class ArchiveCommandOptions:
         """Get the path to the raw data folder for the given time."""
         return f"{self.workdir}/raw"
 
-
+    def as_coordinates(self) -> Coordinates:
+        """Return the coordinates of the data associated with the command options."""
+        start, end = self.time_window
+        coordinates: Coordinates = {
+            "time": [ts.to_numpy() for ts in pd.date_range(
+                start=start, end=end, freq=f"{self.satellite_metadata.cadence_mins}min",
+                )], # TODO: Determine inclusive bounds
+            "y_geostationary": self.satellite_metadata.spatial_coordinates["y_geostationary"],
+            "x_geostationary": self.satellite_metadata.spatial_coordinates["x_geostationary"],
+            "variable": [ch.name for ch in SEVIRI_CHANNELS if ch.is_high_res == self.hrv],
+        }
+        return coordinates
 
 @dataclasses.dataclass
 class ConsumeCommandOptions:
@@ -140,6 +160,20 @@ class ConsumeCommandOptions:
         """Get the path to the raw data folder for the given time."""
         return f"{self.workdir}/raw"
 
+    def as_coordinates(self) -> Coordinates:
+        """Return the coordinates of the data associated with the command options."""
+        start, end = self.time_window
+        coordinates: Coordinates = {
+            "time": [ts.to_numpy() for ts in pd.date_range(
+                inclusive="right", start=start, end=end,
+                freq=f"{self.satellite_metadata.cadence_mins}min",
+            )],
+            "y_geostationary": self.satellite_metadata.spatial_coordinates["y_geostationary"],
+            "x_geostationary": self.satellite_metadata.spatial_coordinates["x_geostationary"],
+            "variable": [ch.name for ch in SEVIRI_CHANNELS if ch.is_high_res == self.hrv],
+        }
+        return coordinates
+
 
 @dataclasses.dataclass
 class SatelliteConsumerConfig:
@@ -169,6 +203,8 @@ class SatelliteMetadata:
     """The product ID of the satellite image set."""
     description: str
     """A description of the satellite data set."""
+    spatial_coordinates: dict[str, list[float]]
+    """The spatial coordinates of the satellite data set."""
 
 SATELLITE_METADATA: dict[str, SatelliteMetadata] = {
     "rss": SatelliteMetadata(
@@ -184,6 +220,11 @@ SATELLITE_METADATA: dict[str, SatelliteMetadata] = {
             "(11 low and one high resolution). ",
             "See https://user.eumetsat.int/catalogue/EO:EUM:DAT:MSG:MSG15-RSS",
         )),
+        spatial_coordinates={
+            "x_geostationary": list(np.linspace(5565747.79846191, -5568748.01721191, 3712)),
+            "y_geostationary": list(np.linspace(1395187.45153809, 5568748.13049316, 1392)),
+        },
+
     ),
     "iodc": SatelliteMetadata(
         region="india",
@@ -196,6 +237,10 @@ SATELLITE_METADATA: dict[str, SatelliteMetadata] = {
             "(11 low and one high resolution). ",
             "See https://user.eumetsat.int/catalogue/EO:EUM:DAT:MSG:HRSEVIRI-IODC",
         )),
+        spatial_coordinates={
+            "x_geostationary": list(np.linspace(5565747.79846191, -5568748.01721191, 3712)),
+            "y_geostationary": list(np.linspace(-5565747.79846191, 5568748.01721191, 3712)),
+        },
     ),
     "odegree": SatelliteMetadata(
         region="europe, africa",
@@ -208,6 +253,10 @@ SATELLITE_METADATA: dict[str, SatelliteMetadata] = {
             "(11 low and one high resolution). ",
             "See https://user.eumetsat.int/catalogue/EO:EUM:DAT:MSG:HRSEVIRI",
         )),
+        spatial_coordinates={
+            "x_geostationary": list(np.linspace(5565747.79846191, -5568748.01721191, 3712)),
+            "y_geostationary": list(np.linspace(-5565747.79846191, 5568748.01721191, 3712)),
+        },
     ),
 }
 """Metadata for the available satellite data sets."""

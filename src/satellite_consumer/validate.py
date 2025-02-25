@@ -36,7 +36,7 @@ def validate(
         nulls = np.isnan(data)
         return float(nulls.sum() / len(nulls))
 
-    da = xr.open_dataarray(dataset_path, engine="zarr", consolidated=True)
+    da = xr.open_dataarray(dataset_path, engine="zarr", consolidated=False)
     if not {"x_geostationary", "y_geostationary"}.issubset(set(da.dims)):
         raise ValidationError(
             "Cannot validate dataset at path {dataset_path}. "

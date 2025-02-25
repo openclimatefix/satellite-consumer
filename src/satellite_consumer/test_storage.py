@@ -11,6 +11,7 @@ from moto.server import ThreadedMotoServer
 
 from satellite_consumer.storage import get_fs, write_to_zarr
 
+
 class MockS3Bucket:
 
     client: BotocoreClient

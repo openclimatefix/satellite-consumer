@@ -5,11 +5,8 @@ Consolidates the old cli_downloader, backfill_hrv and backfill_nonhrv scripts.
 
 import datetime as dt
 import math
-import pathlib
 from importlib.metadata import PackageNotFoundError, version
 
-import numpy as np
-import xarray as xr
 from loguru import logger as log
 
 from satellite_consumer.config import (
@@ -22,7 +19,7 @@ from satellite_consumer.download_eumetsat import (
     get_products_iterator,
 )
 from satellite_consumer.process import process_nat
-from satellite_consumer.storage import create_latest_zip, write_to_zarr
+from satellite_consumer.storage import create_empty_store, create_latest_zip, get_fs, write_to_zarr
 from satellite_consumer.validate import validate
 
 try:
@@ -32,6 +29,8 @@ except PackageNotFoundError:
 
 def _consume_command(command_opts: ArchiveCommandOptions | ConsumeCommandOptions) -> None:
     """Run the download and processing pipeline."""
+    fs = get_fs(path=command_opts.zarr_path)
+
     window = command_opts.time_window
 
     product_iter, total = get_products_iterator(
@@ -41,24 +40,19 @@ def _consume_command(command_opts: ArchiveCommandOptions | ConsumeCommandOptions
     )
 
     # Use existing zarr store if it exists
-    store_da: xr.DataArray | None = None
-    if pathlib.Path(command_opts.zarr_path).exists():
-        log.info(f"Using existing zarr store at '{command_opts.zarr_path}'")
-        store_da = xr.open_dataarray(command_opts.zarr_path, engine="zarr", consolidated=True)
+    if fs.exists(command_opts.zarr_path.replace("s3://", "")):
+        log.info("Using existing zarr store", dst=command_opts.zarr_path)
+    else:
+        # Create new store
+        log.info("Creating new zarr store", dst=command_opts.zarr_path)
+        _ = create_empty_store(opts=command_opts)
 
     # Iterate through all products in search
     nat_filepaths: list[str] = []
-    for i, product in enumerate(product_iter): # Pretty sure enumerate is lazy
+    for i, product in enumerate(product_iter): # Pretty sure enumerate is evaluated lazily
         product_time: dt.datetime = product.sensing_start.replace(second=0, microsecond=0)
         with log.contextualize(scan_time=str(product_time), scan_num=f"{i+1}/{total}"):
 
-            # Skip products already present in store
-            if store_da is not None \
-                and np.datetime64(product_time, "ns") in store_da.coords["time"].values:
-                log.debug("Skipping already present entry in store")
-                continue
-
-            # For non-existing products, download and process
             nat_filepath = download_nat(
                 product=product,
                 folder=f"{command_opts.workdir}/raw",
@@ -70,19 +64,22 @@ def _consume_command(command_opts: ArchiveCommandOptions | ConsumeCommandOptions
             if i % math.ceil(total / 10) == 0:
                 log.info(f"Processed {i+1} of {total} products.")
 
+    log.info("Finished population of zarr store", dst=command_opts.zarr_path)
+
     if command_opts.validate:
         validate(dataset_path=command_opts.zarr_path)
 
     if isinstance(command_opts, ConsumeCommandOptions) and command_opts.latest_zip:
         zippath: str = create_latest_zip(zarr_path=command_opts.zarr_path)
-        log.info(f"Created latest.zip at {zippath}")
+        log.info(f"Created latest.zip at {zippath}", dst=zippath)
 
     if command_opts.delete_raw:
         if command_opts.workdir.startswith("s3://"):
             log.warning("delete-raw was specified, but deleting S3 files is not yet implemented")
         else:
             log.info(
-                f"Deleting {len(nat_filepaths)} raw files in {command_opts.raw_folder}.",
+                f"Deleting {len(nat_filepaths)} raw files in {command_opts.raw_folder}",
+                num_files=len(nat_filepaths), dst=command_opts.raw_folder,
             )
             _ = [f.unlink() for f in nat_filepaths] # type:ignore
 

@@ -8,7 +8,6 @@ import xarray as xr
 from loguru import logger as log
 
 from satellite_consumer.config import SEVIRI_CHANNELS
-from satellite_consumer.storage import get_fs
 
 OSGB, WGS84 = (27700, 4326)
 transformer: pyproj.Transformer = pyproj.Transformer.from_crs(crs_from=WGS84, crs_to=OSGB)
@@ -37,7 +36,7 @@ def process_nat(
         hrv: Whether to process the high resolution channel data.
         normalize: Whether to normalize the data to the unit interval [0, 1].
     """
-    log.debug(f"Reading '{path!s}' as a satpy Scene", hrv=hrv, normalize=normalize)
+    log.debug("Reading raw file as a satpy Scene", hrv=hrv, src=path)
     try:
         scene: satpy.Scene = satpy.Scene(filenames={"seviri_l1b_native": [path]}) # type:ignore
         scene.load([
@@ -49,7 +48,7 @@ def process_nat(
         raise OSError(f"Error reading '{path}' as satpy Scene: {e}") from e
 
     try:
-        log.debug("Converting Scene to dataarray", path=path)
+        log.debug("Converting Scene to dataarray", src=path, normalize=normalize)
         da: xr.DataArray = _map_scene_to_dataarray(
             scene=scene,
             crop_region=None,
@@ -79,6 +78,14 @@ def _map_scene_to_dataarray(
     calculate_osgb: bool = True,
 ) -> xr.DataArray:
     """Converts a Scene with satellite data into a data array.
+
+    Note!!!:
+        This function fudges the timestamps somewhat!
+        The time coordinate that gets applied to the ouptut DataArray
+        is the `end_time` attribute of the Scene. This is the time
+        the scan finished, not the time it started. I don't dare change
+        it in order to stay consistent with all the historical data,
+        but it is important to be aware of it.
 
     Args:
         scene: The satpy.Scene containing the satellite data.
@@ -112,7 +119,7 @@ def _map_scene_to_dataarray(
         for attr in [ca for ca in scene[channel].attrs if ca not in ["area", "_satpy_id"]]:
             scene.attrs[f"{channel['name']}_{attr}"] = scene[channel].attrs[attr].__repr__()
 
-    da: xr.DataArray = scene.to_xarray_dataset().to_array()
+    da: xr.DataArray = scene.to_xarray_dataset().to_array().rename("data")
     da.attrs.update(scene.attrs)
 
     # Ensure DataArray has a time dimension
@@ -141,7 +148,9 @@ def _map_scene_to_dataarray(
             "units": "meter", "coordinate_reference_system": "OSGB", "name": "Northing",
         }
 
-    da = da.transpose("time", "y_geostationary", "x_geostationary", "variable")
+    da = da.transpose("time", "y_geostationary", "x_geostationary", "variable").chunk(
+        chunks={"time": 1, "y_geostationary": -1, "x_geostationary": -1, "variable": 1},
+    ).sortby(["variable", "y_geostationary"]).sortby("x_geostationary", ascending=False)
 
     return da
 

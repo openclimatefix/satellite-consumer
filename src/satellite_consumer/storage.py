@@ -5,6 +5,7 @@ import datetime as dt
 import os
 import tempfile
 
+import dask.array
 import fsspec
 import numpy as np
 import pyresample
@@ -13,6 +14,9 @@ import xarray as xr
 import yaml
 import zarr
 from fsspec.implementations.local import LocalFileSystem
+from loguru import logger as log
+
+from satellite_consumer.config import ArchiveCommandOptions, ConsumeCommandOptions, Coordinates
 
 
 def write_to_zarr(
@@ -29,16 +33,6 @@ def write_to_zarr(
         da: The data array to write as a Zarr store.
         path: The path to the Zarr store to write to. Can be a local filepath or S3 URL.
     """
-    fs = get_fs(path=path)
-
-    mode: str = "a" if fs.exists(path) else "w"
-    extra_kwargs: dict[str, object] = {
-        "append_dim": "time",
-    } if mode == "a" else {
-        "encoding": {
-            "time": {"units": "nanoseconds since 1970-01-01"},
-        },
-    }
     # Convert attributes to be json	serializable
     for key, value in da.attrs.items():
         if isinstance(value, dict):
@@ -56,11 +50,18 @@ def write_to_zarr(
         if isinstance(value, dt.datetime):
             da.attrs[key] = value.isoformat()
 
+    log.debug("Writing dataarray to zarr store", dst=path)
     try:
-        da = da.chunk({"time": 1, "x_geostationary": -1, "y_geostationary": -1, "variable": 1})
-        da.coords["variable"] = da.coords["variable"].astype(str)
-        ds: xr.Dataset = da.to_dataset(name="data", promote_attrs=True)
-        _ = ds.to_zarr(path, compute=True, mode=mode, consolidated=True, **extra_kwargs) # type: ignore
+        store_da: xr.DataArray = xr.open_dataarray(path, engine="zarr", consolidated=False)
+        time_idx: int = list(store_da.coords["time"].values).index(da.coords["time"].values[0])
+        _ = da.to_zarr(store=path, compute=True, mode="a", consolidated=False,
+            region={
+                "time": slice(time_idx, time_idx + 1),
+                "y_geostationary": slice(0, len(store_da.coords["y_geostationary"])),
+                "x_geostationary": slice(0, len(store_da.coords["x_geostationary"])),
+                "variable": "auto",
+            },
+        )
     except Exception as e:
         raise OSError(f"Error writing dataset to zarr store {path}: {e}") from e
 
@@ -71,7 +72,7 @@ def create_latest_zip(zarr_path: str) -> str:
     fs = get_fs(path=zarr_path)
 
     # Open the zarr store and write it to a zip store
-    ds: xr.Dataset = xr.open_zarr(zarr_path, consolidated=True)
+    ds: xr.Dataset = xr.open_zarr(zarr_path, consolidated=False)
 
     zippath: str = zarr_path.rsplit("/", 1)[0] + "/latest.zarr.zip"
     with tempfile.NamedTemporaryFile(suffix=".zip") as fsrc:
@@ -81,6 +82,27 @@ def create_latest_zip(zarr_path: str) -> str:
         except Exception as e:
             raise OSError(f"Error writing dataset to zip store '{zippath}': {e}") from e
     return zippath
+
+
+def create_empty_store(opts: ConsumeCommandOptions | ArchiveCommandOptions) -> xr.DataArray:
+    """Create an empty zarr store at the given path."""
+    encoding = {
+        "data": {"dtype": "float32"},
+        "time": {"units": "nanoseconds since 1970-01-01", "calendar": "proleptic_gregorian"},
+    }
+    coords: Coordinates = opts.as_coordinates()
+    da: xr.DataArray = xr.DataArray(
+        name="data",
+        coords={k: (k, v) for k, v in coords.items()},
+        data=dask.array.zeros( # type: ignore # dask doesn't explicitly export this...
+            shape=tuple([len(v) for v in coords.values()]), # type: ignore
+            chunks=(1, len(coords["y_geostationary"]), len(coords["x_geostationary"]), 1),
+            dtype="float64",
+        ),
+    )
+    da.to_zarr(opts.zarr_path, mode="w", consolidated=False, compute=False, encoding=encoding)
+    da = xr.open_dataarray(opts.zarr_path, engine="zarr", consolidated=False)
+    return da
 
 
 def _fname_to_scantime(fname: str) -> dt.datetime:

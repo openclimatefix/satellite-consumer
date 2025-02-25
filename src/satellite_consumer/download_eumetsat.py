@@ -104,7 +104,8 @@ def download_nat(
     for i in range(retries):
         try:
             # Copying to temp then putting seems to be quicker than copying to fs
-            with (product.open(nat_filename) as fsrc, tempfile.NamedTemporaryFile(suffix=".nat") as fdst):
+            with (product.open(nat_filename) as fsrc,
+                  tempfile.NamedTemporaryFile(suffix=".nat") as fdst):
                 shutil.copyfileobj(fsrc, fdst, length=16 * 1024)
                 fs.put(fdst.name, filepath)
             return filepath
