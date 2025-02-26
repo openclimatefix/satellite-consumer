@@ -2,12 +2,14 @@
 
 import argparse
 import datetime as dt
+import os
 
 from loguru import logger as log
 
 from satellite_consumer.config import (
     SATELLITE_METADATA,
     ArchiveCommandOptions,
+    Command,
     ConsumeCommandOptions,
     SatelliteConsumerConfig,
 )
@@ -30,6 +32,8 @@ def cli_entrypoint() -> None:
     archive_parser.add_argument("--hrv", action="store_true")
     archive_parser.add_argument("--rescale", action="store_true")
     archive_parser.add_argument("--workdir", type=str, default="/mnt/disks/sat")
+    archive_parser.add_argument("--eumetsat-key", type=str, required=True)
+    archive_parser.add_argument("--eumetsat-secret", type=str, required=True)
 
     consume_parser = subparsers.add_parser("consume",
         help="Consume satellite data for a given time",
@@ -45,11 +49,17 @@ def cli_entrypoint() -> None:
     consume_parser.add_argument("--rescale", action="store_true")
     consume_parser.add_argument("--workdir", type=str, default="/mnt/disks/sat")
     consume_parser.add_argument("--zip", action="store_true")
+    archive_parser.add_argument("--eumetsat-key", type=str, required=True)
+    archive_parser.add_argument("--eumetsat-secret", type=str, required=True)
 
     args = parser.parse_args()
 
+    os.environ["EUMETSAT_CONSUMER_KEY"] = args.eumetsat_key
+    os.environ["EUMETSAT_CONSUMER_SECRET"] = args.eumetsat_secret
+
     command_opts: ArchiveCommandOptions | ConsumeCommandOptions
-    if args.command == "archive":
+    command = Command(args.command)
+    if command == "archive":
         command_opts = ArchiveCommandOptions(
             satellite=args.satellite,
             month=args.month,
@@ -71,12 +81,46 @@ def cli_entrypoint() -> None:
             latest_zip=args.zip,
         )
     config: SatelliteConsumerConfig = SatelliteConsumerConfig(
-        command=args.command, command_options=command_opts,
+        command=command, command_options=command_opts,
     )
 
     return run(config)
 
+def env_entrypoint() -> None:
+    """Handle the program using environment variables."""
+    try:
+        command = Command(os.environ["SATCONS_COMMAND"])
+        command_opts: ArchiveCommandOptions | ConsumeCommandOptions
+        if command == "archive":
+            command_opts = ArchiveCommandOptions(
+                satellite=os.environ["SATCONS_SATELLITE"],
+                month=os.environ["SATCONS_MONTH"],
+                delete_raw=os.environ.get("SATCONS_DELETE_RAW", "false") == "true",
+                validate=os.environ.get("SATCONS_VALIDATE", "false") == "true",
+                hrv=os.environ.get("SATCONS_HRV", "false") == "true",
+                rescale=os.environ.get("SATCONS_RESCALE", "false") == "true",
+                workdir=os.environ.get("SATCONS_WORKDIR", "/mnt/disks/sat"),
+            )
+        else:
+            command_opts = ConsumeCommandOptions(
+                satellite=os.environ["SATCONS_SATELLITE"],
+                time=dt.datetime.fromisoformat(os.environ["SATCONS_TIME"]),
+                delete_raw=os.environ.get("SATCONS_DELETE_RAW", "false") == "true",
+                validate=os.environ.get("SATCONS_VALIDATE", "false") == "true",
+                hrv=os.environ.get("SATCONS_HRV", "false") == "true",
+                rescale=os.environ.get("SATCONS_RESCALE", "false") == "true",
+                workdir=os.environ.get("SATCONS_WORKDIR", "/mnt/disks/sat"),
+                latest_zip=os.environ.get("SATCONS_ZIP", "false") == "true",
+            )
+    except KeyError as e:
+        log.error(f"Missing environment variable: {e}")
+        return
+    except Exception as e:
+        raise e
 
-
+    config: SatelliteConsumerConfig = SatelliteConsumerConfig(
+        command=command, command_options=command_opts,
+    )
+    return run(config)
 
 

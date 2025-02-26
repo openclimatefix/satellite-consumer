@@ -52,8 +52,8 @@ dev = [
 ]
 
 [project.scripts]
-# Put entrypoints in here
 sat-consumer-cli = "satellite_consumer.cmd.main:cli_entrypoint"
+sat-consumer = "satellite_consumer.cmd.main:env_entrypoint"
 
 [project.urls]
 repository = "https://github.com/openclimatefix/satellite-consumer"
