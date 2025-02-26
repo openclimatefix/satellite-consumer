@@ -2,20 +2,36 @@
 
 import dataclasses
 import datetime as dt
-from typing import Literal, TypedDict
+from typing import Literal
 
 import numpy as np
 import pandas as pd
 from loguru import logger as log
 
 
-class Coordinates(TypedDict):
-    """Coordinates describing the shape of a satellite dataset."""
+@dataclasses.dataclass
+class Coordinates:
+    """Coordinates describing the shape of a satellite dataset.
 
+    The order of the fields determines their order when mapped to a dict.
+    """
+
+    time: list[np.datetime64]
     x_geostationary: list[float]
     y_geostationary: list[float]
     variable: list[str]
-    time: list[np.datetime64]
+
+    def to_dict(self) -> dict[str, list[float] | list[str] | list[np.datetime64]]:
+        """Convert the coordinates to a dictionary."""
+        return dataclasses.asdict(self)
+
+    def shape(self) -> tuple[int, ...]:
+        """Get the shape of the dataset."""
+        return tuple([len(v) for v in self.to_dict().values()])
+
+    def dims(self) -> list[str]:
+        """Get the dimensions of the dataset."""
+        return list(self.to_dict().keys())
 
 @dataclasses.dataclass
 class ArchiveCommandOptions:
@@ -79,15 +95,15 @@ class ArchiveCommandOptions:
     def as_coordinates(self) -> Coordinates:
         """Return the coordinates of the data associated with the command options."""
         start, end = self.time_window
-        coordinates: Coordinates = {
-            "time": [ts.to_numpy() for ts in pd.date_range(
+        return Coordinates(
+            time=[
+                ts.to_numpy() for ts in pd.date_range(
                 start=start, end=end, freq=f"{self.satellite_metadata.cadence_mins}min",
-                )], # TODO: Determine inclusive bounds
-            "y_geostationary": self.satellite_metadata.spatial_coordinates["y_geostationary"],
-            "x_geostationary": self.satellite_metadata.spatial_coordinates["x_geostationary"],
-            "variable": [ch.name for ch in SEVIRI_CHANNELS if ch.is_high_res == self.hrv],
-        }
-        return coordinates
+            )], # TODO: Determine inclusive bounds
+            y_geostationary=self.satellite_metadata.spatial_coordinates["y_geostationary"],
+            x_geostationary=self.satellite_metadata.spatial_coordinates["x_geostationary"],
+            variable=[ch.name for ch in SEVIRI_CHANNELS if ch.is_high_res == self.hrv],
+        )
 
 @dataclasses.dataclass
 class ConsumeCommandOptions:
@@ -163,16 +179,15 @@ class ConsumeCommandOptions:
     def as_coordinates(self) -> Coordinates:
         """Return the coordinates of the data associated with the command options."""
         start, end = self.time_window
-        coordinates: Coordinates = {
-            "time": [ts.to_numpy() for ts in pd.date_range(
+        return Coordinates(
+            time=[ts.to_numpy() for ts in pd.date_range(
                 inclusive="right", start=start, end=end,
                 freq=f"{self.satellite_metadata.cadence_mins}min",
             )],
-            "y_geostationary": self.satellite_metadata.spatial_coordinates["y_geostationary"],
-            "x_geostationary": self.satellite_metadata.spatial_coordinates["x_geostationary"],
-            "variable": [ch.name for ch in SEVIRI_CHANNELS if ch.is_high_res == self.hrv],
-        }
-        return coordinates
+            y_geostationary=self.satellite_metadata.spatial_coordinates["y_geostationary"],
+            x_geostationary=self.satellite_metadata.spatial_coordinates["x_geostationary"],
+            variable=[ch.name for ch in SEVIRI_CHANNELS if ch.is_high_res == self.hrv],
+        )
 
 
 @dataclasses.dataclass

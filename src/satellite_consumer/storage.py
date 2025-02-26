@@ -21,7 +21,7 @@ from satellite_consumer.config import Coordinates
 
 def write_to_zarr(
     da: xr.DataArray,
-    path: str,
+    dst: str,
     ) -> None:
     """Write the given data array to the given zarr store.
 
@@ -31,7 +31,7 @@ def write_to_zarr(
 
     Args:
         da: The data array to write as a Zarr store.
-        path: The path to the Zarr store to write to. Can be a local filepath or S3 URL.
+        dst: The path to the Zarr store to write to. Can be a local filepath or S3 URL.
     """
     # Convert attributes to be json	serializable
     for key, value in da.attrs.items():
@@ -50,11 +50,11 @@ def write_to_zarr(
         if isinstance(value, dt.datetime):
             da.attrs[key] = value.isoformat()
 
-    log.debug("Writing dataarray to zarr store", dst=path)
     try:
-        store_da: xr.DataArray = xr.open_dataarray(path, engine="zarr", consolidated=False)
+        store_da: xr.DataArray = xr.open_dataarray(dst, engine="zarr", consolidated=False)
         time_idx: int = list(store_da.coords["time"].values).index(da.coords["time"].values[0])
-        _ = da.to_zarr(store=path, compute=True, mode="a", consolidated=False,
+        log.debug("Writing dataarray to zarr store", dst=dst, time_idx=time_idx)
+        _ = da.to_zarr(store=dst, compute=True, mode="a", consolidated=False,
             region={
                 "time": slice(time_idx, time_idx + 1),
                 "y_geostationary": slice(0, len(store_da.coords["y_geostationary"])),
@@ -63,18 +63,18 @@ def write_to_zarr(
             },
         )
     except Exception as e:
-        raise OSError(f"Error writing dataset to zarr store {path}: {e}") from e
+        raise OSError(f"Error writing dataset to zarr store {dst}: {e}") from e
 
     return None
 
-def create_latest_zip(zarr_path: str) -> str:
+def create_latest_zip(dst: str) -> str:
     """Convert a zarr store at the given path to a zip store."""
-    fs = get_fs(path=zarr_path)
+    fs = get_fs(path=dst)
 
     # Open the zarr store and write it to a zip store
-    ds: xr.Dataset = xr.open_zarr(zarr_path, consolidated=False)
+    ds: xr.Dataset = xr.open_zarr(dst, consolidated=False)
 
-    zippath: str = zarr_path.rsplit("/", 1)[0] + "/latest.zarr.zip"
+    zippath: str = dst.rsplit("/", 1)[0] + "/latest.zarr.zip"
     with tempfile.NamedTemporaryFile(suffix=".zip") as fsrc:
         try:
             _ = ds.to_zarr(store=zarr.storage.ZipStore(path=fsrc.name, mode="w")) # type: ignore
@@ -84,7 +84,7 @@ def create_latest_zip(zarr_path: str) -> str:
     return zippath
 
 
-def create_empty_store(dst: str, coords: Coordinates) -> xr.DataArray:
+def create_empty_zarr(dst: str, coords: Coordinates) -> xr.DataArray:
     """Create an empty zarr store at the given path."""
     encoding = {
         "data": {"dtype": "float32"},
@@ -92,10 +92,10 @@ def create_empty_store(dst: str, coords: Coordinates) -> xr.DataArray:
     }
     da: xr.DataArray = xr.DataArray(
         name="data",
-        coords={k: (k, v) for k, v in coords.items()},
+        coords={k: (k, v) for k, v in coords.to_dict().items()},
         data=dask.array.zeros( # type: ignore # dask doesn't explicitly export this...
-            shape=tuple([len(v) for v in coords.values()]), # type: ignore
-            chunks=(1, len(coords["y_geostationary"]), len(coords["x_geostationary"]), 1),
+            shape=tuple([len(v) for v in coords.to_dict().values()]),
+            chunks=(1, len(coords.y_geostationary), len(coords.x_geostationary), 1),
             dtype="float64",
         ),
     )
@@ -103,15 +103,6 @@ def create_empty_store(dst: str, coords: Coordinates) -> xr.DataArray:
     da = xr.open_dataarray(dst, engine="zarr", consolidated=False)
     return da
 
-
-def _fname_to_scantime(fname: str) -> dt.datetime:
-    """Converts a filename to a datetime.
-
-    Files are of the form:
-    `MSGX-SEVI-MSG15-0100-NA-20230910221240.874000000Z-NA.nat`
-    So determine the time from the first element split by '.'.
-    """
-    return dt.datetime.strptime(fname.split(".")[0][-14:], "%Y%m%d%H%M%S").replace(tzinfo=dt.UTC)
 
 def get_fs(path: str) -> fsspec.AbstractFileSystem:
     """Get relevant filesystem for the given path.

@@ -19,7 +19,7 @@ from satellite_consumer.download_eumetsat import (
     get_products_iterator,
 )
 from satellite_consumer.process import process_nat
-from satellite_consumer.storage import create_empty_store, create_latest_zip, get_fs, write_to_zarr
+from satellite_consumer.storage import create_empty_zarr, create_latest_zip, get_fs, write_to_zarr
 from satellite_consumer.validate import validate
 
 try:
@@ -45,7 +45,7 @@ def _consume_command(command_opts: ArchiveCommandOptions | ConsumeCommandOptions
     else:
         # Create new store
         log.info("Creating new zarr store", dst=command_opts.zarr_path)
-        _ = create_empty_store(dst=command_opts.zarr_path, coords=command_opts.as_coordinates())
+        _ = create_empty_zarr(dst=command_opts.zarr_path, coords=command_opts.as_coordinates())
 
     # Iterate through all products in search
     nat_filepaths: list[str] = []
@@ -59,7 +59,7 @@ def _consume_command(command_opts: ArchiveCommandOptions | ConsumeCommandOptions
             )
 
             da = process_nat(path=nat_filepath, hrv=command_opts.hrv)
-            write_to_zarr(da=da, path=command_opts.zarr_path)
+            write_to_zarr(da=da, dst=command_opts.zarr_path)
             nat_filepaths.append(nat_filepath)
             if i % math.ceil(total / 10) == 0:
                 log.info(f"Processed {i+1} of {total} products.")
@@ -70,7 +70,7 @@ def _consume_command(command_opts: ArchiveCommandOptions | ConsumeCommandOptions
         validate(dataset_path=command_opts.zarr_path)
 
     if isinstance(command_opts, ConsumeCommandOptions) and command_opts.latest_zip:
-        zippath: str = create_latest_zip(zarr_path=command_opts.zarr_path)
+        zippath: str = create_latest_zip(dst=command_opts.zarr_path)
         log.info(f"Created latest.zip at {zippath}", dst=zippath)
 
     if command_opts.delete_raw:

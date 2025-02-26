@@ -1,18 +1,25 @@
 import contextlib
+import dataclasses
+import tempfile
 import unittest
+from collections.abc import Generator
+from typing import TYPE_CHECKING, TypedDict
 from unittest.mock import patch
 
 import numpy as np
 import xarray as xr
-from botocore.client import BaseClient as BotocoreClient
 from botocore.session import Session
 from moto.server import ThreadedMotoServer
 
-from satellite_consumer.storage import create_empty_store, get_fs, write_to_zarr
+from satellite_consumer.config import Coordinates
+from satellite_consumer.storage import create_empty_zarr, get_fs, write_to_zarr
+
+if TYPE_CHECKING:
+    from botocore.client import BaseClient as BotocoreClient
 
 
 @contextlib.contextmanager
-def mocks3() -> BotocoreClient:
+def mocks3() -> Generator[str]:
     server = ThreadedMotoServer()
     server.start()
     with patch.dict("os.environ", {
@@ -28,49 +35,88 @@ def mocks3() -> BotocoreClient:
         )
         s3_client.create_bucket(Bucket="test-bucket")
         try:
-            yield s3_client
+            yield "s3://test-bucket/"
         finally:
             s3_client.close()
             server.stop()
 
-class TestGetS3FS(unittest.TestCase):
-    """Test function to get an S3 filesystem."""
+class TestStorage(unittest.TestCase):
+    """Test the storage functions."""
 
     def test_get_s3fs(self) -> None:
         """Test that the function returns a filesystem."""
-        with mocks3():
-            fs = get_fs("s3://test-bucket/")
+        with mocks3() as dst:
+            fs = get_fs(path=dst)
             self.assertIsNotNone(fs)
-            self.assertTrue(fs.isdir("s3://test-bucket/"))
+            self.assertTrue(fs.isdir(dst))
 
-class TestWriteToZarr(unittest.TestCase):
-    """Test writing to a Zarr store."""
+    def test_create_empty_zarr(self) -> None:
+        """Test that the function creates an empty zarr store."""
 
-    def test_writes_to_s3(self) -> None:
-        """Test that the function writes to an S3 bucket."""
+        class TestContainer(TypedDict):
+            name: str
+            dst: str
 
-        da: xr.DataArray = xr.DataArray(
-           coords={
-               "time": [np.datetime64("2021-01-01", "ns")],
-               "x_geostationary": [1, 2, 3, 4],
-               "y_geostationary": [1, 2, 3, 4],
-               "variable": ["VIS006", "IR_016"],
-            },
-           data=np.random.rand(1, 4, 4, 2),
-        )
-
-        with mocks3():
-            _ = create_empty_store(
-                dst="s3://test-bucket/test.zarr",
-                coords={
-                    "time": [np.datetime64(f"2021-01-01T0{h}", "ns") for h in range(0, 3)],
-                    "x_geostationary": [1, 2, 3, 4],
-                    "y_geostationary": [1, 2, 3, 4],
-                    "variable": ["VIS006", "IR_016"],
-                },
+        with mocks3() as s3dir, tempfile.TemporaryDirectory(suffix="zarr") as tmpdir:
+            coords = Coordinates(
+                time=[np.datetime64(f"2021-01-01T0{h}:00", "ns") for h in range(0, 3)],
+                x_geostationary=[1, 2, 3, 4],
+                y_geostationary=[1, 2, 3, 4],
+                variable=["VIS006", "IR_016"],
             )
 
-            write_to_zarr(da, "s3://test-bucket/test.zarr")
-            fs = get_fs("s3://test-bucket/")
-            self.assertTrue(fs.isdir("s3://test-bucket/test.zarr/"))
+            tests: list[TestContainer] = [
+                {"name": "test_local", "dst": tmpdir + "/test.zarr"},
+                {"name": "test_s3", "dst": s3dir + "test.zarr"},
+            ]
+
+            for test in tests:
+                with self.subTest(name=test["name"]):
+                    store_da = create_empty_zarr(dst=test["dst"], coords=coords)
+                    self.assertTrue(get_fs(test["dst"]).isdir(test["dst"]))
+                    self.assertTrue((store_da.values == 0.0).all())
+                    self.assertDictEqual(
+                        dict(store_da.sizes), {k: len(v) for k, v in coords.to_dict().items()},
+                    )
+
+    def test_write_to_zarr(self) -> None:
+        """Test that the function writes to an S3 bucket."""
+
+        class TestContainer(TypedDict):
+            name: str
+            dst: str
+
+        with mocks3() as s3dir, tempfile.TemporaryDirectory(suffix="zarr") as tmpdir:
+
+            coords = Coordinates(
+                time=[np.datetime64(f"2021-01-01T0{h}:00", "ns") for h in range(0, 3)],
+                x_geostationary=[1, 2, 3, 4],
+                y_geostationary=[1, 2, 3, 4],
+                variable=["VIS006", "IR_016"],
+            )
+
+            tests: list[TestContainer] = [
+                {"name": "test_local", "dst": tmpdir + "/test.zarr"},
+                {"name": "test_s3", "dst": s3dir + "test.zarr"},
+            ]
+
+            da: xr.DataArray = xr.DataArray(
+                name="data",
+                coords=dataclasses.replace(
+                   coords, time=[np.datetime64("2021-01-01T00:00", "ns")],
+                ).to_dict(),
+                data=np.ones(shape=(1, 4, 4, 2)),
+            )
+
+            for test in tests:
+                with self.subTest(name=test["name"]):
+                    # Create an empty zarr store
+                    fs = get_fs(test["dst"])
+                    store_da = create_empty_zarr(dst=test["dst"], coords=coords)
+                    self.assertTrue(fs.isdir(test["dst"]))
+                    self.assertTrue((store_da.isel(time=0).values == 0.0).all())
+                    # Write ones to the first time coordinate
+                    write_to_zarr(da=da, dst=test["dst"])
+                    store_da = xr.open_dataarray(test["dst"], engine="zarr", consolidated=False)
+                    self.assertTrue((store_da.isel(time=0).values == 1.0).all())
 
