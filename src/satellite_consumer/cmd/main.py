@@ -32,6 +32,7 @@ def cli_entrypoint() -> None:
     archive_parser.add_argument("--hrv", action="store_true")
     archive_parser.add_argument("--rescale", action="store_true")
     archive_parser.add_argument("--workdir", type=str, default="/mnt/disks/sat")
+    archive_parser.add_argument("--num-workers", type=int, default=1)
     archive_parser.add_argument("--eumetsat-key", type=str, required=True)
     archive_parser.add_argument("--eumetsat-secret", type=str, required=True)
 
@@ -49,8 +50,9 @@ def cli_entrypoint() -> None:
     consume_parser.add_argument("--rescale", action="store_true")
     consume_parser.add_argument("--workdir", type=str, default="/mnt/disks/sat")
     consume_parser.add_argument("--zip", action="store_true")
-    archive_parser.add_argument("--eumetsat-key", type=str, required=True)
-    archive_parser.add_argument("--eumetsat-secret", type=str, required=True)
+    consume_parser.add_argument("--num-workers", type=int, default=1)
+    consume_parser.add_argument("--eumetsat-key", type=str, required=True)
+    consume_parser.add_argument("--eumetsat-secret", type=str, required=True)
 
     args = parser.parse_args()
 
@@ -96,26 +98,28 @@ def env_entrypoint() -> None:
             command_opts = ArchiveCommandOptions(
                 satellite=os.environ["SATCONS_SATELLITE"],
                 month=os.environ["SATCONS_MONTH"],
-                delete_raw=os.environ.get("SATCONS_DELETE_RAW", "false") == "true",
-                validate=os.environ.get("SATCONS_VALIDATE", "false") == "true",
-                hrv=os.environ.get("SATCONS_HRV", "false") == "true",
-                rescale=os.environ.get("SATCONS_RESCALE", "false") == "true",
-                workdir=os.environ.get("SATCONS_WORKDIR", "/mnt/disks/sat"),
+                delete_raw=os.getenv("SATCONS_DELETE_RAW", "false") == "true",
+                validate=os.getenv("SATCONS_VALIDATE", "false") == "true",
+                hrv=os.getenv("SATCONS_HRV", "false") == "true",
+                rescale=os.getenv("SATCONS_RESCALE", "false") == "true",
+                workdir=os.getenv("SATCONS_WORKDIR", "/mnt/disks/sat"),
+                num_workers=int(os.getenv("SATCONS_NUM_WORKERS", default="1")),
             )
         else:
-            if os.environ.get("SATCONS_TIME") is None:
+            if os.getenv("SATCONS_TIME") is None:
                 t: dt.datetime | None = None
             else:
                 t = dt.datetime.fromisoformat(os.environ["SATCONS_TIME"])
             command_opts = ConsumeCommandOptions(
                 satellite=os.environ["SATCONS_SATELLITE"],
                 time=t,
-                delete_raw=os.environ.get("SATCONS_DELETE_RAW", "false") == "true",
-                validate=os.environ.get("SATCONS_VALIDATE", "false") == "true",
-                hrv=os.environ.get("SATCONS_HRV", "false") == "true",
-                rescale=os.environ.get("SATCONS_RESCALE", "false") == "true",
-                workdir=os.environ.get("SATCONS_WORKDIR", "/mnt/disks/sat"),
-                latest_zip=os.environ.get("SATCONS_ZIP", "false") == "true",
+                delete_raw=os.getenv("SATCONS_DELETE_RAW", "false") == "true",
+                validate=os.getenv("SATCONS_VALIDATE", "false") == "true",
+                hrv=os.getenv("SATCONS_HRV", "false") == "true",
+                rescale=os.getenv("SATCONS_RESCALE", "false") == "true",
+                workdir=os.getenv("SATCONS_WORKDIR", "/mnt/disks/sat"),
+                num_workers=int(os.getenv("SATCONS_NUM_WORKERS", default="1")),
+                latest_zip=os.getenv("SATCONS_ZIP", "false") == "true",
             )
     except KeyError as e:
         log.error(f"Missing environment variable: {e}")

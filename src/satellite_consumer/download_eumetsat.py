@@ -22,7 +22,7 @@ def get_products_iterator(
     start: dt.datetime,
     end: dt.datetime,
     missing_product_threshold: float = 0.1,
-) -> tuple[Iterator[eumdac.product.Product], int]:
+) -> Iterator[eumdac.product.Product]:
     """Get an iterator over the products for a given satellite in a given time range.
 
     Checks that the number of products returned matches the expected number of products.
@@ -63,7 +63,8 @@ def get_products_iterator(
         f"Found {search_results.total_results}/{expected_products_count} products "
         f"for {sat_metadata.product_id} ",
     )
-    return search_results.__iter__(), search_results.total_results
+
+    return search_results.__iter__()
 
 def download_nat(
     product: eumdac.product.Product,
