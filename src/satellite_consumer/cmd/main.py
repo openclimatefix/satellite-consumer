@@ -102,9 +102,13 @@ def env_entrypoint() -> None:
                 workdir=os.environ.get("SATCONS_WORKDIR", "/mnt/disks/sat"),
             )
         else:
+            if os.environ.get("SATCONS_TIME") is None:
+                t: dt.datetime | None = None
+            else:
+                t = dt.datetime.fromisoformat(os.environ["SATCONS_TIME"])
             command_opts = ConsumeCommandOptions(
                 satellite=os.environ["SATCONS_SATELLITE"],
-                time=dt.datetime.fromisoformat(os.environ["SATCONS_TIME"]),
+                time=t,
                 delete_raw=os.environ.get("SATCONS_DELETE_RAW", "false") == "true",
                 validate=os.environ.get("SATCONS_VALIDATE", "false") == "true",
                 hrv=os.environ.get("SATCONS_HRV", "false") == "true",
