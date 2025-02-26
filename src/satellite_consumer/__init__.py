@@ -38,14 +38,14 @@ loguru.logger.remove()
 if sys.stdout.isatty():
     # Simple logging for development
     loguru.logger.add(
-        sys.stdout, format=development_formatter, diagnose=True,
+        sys.stdout, format=development_formatter, diagnose=True, enqueue=True,
         level=os.getenv("LOGLEVEL", "DEBUG"), backtrace=True, colorize=True,
     )
 else:
     # JSON logging for containers
     loguru.logger.add(
         sys.stdout, format=structured_formatter, backtrace=True,
-        level=os.getenv("LOGLEVEL", "INFO").upper(),
+        level=os.getenv("LOGLEVEL", "INFO").upper(), enqueue=True,
     )
 
 # Reduce verbosity of dependacies

@@ -24,6 +24,7 @@ dependencies = [
     "Cartopy == 0.24.1",
     "eumdac == 3.0.0",
     "fsspec == 2025.2.0",
+    "joblib == 1.4.2",
     "loguru == 0.7.3",
     "pyproj == 3.7.0",
     "pyresample == 1.32.0",
@@ -92,6 +93,7 @@ module = [
     "fsspec.implementations",
     "fsspec.implementations.local",
     "fsspec.implementations.asyn_wrapper",
+    "joblib",
     "s3fs",
     "zarr",
 ]

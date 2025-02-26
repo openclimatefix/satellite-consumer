@@ -4,9 +4,10 @@ Consolidates the old cli_downloader, backfill_hrv and backfill_nonhrv scripts.
 """
 
 import datetime as dt
-import math
 from importlib.metadata import PackageNotFoundError, version
 
+import eumdac.product
+from joblib import Parallel, delayed
 from loguru import logger as log
 
 from satellite_consumer.config import (
@@ -33,7 +34,7 @@ def _consume_command(command_opts: ArchiveCommandOptions | ConsumeCommandOptions
 
     window = command_opts.time_window
 
-    product_iter, total = get_products_iterator(
+    product_iter = get_products_iterator(
         sat_metadata=command_opts.satellite_metadata,
         start=window[0],
         end=window[1],
@@ -47,22 +48,19 @@ def _consume_command(command_opts: ArchiveCommandOptions | ConsumeCommandOptions
         log.info("Creating new zarr store", dst=command_opts.zarr_path)
         _ = create_empty_zarr(dst=command_opts.zarr_path, coords=command_opts.as_coordinates())
 
-    # Iterate through all products in search
+    def _etl(product: eumdac.product.Product) -> str:
+        """Download, process, and save a single NAT file."""
+        nat_filepath = download_nat(product, folder=f"{command_opts.workdir}/raw")
+        da = process_nat(path=nat_filepath, hrv=command_opts.hrv)
+        write_to_zarr(da=da, dst=command_opts.zarr_path)
+        return nat_filepath
+
     nat_filepaths: list[str] = []
-    for i, product in enumerate(product_iter): # Pretty sure enumerate is evaluated lazily
-        product_time: dt.datetime = product.sensing_start.replace(second=0, microsecond=0)
-        with log.contextualize(scan_time=str(product_time), scan_num=f"{i+1}/{total}"):
-
-            nat_filepath = download_nat(
-                product=product,
-                folder=f"{command_opts.workdir}/raw",
-            )
-
-            da = process_nat(path=nat_filepath, hrv=command_opts.hrv)
-            write_to_zarr(da=da, dst=command_opts.zarr_path)
-            nat_filepaths.append(nat_filepath)
-            if i % math.ceil(total / 10) == 0:
-                log.info(f"Processed {i+1} of {total} products.")
+    # Iterate through all products in search
+    for nat_filepath in Parallel(
+        n_jobs=command_opts.num_workers, return_as="generator",
+    )(delayed(_etl)(product) for product in product_iter):
+        nat_filepaths.append(nat_filepath)
 
     log.info("Finished population of zarr store", dst=command_opts.zarr_path)
 
@@ -90,7 +88,7 @@ def run(config: SatelliteConsumerConfig) -> None:
 
     log.info(
         f"Starting satellite consumer with command '{config.command}'",
-        version=__version__, start_time=str(prog_start),
+        version=__version__, start_time=str(prog_start), opts=config.command_options.__str__(),
     )
 
     if config.command == "archive" or config.command == "consume":

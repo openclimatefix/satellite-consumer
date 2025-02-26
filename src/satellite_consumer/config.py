@@ -60,6 +60,8 @@ class ArchiveCommandOptions:
 
     Can be either a local path or an S3 path (s3://bucket-name/path).
     """
+    num_workers: int = 1
+    """The number of workers to use for downloading and processing the data."""
 
     def __post_init__(self) -> None:
         """Perform some validation on the input data."""
@@ -134,6 +136,8 @@ class ConsumeCommandOptions:
     """
     latest_zip: bool = False
     """Whether to zip the zarr store into a latest.zarr.zip after creating it."""
+    num_workers: int = 1
+    """The number of workers to use for downloading and processing the data."""
 
     def __post_init__(self) -> None:
         """Perform some validation on the input data."""
