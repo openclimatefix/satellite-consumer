@@ -2,7 +2,7 @@
 
 import dataclasses
 import datetime as dt
-from typing import Literal
+from enum import StrEnum, auto
 
 import numpy as np
 import pandas as pd
@@ -32,6 +32,12 @@ class Coordinates:
     def dims(self) -> list[str]:
         """Get the dimensions of the dataset."""
         return list(self.to_dict().keys())
+
+class Command(StrEnum):
+    """The available commands for the satellite consumer."""
+
+    archive = auto()
+    consume = auto()
 
 @dataclasses.dataclass
 class ArchiveCommandOptions:
@@ -194,7 +200,7 @@ class ConsumeCommandOptions:
 class SatelliteConsumerConfig:
     """Configuration for the satellite consumer."""
 
-    command: Literal["archive", "consume"]
+    command: Command
     """The operational mode of the consumer."""
     command_options:  ArchiveCommandOptions | ConsumeCommandOptions
     """Options for the chosen command."""

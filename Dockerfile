@@ -46,5 +46,7 @@ WORKDIR /opt/app
 # Copy just the virtual environment into a runtime image
 COPY --from=build-app --chown=app:app /opt/app/.venv /opt/app/.venv
 
-ENTRYPOINT ["/opt/app/.venv/bin/sat-consumer-cli"]
+ENV SATCONS_WORKDIR=/work
+
+ENTRYPOINT ["/opt/app/.venv/bin/sat-consumer"]
 
