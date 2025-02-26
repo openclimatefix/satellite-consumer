@@ -23,13 +23,14 @@ classifiers = [
 dependencies = [
     "Cartopy == 0.24.1",
     "eumdac == 3.0.0",
-    "fsspec[s3] == 2025.2.0",
+    "fsspec == 2025.2.0",
     "loguru == 0.7.3",
     "pyproj == 3.7.0",
     "pyresample == 1.32.0",
     "pyyaml == 6.0.2",
     "requests == 2.32.3",
     "satpy[seviri-l1b-native] == 0.54.0",
+    "s3fs == 2025.2.0",
     "xarray == 2025.1.2",
     "zarr == 3.0.2",
 ]
@@ -38,6 +39,7 @@ dependencies = [
 dev = [
     # Testing
     "unittest-xml-reporting",
+    "moto[s3,server] == 5.0.28",
     # Linting and type checking
     "mypy",
     "ruff >= 0.9.2",
@@ -56,8 +58,12 @@ sat-consumer-cli = "satellite_consumer.cmd.main:cli_entrypoint"
 [project.urls]
 repository = "https://github.com/openclimatefix/satellite-consumer"
 
-[tool.setuptools]
-include-package-data = false
+[tool.setuptools.packages.find]
+where = ["src"]
+exclude = ["test*"]
+
+[tool.setuptools.package-data]
+"*" = ["py.typed"]
 
 [tool.setuptools-git-versioning]
 enabled = true
@@ -68,7 +74,6 @@ enabled = true
 # * See https://mypy.readthedocs.io/en/stable/index.html
 [tool.mypy]
 python_version = "3.12"
-dmypy = true
 strict = true
 warn_unreachable = true
 warn_return_any = true
@@ -76,6 +81,21 @@ disallow_untyped_defs = true
 plugins = [
     "numpy.typing.mypy_plugin",
 ]
+
+[[tool.mypy.overrides]]
+# Ignore missing imports for libraries that don't have them.
+# If they are ever made, remove from here!
+module = [
+    "botocore.session",
+    "botocore.client",
+    "fsspec",
+    "fsspec.implementations",
+    "fsspec.implementations.local",
+    "fsspec.implementations.asyn_wrapper",
+    "s3fs",
+    "zarr",
+]
+ignore_missing_imports = true
 
 # Ruff configuration
 # * See https://beta.ruff.rs/docs/

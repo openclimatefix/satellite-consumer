@@ -4,9 +4,34 @@ import dataclasses
 import datetime as dt
 from typing import Literal
 
+import numpy as np
 import pandas as pd
 from loguru import logger as log
 
+
+@dataclasses.dataclass
+class Coordinates:
+    """Coordinates describing the shape of a satellite dataset.
+
+    The order of the fields determines their order when mapped to a dict.
+    """
+
+    time: list[np.datetime64]
+    x_geostationary: list[float]
+    y_geostationary: list[float]
+    variable: list[str]
+
+    def to_dict(self) -> dict[str, list[float] | list[str] | list[np.datetime64]]:
+        """Convert the coordinates to a dictionary."""
+        return dataclasses.asdict(self)
+
+    def shape(self) -> tuple[int, ...]:
+        """Get the shape of the dataset."""
+        return tuple([len(v) for v in self.to_dict().values()])
+
+    def dims(self) -> list[str]:
+        """Get the dimensions of the dataset."""
+        return list(self.to_dict().keys())
 
 @dataclasses.dataclass
 class ArchiveCommandOptions:
@@ -52,7 +77,7 @@ class ArchiveCommandOptions:
     def time_window(self) -> tuple[dt.datetime, dt.datetime]:
         """Get the time window for the given month."""
         start: dt.datetime = dt.datetime.strptime(self.month, "%Y-%m").replace(tzinfo=dt.UTC)
-        end: dt.datetime = (start + pd.DateOffset(months=1, minutes=-1)).to_pydatetime()
+        end: dt.datetime = (start + pd.DateOffset(months=1, minutes=-1))
         return start, end
 
     @property
@@ -67,7 +92,18 @@ class ArchiveCommandOptions:
         """Get the path to the raw data folder for the given time."""
         return f"{self.workdir}/raw"
 
-
+    def as_coordinates(self) -> Coordinates:
+        """Return the coordinates of the data associated with the command options."""
+        start, end = self.time_window
+        return Coordinates(
+            time=[
+                ts.to_numpy() for ts in pd.date_range(
+                start=start, end=end, freq=f"{self.satellite_metadata.cadence_mins}min",
+            )], # TODO: Determine inclusive bounds
+            y_geostationary=self.satellite_metadata.spatial_coordinates["y_geostationary"],
+            x_geostationary=self.satellite_metadata.spatial_coordinates["x_geostationary"],
+            variable=[ch.name for ch in SEVIRI_CHANNELS if ch.is_high_res == self.hrv],
+        )
 
 @dataclasses.dataclass
 class ConsumeCommandOptions:
@@ -112,8 +148,8 @@ class ConsumeCommandOptions:
             log.debug(
                 "Input time is not a multiple of the chosen satellite's image cadence. " + \
                 "Adjusting to nearest image time.",
-                input_time=self.time,
-                adjusted_time=newtime,
+                input_time=str(self.time),
+                adjusted_time=str(newtime),
             )
             self.time = newtime
 
@@ -126,7 +162,7 @@ class ConsumeCommandOptions:
     def time_window(self) -> tuple[dt.datetime, dt.datetime]:
         """Get the time window for the given time."""
         # Round the start time down to the nearest interval given by the channel cadence
-        start: dt.datetime = (self.time - pd.DateOffset(hours=3, minutes=30)).to_pydatetime()
+        start: dt.datetime = (self.time - pd.DateOffset(hours=3, minutes=30)) # type:ignore
         return start, self.time # type:ignore  # safe due to post_init
 
     @property
@@ -139,6 +175,19 @@ class ConsumeCommandOptions:
     def raw_folder(self) -> str:
         """Get the path to the raw data folder for the given time."""
         return f"{self.workdir}/raw"
+
+    def as_coordinates(self) -> Coordinates:
+        """Return the coordinates of the data associated with the command options."""
+        start, end = self.time_window
+        return Coordinates(
+            time=[ts.to_numpy() for ts in pd.date_range(
+                inclusive="right", start=start, end=end,
+                freq=f"{self.satellite_metadata.cadence_mins}min",
+            )],
+            y_geostationary=self.satellite_metadata.spatial_coordinates["y_geostationary"],
+            x_geostationary=self.satellite_metadata.spatial_coordinates["x_geostationary"],
+            variable=[ch.name for ch in SEVIRI_CHANNELS if ch.is_high_res == self.hrv],
+        )
 
 
 @dataclasses.dataclass
@@ -169,6 +218,8 @@ class SatelliteMetadata:
     """The product ID of the satellite image set."""
     description: str
     """A description of the satellite data set."""
+    spatial_coordinates: dict[str, list[float]]
+    """The spatial coordinates of the satellite data set."""
 
 SATELLITE_METADATA: dict[str, SatelliteMetadata] = {
     "rss": SatelliteMetadata(
@@ -184,6 +235,11 @@ SATELLITE_METADATA: dict[str, SatelliteMetadata] = {
             "(11 low and one high resolution). ",
             "See https://user.eumetsat.int/catalogue/EO:EUM:DAT:MSG:MSG15-RSS",
         )),
+        spatial_coordinates={
+            "x_geostationary": list(np.linspace(5565747.79846191, -5568748.01721191, 3712)),
+            "y_geostationary": list(np.linspace(1395187.45153809, 5568748.13049316, 1392)),
+        },
+
     ),
     "iodc": SatelliteMetadata(
         region="india",
@@ -196,6 +252,10 @@ SATELLITE_METADATA: dict[str, SatelliteMetadata] = {
             "(11 low and one high resolution). ",
             "See https://user.eumetsat.int/catalogue/EO:EUM:DAT:MSG:HRSEVIRI-IODC",
         )),
+        spatial_coordinates={
+            "x_geostationary": list(np.linspace(5565747.79846191, -5568748.01721191, 3712)),
+            "y_geostationary": list(np.linspace(-5565747.79846191, 5568748.01721191, 3712)),
+        },
     ),
     "odegree": SatelliteMetadata(
         region="europe, africa",
@@ -208,6 +268,10 @@ SATELLITE_METADATA: dict[str, SatelliteMetadata] = {
             "(11 low and one high resolution). ",
             "See https://user.eumetsat.int/catalogue/EO:EUM:DAT:MSG:HRSEVIRI",
         )),
+        spatial_coordinates={
+            "x_geostationary": list(np.linspace(5565747.79846191, -5568748.01721191, 3712)),
+            "y_geostationary": list(np.linspace(-5565747.79846191, 5568748.01721191, 3712)),
+        },
     ),
 }
 """Metadata for the available satellite data sets."""
