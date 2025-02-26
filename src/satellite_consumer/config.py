@@ -6,7 +6,6 @@ from enum import StrEnum, auto
 
 import numpy as np
 import pandas as pd
-from typing import Any
 from loguru import logger as log
 
 

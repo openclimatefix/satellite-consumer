@@ -93,6 +93,7 @@ module = [
     "fsspec.implementations",
     "fsspec.implementations.local",
     "fsspec.implementations.asyn_wrapper",
+    "joblib",
     "s3fs",
     "zarr",
 ]
