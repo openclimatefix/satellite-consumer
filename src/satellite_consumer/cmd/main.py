@@ -86,6 +86,7 @@ def cli_entrypoint() -> None:
 
     return run(config)
 
+@log.catch(onerror=lambda e: log.error(f"Error: {e}"))
 def env_entrypoint() -> None:
     """Handle the program using environment variables."""
     try:
