@@ -74,10 +74,23 @@ class TestStorage(unittest.TestCase):
                 with self.subTest(name=test["name"]):
                     store_da = create_empty_zarr(dst=test["dst"], coords=coords)
                     self.assertTrue(get_fs(test["dst"]).isdir(test["dst"]))
-                    self.assertTrue((store_da.values == 0.0).all())
+                    self.assertTrue(
+                        np.isnan(store_da.values).all(),
+                        msg="All values in empty store should be NaN",
+                    )
                     self.assertDictEqual(
                         dict(store_da.sizes), {k: len(v) for k, v in coords.to_dict().items()},
                     )
+                    self.assertListEqual(
+                        list(store_da.dims),
+                        ["time", "x_geostationary", "y_geostationary", "variable"],
+                        msg="Dimension ordering of emtpy store is incorrect",
+                    )
+                    for coord in list(coords.to_dict().keys()):
+                        self.assertListEqual(
+                            list(store_da.coords[coord].values), coords.to_dict()[coord],
+                            msg="Coordinate values in empty store are incorrect",
+                        )
 
     def test_write_to_zarr(self) -> None:
         """Test that the function writes to an S3 bucket."""
@@ -113,8 +126,11 @@ class TestStorage(unittest.TestCase):
                     # Create an empty zarr store
                     fs = get_fs(test["dst"])
                     store_da = create_empty_zarr(dst=test["dst"], coords=coords)
-                    self.assertTrue(fs.isdir(test["dst"]))
-                    self.assertTrue((store_da.isel(time=0).values == 0.0).all())
+                    self.assertTrue(fs.isdir(test["dst"]), msg="Zarr store doesn't exist")
+                    self.assertTrue(
+                        np.isnan(store_da.isel(time=0)).all(),
+                        msg="Empty store is not empty",
+                    )
                     # Write ones to the first time coordinate
                     write_to_zarr(da=da, dst=test["dst"])
                     store_da = xr.open_dataarray(test["dst"], engine="zarr", consolidated=False)

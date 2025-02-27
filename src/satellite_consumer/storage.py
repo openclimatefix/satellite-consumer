@@ -85,21 +85,43 @@ def create_latest_zip(dst: str) -> str:
 
 
 def create_empty_zarr(dst: str, coords: Coordinates) -> xr.DataArray:
-    """Create an empty zarr store at the given path."""
-    encoding = {
-        "data": {"dtype": "float32"},
-        "time": {"units": "nanoseconds since 1970-01-01", "calendar": "proleptic_gregorian"},
-    }
-    da: xr.DataArray = xr.DataArray(
-        name="data",
-        coords={k: (k, v) for k, v in coords.to_dict().items()},
-        data=dask.array.zeros( # type: ignore # dask doesn't explicitly export this...
-            shape=tuple([len(v) for v in coords.to_dict().values()]),
-            chunks=(1, len(coords.y_geostationary), len(coords.x_geostationary), 1),
-            dtype="float64",
-        ),
+    """Create an empty zarr store at the given path.
+
+    Coordinate values are written to the zarr store as arrays.
+    The array is inizialized with NaN values.
+    """
+    group: zarr.Group = zarr.create_group(dst, overwrite=True)
+    time_zarray: zarr.Array = group.create_array(
+        name="time", dimension_names=["time"],
+        shape=(len(coords.time),), dtype="int", attributes={
+            "units": "nanoseconds since 1970-01-01", "calendar": "proleptic_gregorian",
+        },
     )
-    da.to_zarr(dst, mode="w", consolidated=False, compute=False, encoding=encoding)
+    time_zarray[:] = coords.time
+    x_geo_zarray = group.create_array(
+        name="x_geostationary", dimension_names=["x_geostationary"],
+        shape=(len(coords.x_geostationary),), dtype="float", attributes={
+            "coordinate_reference_system": "geostationary",
+        },
+    )
+    x_geo_zarray[:] = coords.x_geostationary
+    y_geo_zarray = group.create_array(
+        name="y_geostationary", dimension_names=["y_geostationary"],
+        shape=(len(coords.y_geostationary),), dtype="float", attributes={
+            "coordinate_reference_system": "geostationary",
+        },
+    )
+    y_geo_zarray[:] = coords.y_geostationary
+    var_zarray = group.create_array(
+        name="variable", dimension_names=["variable"], shape=(len(coords.variable),), dtype="str",
+    )
+    var_zarray[:] = coords.variable
+
+    _ = group.create_array(
+        name="data", dimension_names=coords.dims(),
+        dtype="float", shape=coords.shape(), chunks=(1, 3712, 3712, 11), fill_value=np.nan,
+        config={"write_empty_chunks": False},
+    )
     da = xr.open_dataarray(dst, engine="zarr", consolidated=False)
     return da
 
