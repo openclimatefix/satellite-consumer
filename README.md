@@ -51,7 +51,7 @@ the following environment variables are available:
 | `SATCONS_COMMAND` |  | The command to run. |
 | `SATCONS_SATELLITE` | | The satellite to consume data from. |
 | `SATCONS_MONTH` | | The month to consume data for (when using the `archive` command). |
-| `SATCONS_TIME` | | The time to consume data for (when using the `archive` command). Leave unset to download latest available. | 
+| `SATCONS_TIME` | | The time to consume data for (when using the `consume` command). Leave unset to download latest available. | 
 | `SATCONS_VALIDATE` | `false` | Whether to validate the downloaded data. |
 | `SATCONS_HRV` | `false` | Whether to download the HRV channel. |
 | `SATCONS_RESCALE` | `false` | Whether to rescale the downloaded data to the unit interval. |
@@ -65,7 +65,7 @@ the following environment variables are available:
 
 ### How do I add a new satellite to the consumer?
 
-Current;y the consumer is built to the specific needs of OpenClimateFix's data requirements.
+Current;y the consumer is built to the specific data requirements of Open Climate Fix.
 However, adding a new satellite in the from EUMETSAT shouldn't be too hard, provided it uses
 the same `seviri_l1b_native` format and sensor channels - just update the available satellites
 in `config.py`.
