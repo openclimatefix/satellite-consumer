@@ -2,7 +2,7 @@
 
 **Download and convert satellite data for use in ML pipelines**
  
-[![workflows badge](https://img.shields.io/github/actions/workflow/status/openclimatefix/satellite-consumer/merged_ci.yml?branch=main&color=FFD053&label=workflow)](https://github.com/openclimatefix/satellite-consumer/actions/workflows/merged_ci.yml)
+[![workflows badge](https://img.shields.io/github/actions/workflow/status/openclimatefix/satellite-consumer/merged_ci.yml&color=FFD053&label=workflow)](https://github.com/openclimatefix/satellite-consumer/actions/workflows/merged_ci.yml)
 [![tags badge](https://img.shields.io/github/v/tag/openclimatefix/satellite-consumer?include_prereleases&sort=semver&color=FFAC5F)](https://github.com/openclimatefix/satellite-consumer/tags)
 [![contributors badge](https://img.shields.io/github/contributors/openclimatefix/satellite-consumer?color=FFFFFF)](https://github.com/openclimatefix/satellite-consumer/graphs/contributors)
 [![ease of contribution: medium](https://img.shields.io/badge/ease%20of%20contribution:%20medium-f4900c)](https://github.com/openclimatefix#how-easy-is-it-to-get-involved)
