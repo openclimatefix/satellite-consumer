@@ -1,128 +1,120 @@
-# OCF Template
+# Satellite Consumer
 
-**Starting point for OCF projects**
+**Download and convert satellite data for use in ML pipelines**
  
-[![workflows badge](https://img.shields.io/github/actions/workflow/status/openclimatefix/ocf-template/ci.yml?branch=maine&color=FFD053&label=workflow)](https://github.com/openclimatefix/ocf-template/actions/workflows/ci.yml)
-[![tags badge](https://img.shields.io/github/v/tag/openclimatefix/ocf-template?include_prereleases&sort=semver&color=FFAC5F)](https://github.com/openclimatefix/ocf-template/tags)
-[![pypi badge](https://img.shields.io/pypi/v/ocf-template?&color=07BCDF)](https://pypi.org/project/ocf-template)
-[![documentation badge](https://img.shields.io/badge/docs-latest-086788)](https://openclimatefix.github.io/ocf-template/)
-[![contributors badge](https://img.shields.io/github/contributors/openclimatefix/ocf-template?color=FFFFFF)](https://github.com/openclimatefix/ocf-template/graphs/contributors)
-[![ease of contribution: easy](https://img.shields.io/badge/ease%20of%20contribution:%20easy-32bd50)](https://github.com/openclimatefix#how-easy-is-it-to-get-involved) 
+[![workflows badge](https://img.shields.io/github/actions/workflow/status/openclimatefix/satellite-consumer/merged_ci.yml?branch=main&color=FFD053&label=workflow)](https://github.com/openclimatefix/satellite-consumer/actions/workflows/merged_ci.yml)
+[![tags badge](https://img.shields.io/github/v/tag/openclimatefix/satellite-consumer?include_prereleases&sort=semver&color=FFAC5F)](https://github.com/openclimatefix/satellite-consumer/tags)
+[![contributors badge](https://img.shields.io/github/contributors/openclimatefix/satellite-consumer?color=FFFFFF)](https://github.com/openclimatefix/satellite-consumer/graphs/contributors)
 [![ease of contribution: medium](https://img.shields.io/badge/ease%20of%20contribution:%20medium-f4900c)](https://github.com/openclimatefix#how-easy-is-it-to-get-involved)
-[![ease of contribution: hard](https://img.shields.io/badge/ease%20of%20contribution:%20hard-bb2629)](https://github.com/openclimatefix#how-easy-is-it-to-get-involved)
 
-This section of the README should contain a brief description of the project.
-Perhaps give a short amount of context around why it exists; the problem it solves.
-By the end of reading this short paragraph, a contributor should not be confused
-as to the purpose of the repository and its role in the organisation.
+Satellite data is a valuable resource for training machine learning models.
+Forecasting renewable generation requires knowledge of the weather conditions,
+and those weather conditions can be inferred and enriched using satellite data.
 
-They might even have an idea of how it could be useful to them!
+EUMETSAT provide a range of satellite data products, which are easily available
+in `NAT` image format. In order to improve its accessibility for training models,
+this consumer processes downloaded data into the `Zarr` format.
 
 > [!Note]
-> Any important callouts (informing visitors this repository is in early
-> design stages, or not for general use, or requires a lot of prerequisite
-> knowledge or infrastructure) should be placed in a note like this.
-> Like: This repository does not hold template workflows, contributing
-> guides, etc - head to
-> [OCF's .github repository](https://github.com/openclimatefix/.github)
-> for those.
+> This repo is in early development and so will undergo rapid changes.
+> Breaking changes may occur in the CLI and the API without warning.
 
 
 ## Installation
 
-How to install the project for *general use* (**not** for development), so:
-"`pip install x`", or: "pull the latest checkpoint from `y`";
-**not**: "clone the repo and run `make install`".
-For example, to "install" this template as the basis of a new repository,
-do the following:
-
-1. Click **Use this template** (in green) above the upper right of this file
-2. Select **Create a new repository**
-3. Create the new repository as desired
-
+Install using the container image:
+```bash
+$ docker pull ghcr.io/openclimatefix/satellite-consumer
+```
 
 ## Example usage
 
-One or two short examples of using the project to solve a problem.
-Quick happy-path examples that show the project in action or outline a
-common use case.
+```bash
+$ docker run \
+    -e SATCONS_COMMAND=consume \
+    -e SATCONS_SATELLITE=rss \
+    -e EUMETSAT_CONSUMER_KEY=<your-key> \
+    -e EUMETSAT_CONSUMER_SECRET=<your-secret> \
+    -v $(pwd)/work:/work \
+    ghcr.io/openclimatefix/satellite-consumer
+```
 
-> [!Note]
-> If the project does not have a clear usage pattern, consider informing the
-> user as such in the first callout. Then you can skip *Installation* and
-> *Example usage* - perhaps replacing them with a *Quickstart* section -
-> or just moving straight on to *Development*.
-
-Once you have installed the project into a new GitHub repository,
-`git clone` it and `cd` into the created directory.
-
-**For a Python project:**
-
-1. Modify the `pyproject.toml` file, updating the name, description, authors,
-and dependencies as needed.
-2. Update the name of the package from `ocf_template` to your package name.
-3. Install the project in editable mode (in a new virtual environment!)
-with `pip install -e .`.
-
-Also, importantly, update this README!
-
-**For other projects:**
-
-Simply delete `src` and `pyproject.toml`, and just use and update the README
-part of the template as required.
-
-
-When your project is up and running, add any relevant workflows from OCF's
-template workflows or otherwise. See
-[Choosing and using a workflow template](https://docs.github.com/en/actions/writing-workflows/using-workflow-templates#choosing-and-using-a-workflow-template)
-for more details.
-
-*For more information, head to the [Documentation](#documentation).*
-
+For a description of all the possible configuration options, see [Documentation](#documentation).
 
 ## Documentation
 
-Link to the project's documentation, if it exists. Also consider internal
-linking to parts of interest of the documentation, such as **Development**,
-**API**, **Configuration** and so on.
+When running the satellite consumer using the environment entrypoint (as in the docker container),
+the following environment variables are available:
 
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SATCONS_COMMAND` |  | The command to run. |
+| `SATCONS_SATELLITE` | | The satellite to consume data from. |
+| `SATCONS_MONTH` | | The month to consume data for (when using the `archive` command). |
+| `SATCONS_TIME` | | The time to consume data for (when using the `archive` command). Leave unset to download latest available. | 
+| `SATCONS_VALIDATE` | `false` | Whether to validate the downloaded data. |
+| `SATCONS_HRV` | `false` | Whether to download the HRV channel. |
+| `SATCONS_RESCALE` | `false` | Whether to rescale the downloaded data to the unit interval. |
+| `SATCONS_WORKDIR` | `/mnt/disks/sat` | The working directory. In the container, this is set to `/work` for easy mounting. |
+| `SATCONS_NUM_WORKERS` | `1` | The number of workers to use for processing. |
+| `SATCONS_ZIP` | `false` | Whether to zip the processed data to a `latest.zarr.zip` file. Only valid for the `consume` command. |
+| `EUMETSAT_CONSUMER_KEY` |  | The EUMETSAT consumer key. |
+| `EUMETSAT_CONSUMER_SECRET` |  | The EUMETSAT consumer secret. |
 
 ## FAQ
 
-Any major points from github discussions, or highlights from the documentation.
-If the same question is often asked, answer it in here!
+### How do I add a new satellite to the consumer?
 
-### Can I leave this section out?
-
-Yes, this is an optional section.
-
-### Is "How do I run the application" a valid FAQ question?
-
-No, that should be in example usage!
-
-### How should I format the FAQ section?
-
-Like this! Questions in level three headings, answers in plain text.
-
+Current;y the consumer is built to the specific needs of OpenClimateFix's data requirements.
+However, adding a new satellite in the from EUMETSAT shouldn't be too hard, provided it uses
+the same `seviri_l1b_native` format and sensor channels - just update the available satellites
+in `config.py`.
 
 ## Development
 
-Anything specific to getting set up for development on the project: required libraries,
-infrastructure, extra tools that may be desired ([MyPy](https://mypy.readthedocs.io/en/stable/),
-[pre-commit](https://pre-commit.com/), etc). Also, how to run tests!
+### Running the CLI
 
-Make sure you have the most up to date drivers for your 32 GPU array to use this template! 
+The python package contains a CLI entrypoint for ease of use when developing, which is available
+to your shell via the `sat-consumer-cli` command, assuming you have built the project in a virtual
+environment, and activated it.
 
-> [!Note]
-> The development section might be contained within the documentation, in which case
-> remove the *Development* section, and instead specify links to the relevant parts
-> of the documentation in the *Documentation* section.
+### Linting and static type checking
+ 
+This project uses [MyPy](https://mypy.readthedocs.io/en/stable/) for static type checking
+and [Ruff](https://docs.astral.sh/ruff/) for linting.
+Installing the development dependencies makes them available in your virtual environment.
+
+Use them via:
+
+```bash
+$ python -m mypy .
+$ python -m ruff check .
+```
+
+Be sure to do this periodically while developing to catch any errors early
+and prevent headaches with the CI pipeline. It may seem like a hassle at first,
+but it prevents accidental creation of a whole suite of bugs.
 
 ### Running the test suite
 
-The couple of commands, and perhaps additional dependencies, to run the test suite of
-the application or service. 
+There are some additional dependencies to be installed for running the tests,
+be sure to pass `--extra=dev` to the `pip install -e .` command when creating your virtualenv.
+(Or use uv and let it do it for you!)
+
+Run the unit tests with:
+
+```bash
+$ python -m unittest discover -s src/nwp_consumer -p "test_*.py"
+```
  
+## Further reading
+
+On the directory structure:
+- The official [PyPA discussion](https://packaging.python.org/en/latest/discussions/src-layout-vs-flat-layout/) on 
+"source" and "flat" layouts.
+
+
+---
 
 ## Contributing and community
 
@@ -150,3 +142,4 @@ the application or service.
 *Part of the [Open Climate Fix](https://github.com/orgs/openclimatefix/people) community.*
 
 [![OCF Logo](https://cdn.prod.website-files.com/62d92550f6774db58d441cca/6324a2038936ecda71599a8b_OCF_Logo_black_trans.png)](https://openclimatefix.org)
+
