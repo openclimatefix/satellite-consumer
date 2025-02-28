@@ -1,3 +1,5 @@
+"""Pipeline for downloading, processing, and saving archival satellite data."""
+
 import datetime as dt
 import sentry_sdk
 from importlib.metadata import PackageNotFoundError, version
@@ -32,14 +34,15 @@ sentry_sdk.init(
     environment="production"
 )
 
+sentry_sdk.set_tag("app_name", "satellite-consumer")
+sentry_sdk.set_tag("version", __version__)
+
 
 def _consume_command(command_opts: ArchiveCommandOptions | ConsumeCommandOptions) -> None:
     """Run the download and processing pipeline."""
     fs = get_fs(path=command_opts.zarr_path)
     window = command_opts.time_window
     
-    sentry_sdk.set_tag("satellite", command_opts.satellite_metadata.name)
-    sentry_sdk.set_tag("time_window", f"{window[0]} to {window[1]}")
 
     product_iter = get_products_iterator(
         sat_metadata=command_opts.satellite_metadata,
