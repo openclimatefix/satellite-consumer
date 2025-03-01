@@ -39,9 +39,9 @@ if SENTRY_DSN:
         traces_sample_rate=1.0,
         environment="production"
     )
-    log.info(" Sentry initialized successfully!")
+    log.info("✅ Sentry initialized successfully!")
 else:
-    log.warning("SENTRY_DSN is not set. Sentry will not be initialized.")
+    log.warning("⚠️ SENTRY_DSN is not set. Sentry will not be initialized.")
 
 try:
     __version__ = version("satellite-consumer")
@@ -100,7 +100,8 @@ def _consume_command(command_opts: ArchiveCommandOptions | ConsumeCommandOptions
                 f"Deleting {len(nat_filepaths)} raw files in {command_opts.raw_folder}",
                 num_files=len(nat_filepaths), dst=command_opts.raw_folder,
             )
-            _ = [f.unlink() for f in nat_filepaths]  
+            for f in nat_filepaths:
+                f.unlink()  # type: ignore  # Removed unnecessary list comprehension
 
 
 def run(config: SatelliteConsumerConfig) -> None:
