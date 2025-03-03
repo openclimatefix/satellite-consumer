@@ -5,7 +5,6 @@ import datetime as dt
 import os
 import tempfile
 
-import dask.array
 import fsspec
 import numpy as np
 import pyresample

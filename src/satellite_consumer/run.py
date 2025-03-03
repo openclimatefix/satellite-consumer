@@ -19,6 +19,7 @@ from satellite_consumer.download_eumetsat import (
     download_nat,
     get_products_iterator,
 )
+from satellite_consumer.exceptions import ValidationError
 from satellite_consumer.process import process_nat
 from satellite_consumer.storage import create_empty_zarr, create_latest_zip, get_fs, write_to_zarr
 from satellite_consumer.validate import validate
@@ -50,19 +51,30 @@ def _consume_command(command_opts: ArchiveCommandOptions | ConsumeCommandOptions
 
     def _etl(product: eumdac.product.Product) -> str:
         """Download, process, and save a single NAT file."""
-        nat_filepath = download_nat(product, folder=f"{command_opts.workdir}/raw")
+        try:
+            nat_filepath = download_nat(product, folder=f"{command_opts.workdir}/raw")
+        except ValidationError as e:
+            log.warning(f"Skipping product {product} due to validation error: {e}")
         da = process_nat(path=nat_filepath, hrv=command_opts.hrv)
         write_to_zarr(da=da, dst=command_opts.zarr_path)
         return nat_filepath
 
     nat_filepaths: list[str] = []
+    num_skipped: int = 0
     # Iterate through all products in search
     for nat_filepath in Parallel(
         n_jobs=command_opts.num_workers, return_as="generator",
     )(delayed(_etl)(product) for product in product_iter):
-        nat_filepaths.append(nat_filepath)
+        if nat_filepath == "":
+            num_skipped += 1
+        else:
+            nat_filepaths.append(nat_filepath)
 
-    log.info("Finished population of zarr store", dst=command_opts.zarr_path)
+    # TODO: Define threshold on allowed number of skips
+    log.info(
+        "Finished population of zarr store",
+        dst=command_opts.zarr_path, num_skipped=num_skipped,
+    )
 
     if command_opts.validate:
         validate(dataset_path=command_opts.zarr_path)
