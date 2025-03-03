@@ -11,7 +11,7 @@ import eumdac
 from loguru import logger as log
 
 from satellite_consumer.config import SatelliteMetadata
-from satellite_consumer.exceptions import DownloadError
+from satellite_consumer.exceptions import DownloadError, ValidationError
 from satellite_consumer.storage import get_fs
 
 if TYPE_CHECKING:
@@ -95,6 +95,12 @@ def download_nat(
             "to determine how to act in this case.",
         )
     nat_filename: str = nat_files[0]
+
+    if product.qualityStatus != "NOMINAL":
+        raise ValidationError(
+            f"Encountered product '{product!s}' with non-nominal quality status "
+            f"'{product.qualityStatus}'. ",
+        )
 
     filepath: str = f"{folder}/{nat_filename}"
     if fs.exists(filepath):
