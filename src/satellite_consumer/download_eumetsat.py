@@ -70,7 +70,7 @@ def download_nat(
     product: eumdac.product.Product,
     folder: str,
     retries: int = 6,
-) -> str:
+) -> str | None:
     """Download a product to an S3 bucket.
 
     EUMDAC products are collections of files, with a `.nat` file containing the data,
@@ -97,10 +97,12 @@ def download_nat(
     nat_filename: str = nat_files[0]
 
     if product.qualityStatus != "NOMINAL":
-        raise ValidationError(
+        log.warning(
             f"Encountered product '{product!s}' with non-nominal quality status "
             f"'{product.qualityStatus}'. ",
+            quality=product.qualityStatus,
         )
+        return None
 
     filepath: str = f"{folder}/{nat_filename}"
     if fs.exists(filepath):
