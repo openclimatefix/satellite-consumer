@@ -11,7 +11,7 @@ import eumdac
 from loguru import logger as log
 
 from satellite_consumer.config import SatelliteMetadata
-from satellite_consumer.exceptions import DownloadError, ValidationError
+from satellite_consumer.exceptions import DownloadError
 from satellite_consumer.storage import get_fs
 
 if TYPE_CHECKING:
