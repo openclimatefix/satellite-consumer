@@ -33,6 +33,22 @@ class Coordinates:
         """Get the dimensions of the dataset."""
         return list(self.to_dict().keys())
 
+    def shards(self) -> tuple[int, ...]:
+        """Get the shard size for each dimension."""
+        return tuple([
+            1 if k in ["time"] else len(v)
+            for k, v in self.to_dict().items()
+        ])
+
+    def chunks(self) -> tuple[int, ...]:
+        """Get the chunk size for each dimension."""
+        return tuple([
+            1 if k in ["time"]
+            else 64 if k in ["x_geostationary", "y_geostationary"]
+            else len(v)
+            for k, v in self.to_dict().items()
+        ])
+
     def __post_init__(self) -> None:
         """Perform some validation on the input data."""
         if len(self.time) == 0:
