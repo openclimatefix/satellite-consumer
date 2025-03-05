@@ -49,12 +49,11 @@ def _consume_command(command_opts: ArchiveCommandOptions | ConsumeCommandOptions
         log.info("Creating new zarr store", dst=command_opts.zarr_path)
         _ = create_empty_zarr(dst=command_opts.zarr_path, coords=command_opts.as_coordinates())
 
-    def _etl(product: eumdac.product.Product) -> str:
+    def _etl(product: eumdac.product.Product) -> str | None:
         """Download, process, and save a single NAT file."""
-        try:
-            nat_filepath = download_nat(product, folder=f"{command_opts.workdir}/raw")
-        except ValidationError as e:
-            log.warning(f"Skipping product {product} due to validation error: {e}")
+        nat_filepath = download_nat(product, folder=f"{command_opts.workdir}/raw")
+        if nat_filepath is None:
+            return nat_filepath
         da = process_nat(path=nat_filepath, hrv=command_opts.hrv)
         write_to_zarr(da=da, dst=command_opts.zarr_path)
         return nat_filepath
@@ -65,12 +64,20 @@ def _consume_command(command_opts: ArchiveCommandOptions | ConsumeCommandOptions
     for nat_filepath in Parallel(
         n_jobs=command_opts.num_workers, return_as="generator",
     )(delayed(_etl)(product) for product in product_iter):
-        if nat_filepath == "":
+        if nat_filepath is None:
             num_skipped += 1
         else:
             nat_filepaths.append(nat_filepath)
 
-    # TODO: Define threshold on allowed number of skips
+    # Might not need this as skipped files are all NaN
+    # and the validation step should catch it
+    if num_skipped / (num_skipped + len(nat_filepaths)) > 0.05:
+        raise ValidationError(
+            f"Too many files had to be skipped "
+            f"({num_skipped}/{num_skipped + len(nat_filepaths)}). "
+            "Use dataset at your own risk!",
+        )
+
     log.info(
         "Finished population of zarr store",
         dst=command_opts.zarr_path, num_skipped=num_skipped,
