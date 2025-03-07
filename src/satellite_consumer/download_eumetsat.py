@@ -105,9 +105,15 @@ def download_nat(
         return None
 
     filepath: str = f"{folder}/{nat_filename}"
-    if fs.exists(filepath):
-        log.debug("Skipping already downloaded file", filename=nat_filename)
-        return filepath
+    try:
+        if fs.exists(filepath):
+            log.debug("Skipping already downloaded file", filename=nat_filename)
+            return filepath
+    except Exception as e:
+        raise OSError(
+            f"Could not determine if file '{filepath}' exists: '{e}'"
+            "Ensure you have the required access permissions.",
+        ) from e
 
     log.debug("Downloading raw file", src=nat_filename, dst=filepath)
     for i in range(retries):
