@@ -87,7 +87,7 @@ def create_empty_zarr(dst: str, coords: Coordinates) -> xr.DataArray:
     """Create an empty zarr store at the given path.
 
     Coordinate values are written to the zarr store as arrays.
-    The array is inizialized with NaN values.
+    The array is initialized with NaN values.
     """
     group: zarr.Group = zarr.create_group(dst, overwrite=True)
     time_zarray: zarr.Array = group.create_array(
