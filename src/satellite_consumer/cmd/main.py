@@ -4,6 +4,7 @@ import argparse
 import datetime as dt
 import os
 import sys
+import traceback
 
 from loguru import logger as log
 
@@ -90,7 +91,8 @@ def cli_entrypoint() -> None:
         run(config)
         sys.exit(0)
     except Exception as e:
-        log.error(f"Error: {e}")
+        tb: str = traceback.format_exc()
+        log.error(f"Error: {e}", traceback=tb)
         sys.exit(1)
 
 def env_entrypoint() -> None:
@@ -139,7 +141,8 @@ def env_entrypoint() -> None:
         run(config)
         sys.exit(0)
     except Exception as e:
-        log.error(f"Error: {e}")
+        tb: str = traceback.format_exc()
+        log.error(f"Error: {e}", traceback=tb)
         sys.exit(1)
 
 
