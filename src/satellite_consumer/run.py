@@ -37,11 +37,12 @@ if SENTRY_DSN:
     sentry_sdk.init(
     dsn=SENTRY_DSN,  # Using .env variable
     traces_sample_rate=1.0,
-    environment=os.getenv("ENVIRONMENT", "production")  # Get from ENVIRONMENT variable
+environment=os.getenv("ENVIRONMENT", "development")
+ # Get from ENVIRONMENT variable
 )
-    log.info("✅ Sentry initialized successfully!")
+    log.info(" Sentry initialized successfully!")
 else:
-    log.warning("⚠️ SENTRY_DSN is not set. Sentry will not be initialized.")
+    log.debug(" SENTRY_DSN is not set. Sentry will not be initialized.")
 
 try:
     __version__ = version("satellite-consumer")
