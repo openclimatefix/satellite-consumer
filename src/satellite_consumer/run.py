@@ -120,3 +120,4 @@ def run(config: SatelliteConsumerConfig) -> None:
     runtime = dt.datetime.now(tz=dt.UTC) - prog_start
     log.info(f"Completed satellite consumer run in {runtime!s}.")
 
+
