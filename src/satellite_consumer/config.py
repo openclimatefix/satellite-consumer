@@ -33,6 +33,20 @@ class Coordinates:
         """Get the dimensions of the dataset."""
         return list(self.to_dict().keys())
 
+    def __post_init__(self) -> None:
+        """Perform some validation on the input data."""
+        if len(self.time) == 0:
+            raise ValueError("Time coordinate must have at least one value.")
+        if len(self.x_geostationary) == 0:
+            raise ValueError("X coordinate must have at least one value.")
+        if len(self.y_geostationary) == 0:
+            raise ValueError("Y coordinate must have at least one value.")
+        if len(self.variable) == 0:
+            raise ValueError("Variable coordinate must have at least one value.")
+        self.x_geostationary = sorted(self.x_geostationary, reverse=True)
+        self.y_geostationary = sorted(self.y_geostationary)
+        self.variable = sorted(self.variable)
+
 class Command(StrEnum):
     """The available commands for the satellite consumer."""
 

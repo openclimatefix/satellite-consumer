@@ -21,6 +21,7 @@ from satellite_consumer.download_eumetsat import (
     download_nat,
     get_products_iterator,
 )
+from satellite_consumer.exceptions import ValidationError
 from satellite_consumer.process import process_nat
 from satellite_consumer.storage import create_empty_zarr, create_latest_zip, get_fs, write_to_zarr
 from satellite_consumer.validate import validate
@@ -56,20 +57,41 @@ def _consume_command(command_opts: ArchiveCommandOptions | ConsumeCommandOptions
         log.info("Creating new zarr store", dst=command_opts.zarr_path)
         _ = create_empty_zarr(dst=command_opts.zarr_path, coords=command_opts.as_coordinates())
 
-    def _etl(product: eumdac.product.Product) -> str:
+    def _etl(product: eumdac.product.Product) -> str | None:
         """Download, process, and save a single NAT file."""
         nat_filepath = download_nat(product, folder=f"{command_opts.workdir}/raw")
+        if nat_filepath is None:
+            return nat_filepath
         da = process_nat(path=nat_filepath, hrv=command_opts.hrv)
         write_to_zarr(da=da, dst=command_opts.zarr_path)
         return nat_filepath
 
     nat_filepaths: list[str] = []
+add-sentry
+    num_skipped: int = 0
+    # Iterate through all products in search
+ main
     for nat_filepath in Parallel(
         n_jobs=command_opts.num_workers, return_as="generator",
     )(delayed(_etl)(product) for product in product_iter):
-        nat_filepaths.append(nat_filepath)
+        if nat_filepath is None:
+            num_skipped += 1
+        else:
+            nat_filepaths.append(nat_filepath)
 
-    log.info("Finished population of zarr store", dst=command_opts.zarr_path)
+    # Might not need this as skipped files are all NaN
+    # and the validation step should catch it
+    if num_skipped / (num_skipped + len(nat_filepaths)) > 0.05:
+        raise ValidationError(
+            f"Too many files had to be skipped "
+            f"({num_skipped}/{num_skipped + len(nat_filepaths)}). "
+            "Use dataset at your own risk!",
+        )
+
+    log.info(
+        "Finished population of zarr store",
+        dst=command_opts.zarr_path, num_skipped=num_skipped,
+    )
 
     if command_opts.validate:
         validate(dataset_path=command_opts.zarr_path)

@@ -3,6 +3,8 @@
 import argparse
 import datetime as dt
 import os
+import sys
+import traceback
 
 from loguru import logger as log
 
@@ -16,7 +18,6 @@ from satellite_consumer.config import (
 from satellite_consumer.run import run
 
 
-@log.catch(onerror=lambda e: log.error(f"Error: {e}"))
 def cli_entrypoint() -> None:
     """Handle the program using CLI arguments."""
     parser = argparse.ArgumentParser(description="Satellite consumer")
@@ -86,9 +87,14 @@ def cli_entrypoint() -> None:
         command=command, command_options=command_opts,
     )
 
-    return run(config)
+    try:
+        run(config)
+        sys.exit(0)
+    except Exception as e:
+        tb: str = traceback.format_exc()
+        log.error(f"Error: {e}", traceback=tb)
+        sys.exit(1)
 
-@log.catch(onerror=lambda e: log.error(f"Error: {e}"))
 def env_entrypoint() -> None:
     """Handle the program using environment variables."""
     try:
@@ -130,6 +136,13 @@ def env_entrypoint() -> None:
     config: SatelliteConsumerConfig = SatelliteConsumerConfig(
         command=command, command_options=command_opts,
     )
-    return run(config)
+
+    try:
+        run(config)
+        sys.exit(0)
+    except Exception as e:
+        tb: str = traceback.format_exc()
+        log.error(f"Error: {e}", traceback=tb)
+        sys.exit(1)
 
 
