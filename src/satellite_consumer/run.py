@@ -7,7 +7,6 @@ import datetime as dt
 import os
 from importlib.metadata import PackageNotFoundError, version
 
-from dotenv import load_dotenv
 import sentry_sdk
 import eumdac.product
 from joblib import Parallel, delayed
@@ -26,34 +25,23 @@ from satellite_consumer.process import process_nat
 from satellite_consumer.storage import create_empty_zarr, create_latest_zip, get_fs, write_to_zarr
 from satellite_consumer.validate import validate
 
-# Load environment variables from .env file
-load_dotenv()
-
-# Get Sentry DSN from environment variables
-SENTRY_DSN = os.getenv("SENTRY_DSN")
-
-# Initialize Sentry if DSN is available
-if SENTRY_DSN:
-    sentry_sdk.init(
-    dsn=SENTRY_DSN,  # Using .env variable
-    traces_sample_rate=1.0,
-environment=os.getenv("ENVIRONMENT", "development")
- # Get from ENVIRONMENT variable
-)
-    log.info(" Sentry initialized successfully!")
-else:
-    log.debug(" SENTRY_DSN is not set. Sentry will not be initialized.")
-
 try:
     __version__ = version("satellite-consumer")
 except PackageNotFoundError:
     __version__ = "v?"
 
+# Sentry initialization as per the suggestion
+sentry_sdk.init(
+    dsn=os.getenv("SENTRY_DSN"), 
+    environment=os.getenv("ENVIRONMENT", "local"), 
+    traces_sample_rate=1,
+)
+sentry_sdk.set_tag("app_name", "satellite_consumer")
+sentry_sdk.set_tag("version", __version__)
 
 def _consume_command(command_opts: ArchiveCommandOptions | ConsumeCommandOptions) -> None:
     """Run the download and processing pipeline."""
     fs = get_fs(path=command_opts.zarr_path)
-
     window = command_opts.time_window
 
     product_iter = get_products_iterator(
@@ -62,11 +50,9 @@ def _consume_command(command_opts: ArchiveCommandOptions | ConsumeCommandOptions
         end=window[1],
     )
 
-    # Use existing zarr store if it exists
     if fs.exists(command_opts.zarr_path.replace("s3://", "")):
         log.info("Using existing zarr store", dst=command_opts.zarr_path)
     else:
-        # Create new store
         log.info("Creating new zarr store", dst=command_opts.zarr_path)
         _ = create_empty_zarr(dst=command_opts.zarr_path, coords=command_opts.as_coordinates())
 
@@ -78,7 +64,6 @@ def _consume_command(command_opts: ArchiveCommandOptions | ConsumeCommandOptions
         return nat_filepath
 
     nat_filepaths: list[str] = []
-    # Iterate through all products in search
     for nat_filepath in Parallel(
         n_jobs=command_opts.num_workers, return_as="generator",
     )(delayed(_etl)(product) for product in product_iter):
@@ -102,8 +87,7 @@ def _consume_command(command_opts: ArchiveCommandOptions | ConsumeCommandOptions
                 num_files=len(nat_filepaths), dst=command_opts.raw_folder,
             )
             for f in nat_filepaths:
-                f.unlink()  # type: ignore  # Removed unnecessary list comprehension
-
+                f.unlink()  # type: ignore
 
 def run(config: SatelliteConsumerConfig) -> None:
     """Run the download and processing pipeline."""
