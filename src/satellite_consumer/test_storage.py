@@ -8,7 +8,6 @@ from unittest.mock import patch
 
 import numpy as np
 import xarray as xr
-import zarr
 from botocore.session import Session
 from moto.server import ThreadedMotoServer
 
