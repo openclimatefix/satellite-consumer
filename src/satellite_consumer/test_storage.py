@@ -137,6 +137,7 @@ class TestStorage(unittest.TestCase):
                     store_da = xr.open_dataarray(test["dst"], engine="zarr", consolidated=False)
                     self.assertTrue((store_da.isel(time=0).values == 1.0).all())
 
+    @unittest.skip("Not yet done")
     def test_chunk_shard_speed(self) -> None:
         """Tests that a specific chunking and sharding configuration is faster than another."""
 

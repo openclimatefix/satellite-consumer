@@ -36,15 +36,17 @@ class Coordinates:
     def shards(self) -> tuple[int, ...]:
         """Get the shard size for each dimension."""
         return tuple([
-            1 if k in ["time"] else len(v)
+            1 if k in ["time"]
+            else len(v) // 4 if k in ["x_geostationary", "y_geostationary"]
+            else len(v)
             for k, v in self.to_dict().items()
         ])
 
     def chunks(self) -> tuple[int, ...]:
         """Get the chunk size for each dimension."""
         return tuple([
-            1 if k in ["time"]
-            else 64 if k in ["x_geostationary", "y_geostationary"]
+            1 if k in ["time", "variable"]
+            else 116 if k in ["x_geostationary", "y_geostationary"]
             else len(v)
             for k, v in self.to_dict().items()
         ])
