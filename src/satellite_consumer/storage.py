@@ -117,9 +117,9 @@ def create_empty_zarr(dst: str, coords: Coordinates) -> xr.DataArray:
     var_zarray[:] = coords.variable
 
     _ = group.create_array(
-        name="data", dimension_names=coords.dims(),
-        dtype="float", shape=coords.shape(), chunks=(1, 3712, 3712, 11), fill_value=np.nan,
-        config={"write_empty_chunks": False},
+        name="data", dimension_names=coords.dims(), dtype="float",
+        shape=coords.shape(), chunks=coords.chunks(),
+        fill_value=np.nan, config={"write_empty_chunks": False},
     )
     da = xr.open_dataarray(dst, engine="zarr", consolidated=False)
     return da
