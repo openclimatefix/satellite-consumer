@@ -13,8 +13,8 @@ from loguru import logger as log
 from satellite_consumer.config import (
     ArchiveCommandOptions,
     ConsumeCommandOptions,
-    SatelliteConsumerConfig,
     MergeCommandOptions,
+    SatelliteConsumerConfig,
 )
 from satellite_consumer.download_eumetsat import (
     download_nat,

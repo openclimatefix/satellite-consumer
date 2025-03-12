@@ -203,7 +203,9 @@ class ConsumeCommandOptions:
     def time_window(self) -> tuple[dt.datetime, dt.datetime]:
         """Get the time window for the given time."""
         # Round the start time down to the nearest interval given by the channel cadence
-        start: dt.datetime = (self.time - pd.DateOffset(minutes=self.satellite_metadata.cadence_mins)) # type:ignore
+        start: dt.datetime = (
+            self.time - pd.DateOffset(minutes=self.satellite_metadata.cadence_mins) # type: ignore
+        )
         return start, self.time # type:ignore  # safe due to post_init
 
     @property

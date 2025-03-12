@@ -13,8 +13,8 @@ from satellite_consumer.config import (
     ArchiveCommandOptions,
     Command,
     ConsumeCommandOptions,
-    SatelliteConsumerConfig,
     MergeCommandOptions,
+    SatelliteConsumerConfig,
 )
 from satellite_consumer.run import run
 
