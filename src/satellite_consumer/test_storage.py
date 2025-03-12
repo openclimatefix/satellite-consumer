@@ -83,7 +83,7 @@ class TestStorage(unittest.TestCase):
                     )
                     self.assertListEqual(
                         list(store_da.dims),
-                        ["time", "x_geostationary", "y_geostationary", "variable"],
+                        ["time", "y_geostationary", "x_geostationary", "variable"],
                         msg="Dimension ordering of emtpy store is incorrect",
                     )
                     for coord in list(coords.to_dict().keys()):

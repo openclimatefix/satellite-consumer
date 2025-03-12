@@ -13,6 +13,7 @@ from satellite_consumer.config import (
     ArchiveCommandOptions,
     Command,
     ConsumeCommandOptions,
+    MergeCommandOptions,
     SatelliteConsumerConfig,
 )
 from satellite_consumer.run import run
@@ -55,34 +56,57 @@ def cli_entrypoint() -> None:
     consume_parser.add_argument("--eumetsat-key", type=str, required=True)
     consume_parser.add_argument("--eumetsat-secret", type=str, required=True)
 
+    merge_parser = subparsers.add_parser("merge",
+        help="Merge satellite data for a given window",
+    )
+    merge_parser.add_argument("satellite", choices=list(SATELLITE_METADATA.keys()))
+    merge_parser.add_argument("--window-mins",
+        type=int, help="Merge window size in minutes", default=210,
+    )
+    merge_parser.add_argument("--window-end", "-t",
+        type=dt.datetime.fromisoformat,
+        help="End of merge window (YYYY-MM-DDTHH:MM:SS)",
+    )
+    merge_parser.add_argument("--workdir", type=str, default="/mnt/disks/sat")
+    merge_parser.add_argument("--hrv", action="store_true")
+
     args = parser.parse_args()
 
     os.environ["EUMETSAT_CONSUMER_KEY"] = args.eumetsat_key
     os.environ["EUMETSAT_CONSUMER_SECRET"] = args.eumetsat_secret
 
-    command_opts: ArchiveCommandOptions | ConsumeCommandOptions
-    command = Command(args.command)
-    if command == "archive":
-        command_opts = ArchiveCommandOptions(
-            satellite=args.satellite,
-            month=args.month,
-            delete_raw=args.delete_raw,
-            validate=args.validate,
-            hrv=args.hrv,
-            rescale=args.rescale,
-            workdir=args.workdir,
-        )
-    else:
-        command_opts = ConsumeCommandOptions(
-            satellite=args.satellite,
-            time=args.time,
-            delete_raw=args.delete_raw,
-            validate=args.validate,
-            hrv=args.hrv,
-            rescale=args.rescale,
-            workdir=args.workdir,
-            latest_zip=args.zip,
-        )
+    command_opts: ArchiveCommandOptions | ConsumeCommandOptions | MergeCommandOptions
+    command = Command(args.command.upper())
+    match command:
+        case Command.ARCHIVE:
+            command_opts = ArchiveCommandOptions(
+                satellite=args.satellite,
+                month=args.month,
+                delete_raw=args.delete_raw,
+                validate=args.validate,
+                hrv=args.hrv,
+                rescale=args.rescale,
+                workdir=args.workdir,
+            )
+        case Command.CONSUME:
+            command_opts = ConsumeCommandOptions(
+                satellite=args.satellite,
+                time=args.time,
+                delete_raw=args.delete_raw,
+                validate=args.validate,
+                hrv=args.hrv,
+                rescale=args.rescale,
+                workdir=args.workdir,
+            )
+        case Command.MERGE:
+            command_opts = MergeCommandOptions(
+                satellite=args.satellite,
+                window_mins=args.window_mins,
+                window_end=args.window_end,
+                hrv=args.hrv,
+                workdir=args.workdir,
+            )
+
     config: SatelliteConsumerConfig = SatelliteConsumerConfig(
         command=command, command_options=command_opts,
     )
@@ -99,34 +123,53 @@ def env_entrypoint() -> None:
     """Handle the program using environment variables."""
     try:
         command = Command(os.environ["SATCONS_COMMAND"])
-        command_opts: ArchiveCommandOptions | ConsumeCommandOptions
-        if command == "archive":
-            command_opts = ArchiveCommandOptions(
-                satellite=os.environ["SATCONS_SATELLITE"],
-                month=os.environ["SATCONS_MONTH"],
-                delete_raw=os.getenv("SATCONS_DELETE_RAW", "false") == "true",
-                validate=os.getenv("SATCONS_VALIDATE", "false") == "true",
-                hrv=os.getenv("SATCONS_HRV", "false") == "true",
-                rescale=os.getenv("SATCONS_RESCALE", "false") == "true",
-                workdir=os.getenv("SATCONS_WORKDIR", "/mnt/disks/sat"),
-                num_workers=int(os.getenv("SATCONS_NUM_WORKERS", default="1")),
-            )
-        else:
-            if os.getenv("SATCONS_TIME") is None:
-                t: dt.datetime | None = None
-            else:
-                t = dt.datetime.fromisoformat(os.environ["SATCONS_TIME"])
-            command_opts = ConsumeCommandOptions(
-                satellite=os.environ["SATCONS_SATELLITE"],
-                time=t,
-                delete_raw=os.getenv("SATCONS_DELETE_RAW", "false") == "true",
-                validate=os.getenv("SATCONS_VALIDATE", "false") == "true",
-                hrv=os.getenv("SATCONS_HRV", "false") == "true",
-                rescale=os.getenv("SATCONS_RESCALE", "false") == "true",
-                workdir=os.getenv("SATCONS_WORKDIR", "/mnt/disks/sat"),
-                num_workers=int(os.getenv("SATCONS_NUM_WORKERS", default="1")),
-                latest_zip=os.getenv("SATCONS_ZIP", "false") == "true",
-            )
+        command_opts: ArchiveCommandOptions | ConsumeCommandOptions | MergeCommandOptions
+        match command:
+            case Command.ARCHIVE:
+                command_opts = ArchiveCommandOptions(
+                    satellite=os.environ["SATCONS_SATELLITE"],
+                    month=os.environ["SATCONS_MONTH"],
+                    delete_raw=os.getenv("SATCONS_DELETE_RAW", "false") == "true",
+                    validate=os.getenv("SATCONS_VALIDATE", "false") == "true",
+                    hrv=os.getenv("SATCONS_HRV", "false") == "true",
+                    rescale=os.getenv("SATCONS_RESCALE", "false") == "true",
+                    workdir=os.getenv("SATCONS_WORKDIR", "/mnt/disks/sat"),
+                    num_workers=int(os.getenv("SATCONS_NUM_WORKERS", default="1")),
+                )
+            case Command.CONSUME:
+                if os.getenv("SATCONS_TIME") is None:
+                    t: dt.datetime | None = None
+                else:
+                    t = dt.datetime.fromisoformat(os.environ["SATCONS_TIME"])
+
+                command_opts = ConsumeCommandOptions(
+                    satellite=os.environ["SATCONS_SATELLITE"],
+                    time=t,
+                    delete_raw=os.getenv("SATCONS_DELETE_RAW", "false") == "true",
+                    validate=os.getenv("SATCONS_VALIDATE", "false") == "true",
+                    hrv=os.getenv("SATCONS_HRV", "false") == "true",
+                    rescale=os.getenv("SATCONS_RESCALE", "false") == "true",
+                    workdir=os.getenv("SATCONS_WORKDIR", "/mnt/disks/sat"),
+                    num_workers=int(os.getenv("SATCONS_NUM_WORKERS", default="1")),
+                )
+            case Command.MERGE:
+                # Use SATCONS_TIME if SATCONS_WINDOW_END is not set
+                if os.getenv("SATCONS_WINDOW_END") is None:
+                    if os.getenv("SATCONS_TIME") is None:
+                        window_end: dt.datetime | None = None
+                    else:
+                        window_end = dt.datetime.fromisoformat(os.environ["SATCONS_TIME"])
+                else:
+                    window_end = dt.datetime.fromisoformat(os.environ["SATCONS_TIME"])
+
+                command_opts = MergeCommandOptions(
+                    satellite=os.environ["SATCONS_SATELLITE"],
+                    window_mins=int(os.getenv("SATCONS_WINDOW_MINS", default="210")),
+                    window_end=window_end,
+                    hrv=os.getenv("SATCONS_HRV", "false") == "true",
+                    workdir=os.getenv("SATCONS_WORKDIR", "/mnt/disks/sat"),
+                )
+
     except KeyError as e:
         log.error(f"Missing environment variable: {e}")
         return
