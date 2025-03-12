@@ -100,6 +100,7 @@ def _consume_command(command_opts: ArchiveCommandOptions | ConsumeCommandOptions
 def _merge_command(command_opts: MergeCommandOptions) -> None:
     """Logic for the merge command."""
     zarr_paths = command_opts.zarr_paths
+    log.info(f"Merging {len(zarr_paths)} stores", num=len(zarr_paths))
     fs = get_fs(path=zarr_paths[0])
 
     for zarr_path in zarr_paths:
@@ -119,10 +120,12 @@ def run(config: SatelliteConsumerConfig) -> None:
         version=__version__, start_time=str(prog_start), opts=config.command_options.__str__(),
     )
 
-    if (config.command == "archive" or config.command == "consume"):
+    if isinstance(config.command_options, ArchiveCommandOptions | ConsumeCommandOptions):
         _consume_command(command_opts=config.command_options)
-    elif config.command == "merge" and isinstance(config.command_options, MergeCommandOptions):
+    elif isinstance(config.command_options, MergeCommandOptions):
         _merge_command(command_opts=config.command_options)
+    else:
+        pass
 
     runtime = dt.datetime.now(tz=dt.UTC) - prog_start
     log.info(f"Completed satellite consumer run in {runtime!s}.")

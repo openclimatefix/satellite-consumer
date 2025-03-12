@@ -280,6 +280,7 @@ class MergeCommandOptions:
             for ts in pd.date_range(
                 start=self.time_window[0], end=self.time_window[1],
                 freq=f"{SATELLITE_METADATA[self.satellite].cadence_mins}min",
+                inclusive="right",
             )
         ]
 
