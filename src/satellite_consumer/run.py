@@ -14,6 +14,7 @@ from satellite_consumer.config import (
     ArchiveCommandOptions,
     ConsumeCommandOptions,
     SatelliteConsumerConfig,
+    MergeCommandOptions,
 )
 from satellite_consumer.download_eumetsat import (
     download_nat,
@@ -30,7 +31,7 @@ except PackageNotFoundError:
     __version__ = "v?"
 
 def _consume_command(command_opts: ArchiveCommandOptions | ConsumeCommandOptions) -> None:
-    """Run the download and processing pipeline."""
+    """Logic for the consume command (and the archive command)."""
     fs = get_fs(path=command_opts.zarr_path)
 
     window = command_opts.time_window
@@ -86,10 +87,6 @@ def _consume_command(command_opts: ArchiveCommandOptions | ConsumeCommandOptions
     if command_opts.validate:
         validate(dataset_path=command_opts.zarr_path)
 
-    if isinstance(command_opts, ConsumeCommandOptions) and command_opts.latest_zip:
-        zippath: str = create_latest_zip(dst=command_opts.zarr_path)
-        log.info(f"Created latest.zip at {zippath}", dst=zippath)
-
     if command_opts.delete_raw:
         if command_opts.workdir.startswith("s3://"):
             log.warning("delete-raw was specified, but deleting S3 files is not yet implemented")
@@ -99,6 +96,18 @@ def _consume_command(command_opts: ArchiveCommandOptions | ConsumeCommandOptions
                 num_files=len(nat_filepaths), dst=command_opts.raw_folder,
             )
             _ = [f.unlink() for f in nat_filepaths] # type:ignore
+
+def _merge_command(command_opts: MergeCommandOptions) -> None:
+    """Logic for the merge command."""
+    zarr_paths = command_opts.zarr_paths
+    fs = get_fs(path=zarr_paths[0])
+
+    for zarr_path in zarr_paths:
+        if not fs.exists(zarr_path):
+            raise FileNotFoundError(f"Zarr store not found at {zarr_path}")
+
+    dst = create_latest_zip(dsts=zarr_paths)
+    log.info("Created latest.zip", dst=dst)
 
 
 def run(config: SatelliteConsumerConfig) -> None:
@@ -110,8 +119,10 @@ def run(config: SatelliteConsumerConfig) -> None:
         version=__version__, start_time=str(prog_start), opts=config.command_options.__str__(),
     )
 
-    if config.command == "archive" or config.command == "consume":
+    if (config.command == "archive" or config.command == "consume"):
         _consume_command(command_opts=config.command_options)
+    elif config.command == "merge" and isinstance(config.command_options, MergeCommandOptions):
+        _merge_command(command_opts=config.command_options)
 
     runtime = dt.datetime.now(tz=dt.UTC) - prog_start
     log.info(f"Completed satellite consumer run in {runtime!s}.")
