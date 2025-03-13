@@ -11,7 +11,6 @@ import s3fs
 import xarray as xr
 import yaml
 import zarr
-from zarr.codecs import BloscCodec, BloscShuffle
 from fsspec.implementations.local import LocalFileSystem
 from loguru import logger as log
 
