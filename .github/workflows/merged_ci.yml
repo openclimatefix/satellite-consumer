@@ -1,5 +1,5 @@
 name: Merged CI
-run-name: Merged CI for ${{ github.head_ref_name }}
+run-name: 'Merged CI for #${{ github.event.number }}: ${{ github.event.pull_request.title }}'
 
 on:
   pull_request:

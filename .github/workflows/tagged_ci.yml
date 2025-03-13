@@ -1,5 +1,5 @@
 name: Tagged CI
-run-name: Tagged CI for ${{ github.ref_name }} by ${{ github.actor }}
+run-name: 'Tagged CI for ${{ github.ref_name }} by ${{ github.actor }}'
 
 on:
   push:

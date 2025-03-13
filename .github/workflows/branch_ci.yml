@@ -1,5 +1,5 @@
 name: Branch CI (Python)
-run-name: Branch CI for ${{ github.ref_name }} by ${{ github.actor }}
+run-name: 'Branch CI for ${{ github.event.head_commit.message }} by ${{ github.actor }}'
 
 on:  
   push:
