@@ -34,10 +34,14 @@ class Coordinates:
         return list(self.to_dict().keys())
 
     def shards(self) -> tuple[int, ...]:
-        """Get the shard size for each dimension."""
+        """Get the shard size for each dimension.
+
+        In order for the validate function to work, the shard size must be
+        1 along the dimensions that are not core input dimensions;
+        'time' and 'variable'.
+        """
         return tuple([
-            1 if k in ["time"]
-            else len(v) // 4 if k in ["x_geostationary", "y_geostationary"]
+            1 if k in ["time", "variable"]
             else len(v)
             for k, v in self.to_dict().items()
         ])
