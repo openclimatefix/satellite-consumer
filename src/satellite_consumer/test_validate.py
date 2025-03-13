@@ -3,11 +3,10 @@ import unittest
 from typing import TypedDict
 
 import numpy as np
-import xarray as xr
 
 from satellite_consumer.config import Coordinates
 from satellite_consumer.exceptions import ValidationError
-from satellite_consumer.storage import create_empty_zarr, write_to_zarr
+from satellite_consumer.storage import create_empty_zarr
 from satellite_consumer.test_mocks import mocks3
 from satellite_consumer.validate import validate
 
