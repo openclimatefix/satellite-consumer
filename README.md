@@ -93,7 +93,7 @@ Each command then has its own set of configuration options:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SATCONS_SATELLITE` | | The satellite to consume data from. |
-| `SATCONS_WINDOW_MINS` | | The time window to merge data for. |
+| `SATCONS_WINDOW_MINS` | `210` | The time window to merge data for. |
 | `SATCONS_CONSUME_MISSING` | `false` | Whether to consume missing data. |
 
 ## FAQ

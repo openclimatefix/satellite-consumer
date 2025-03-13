@@ -122,7 +122,7 @@ def _merge_command(command_opts: MergeCommandOptions) -> None:
             else:
                 raise FileNotFoundError(f"Zarr store not found at {zarr_path}")
 
-    dst = create_latest_zip(dsts=zarr_paths)
+    dst = create_latest_zip(srcs=zarr_paths)
     log.info("Created latest.zip", dst=dst)
 
 

@@ -67,21 +67,17 @@ def write_to_zarr(
 
     return None
 
-def create_latest_zip(dsts: list[str]) -> str:
+def create_latest_zip(srcs: list[str]) -> str:
     """Convert zarr store(s) at the given path to a zip store."""
-    fs = get_fs(path=dsts[0])
-
     # Open the zarr store and write it to a zip store
     ds: xr.Dataset = xr.open_mfdataset(
-        dsts, consolidated=False, concat_dim="time", combine="nested",
+        srcs, consolidated=False, concat_dim="time", combine="nested",
     )
 
-    zippath: str = dsts[0].rsplit("/", 1)[0] + "/latest.zarr.zip"
-    with tempfile.NamedTemporaryFile(suffix=".zip") as fsrc,\
-        zarr.storage.ZipStore(path=fsrc.name, mode="w") as store:
+    zippath: str = srcs[0].rsplit("/", 1)[0] + "/latest.zarr.zip"
+    with zarr.storage.ZipStore(path=zippath, mode="w", allowZip64=True) as store:
         try:
             _ = ds.to_zarr(store=store) # type: ignore
-            fs.put(lpath=fsrc.name, rpath=zippath, overwrite=True)
         except Exception as e:
             raise OSError(f"Error writing dataset to zip store '{zippath}': {e}") from e
     return zippath
