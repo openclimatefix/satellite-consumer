@@ -57,7 +57,6 @@ the following environment variables are available:
 | `SATCONS_RESCALE` | `false` | Whether to rescale the downloaded data to the unit interval. |
 | `SATCONS_WORKDIR` | `/mnt/disks/sat` | The working directory. In the container, this is set to `/work` for easy mounting. |
 | `SATCONS_NUM_WORKERS` | `1` | The number of workers to use for processing. |
-| `SATCONS_ZIP` | `false` | Whether to zip the processed data to a `latest.zarr.zip` file. Only valid for the `consume` command. |
 | `EUMETSAT_CONSUMER_KEY` |  | The EUMETSAT consumer key. |
 | `EUMETSAT_CONSUMER_SECRET` |  | The EUMETSAT consumer secret. |
 
