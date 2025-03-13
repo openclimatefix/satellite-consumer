@@ -11,6 +11,7 @@ import s3fs
 import xarray as xr
 import yaml
 import zarr
+from zarr.codecs import BloscCodec, BloscShuffle
 from fsspec.implementations.local import LocalFileSystem
 from loguru import logger as log
 
@@ -121,7 +122,7 @@ def create_empty_zarr(dst: str, coords: Coordinates) -> xr.DataArray:
 
     _ = group.create_array(
         name="data", dimension_names=coords.dims(), dtype="float",
-        shape=coords.shape(), chunks=coords.chunks(),
+        shape=coords.shape(), chunks=coords.chunks(), shards=coords.shards(),
         fill_value=np.nan, config={"write_empty_chunks": False},
     )
 
