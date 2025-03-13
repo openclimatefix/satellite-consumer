@@ -60,8 +60,8 @@ class TestStorage(unittest.TestCase):
         with mocks3() as s3dir, tempfile.TemporaryDirectory(suffix="zarr") as tmpdir:
             coords = Coordinates(
                 time=[np.datetime64(f"2021-01-01T0{h}:00", "ns") for h in range(0, 3)],
-                x_geostationary=[1, 2, 3, 4],
-                y_geostationary=[1, 2, 3, 4],
+                y_geostationary=list(range(1392)),
+                x_geostationary=list(range(3712)),
                 variable=["VIS006", "IR_016"],
             )
 
@@ -103,8 +103,8 @@ class TestStorage(unittest.TestCase):
 
             coords = Coordinates(
                 time=[np.datetime64(f"2021-01-01T0{h}:00", "ns") for h in range(0, 3)],
-                x_geostationary=[1, 2, 3, 4],
-                y_geostationary=[1, 2, 3, 4],
+                y_geostationary=list(range(1392)),
+                x_geostationary=list(range(3712)),
                 variable=["VIS006", "IR_016"],
             )
 
@@ -118,7 +118,7 @@ class TestStorage(unittest.TestCase):
                 coords=dataclasses.replace(
                    coords, time=[np.datetime64("2021-01-01T00:00", "ns")],
                 ).to_dict(),
-                data=np.ones(shape=(1, 4, 4, 2)),
+                data=np.ones(shape=(1, 1392, 3712, 2)),
             )
 
             for test in tests:
