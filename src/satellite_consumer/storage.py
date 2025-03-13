@@ -3,7 +3,6 @@
 
 import datetime as dt
 import os
-import tempfile
 
 import fsspec
 import numpy as np
