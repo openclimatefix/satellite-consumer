@@ -85,7 +85,7 @@ def _consume_to_store(command_opts: ArchiveCommandOptions | ConsumeCommandOption
     )
 
     if command_opts.validate:
-        validate(dataset_path=command_opts.zarr_path)
+        validate(src=command_opts.zarr_path)
 
     if command_opts.delete_raw:
         if command_opts.workdir.startswith("s3://"):
