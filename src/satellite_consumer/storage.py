@@ -77,9 +77,10 @@ def create_latest_zip(dsts: list[str]) -> str:
     )
 
     zippath: str = dsts[0].rsplit("/", 1)[0] + "/latest.zarr.zip"
-    with tempfile.NamedTemporaryFile(suffix=".zip") as fsrc:
+    with tempfile.NamedTemporaryFile(suffix=".zip") as fsrc,\
+        zarr.storage.ZipStore(path=fsrc.name, mode="w") as store:
         try:
-            _ = ds.to_zarr(store=zarr.storage.ZipStore(path=fsrc.name, mode="w")) # type: ignore
+            _ = ds.to_zarr(store=store) # type: ignore
             fs.put(lpath=fsrc.name, rpath=zippath, overwrite=True)
         except Exception as e:
             raise OSError(f"Error writing dataset to zip store '{zippath}': {e}") from e

@@ -69,8 +69,18 @@ class Command(StrEnum):
     """The available commands for the satellite consumer."""
 
     ARCHIVE = auto()
+    """Download and process all scans into an archive store for a given month.
+
+    Archive stores are a single Zarr store containing data for all scans
+    in the given time period.
+    """
     CONSUME = auto()
+    """Download and process a single scan into a scan store.
+
+    Scan stores are a single Zarr store containing data for an individual scan.
+    """
     MERGE = auto()
+    """Merge multiple consumed stores into a single zarr store."""
 
 @dataclasses.dataclass
 class ArchiveCommandOptions:
@@ -249,6 +259,8 @@ class MergeCommandOptions:
     """
     hrv: bool = False
     """Whether to merge the high resolution channel data (defaults to low res)."""
+    consume_missing: bool = False
+    """Whether to consume missing data instead of erroring before merging."""
 
     def __post_init__(self) -> None:
         """Perform some validation on the input data."""

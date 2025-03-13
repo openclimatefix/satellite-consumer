@@ -20,7 +20,10 @@ from satellite_consumer.run import run
 
 
 def cli_entrypoint() -> None:
-    """Handle the program using CLI arguments."""
+    """Handle the program using CLI arguments.
+
+    Maps the provided CLI arguments to an appropriate Config object.
+    """
     parser = argparse.ArgumentParser(description="Satellite consumer")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -69,6 +72,7 @@ def cli_entrypoint() -> None:
     )
     merge_parser.add_argument("--workdir", type=str, default="/mnt/disks/sat")
     merge_parser.add_argument("--hrv", action="store_true")
+    merge_parser.add_argument("--consume-missing", action="store_true")
 
     args = parser.parse_args()
 
@@ -105,6 +109,7 @@ def cli_entrypoint() -> None:
                 window_end=args.window_end,
                 hrv=args.hrv,
                 workdir=args.workdir,
+                consume_missing=args.consume_missing,
             )
 
     config: SatelliteConsumerConfig = SatelliteConsumerConfig(
@@ -120,7 +125,10 @@ def cli_entrypoint() -> None:
         sys.exit(1)
 
 def env_entrypoint() -> None:
-    """Handle the program using environment variables."""
+    """Handle the program using environment variables.
+
+    Maps the environemnt variables to an appropriate Config object.
+    """
     try:
         command = Command(os.environ["SATCONS_COMMAND"])
         command_opts: ArchiveCommandOptions | ConsumeCommandOptions | MergeCommandOptions
@@ -129,13 +137,14 @@ def env_entrypoint() -> None:
                 command_opts = ArchiveCommandOptions(
                     satellite=os.environ["SATCONS_SATELLITE"],
                     month=os.environ["SATCONS_MONTH"],
-                    delete_raw=os.getenv("SATCONS_DELETE_RAW", "false") == "true",
-                    validate=os.getenv("SATCONS_VALIDATE", "false") == "true",
+                    delete_raw=os.getenv("SATCONS_DELETE_RAW", "false").lower() == "true",
+                    validate=os.getenv("SATCONS_VALIDATE", "false").lower() == "true",
                     hrv=os.getenv("SATCONS_HRV", "false") == "true",
-                    rescale=os.getenv("SATCONS_RESCALE", "false") == "true",
+                    rescale=os.getenv("SATCONS_RESCALE", "false").lower() == "true",
                     workdir=os.getenv("SATCONS_WORKDIR", "/mnt/disks/sat"),
                     num_workers=int(os.getenv("SATCONS_NUM_WORKERS", default="1")),
                 )
+
             case Command.CONSUME:
                 if os.getenv("SATCONS_TIME") is None:
                     t: dt.datetime | None = None
@@ -145,13 +154,14 @@ def env_entrypoint() -> None:
                 command_opts = ConsumeCommandOptions(
                     satellite=os.environ["SATCONS_SATELLITE"],
                     time=t,
-                    delete_raw=os.getenv("SATCONS_DELETE_RAW", "false") == "true",
-                    validate=os.getenv("SATCONS_VALIDATE", "false") == "true",
-                    hrv=os.getenv("SATCONS_HRV", "false") == "true",
-                    rescale=os.getenv("SATCONS_RESCALE", "false") == "true",
+                    delete_raw=os.getenv("SATCONS_DELETE_RAW", "false").lower() == "true",
+                    validate=os.getenv("SATCONS_VALIDATE", "false").lower() == "true",
+                    hrv=os.getenv("SATCONS_HRV", "false").lower() == "true",
+                    rescale=os.getenv("SATCONS_RESCALE", "false").lower() == "true",
                     workdir=os.getenv("SATCONS_WORKDIR", "/mnt/disks/sat"),
                     num_workers=int(os.getenv("SATCONS_NUM_WORKERS", default="1")),
                 )
+
             case Command.MERGE:
                 # Use SATCONS_TIME if SATCONS_WINDOW_END is not set
                 if os.getenv("SATCONS_WINDOW_END") is None:
@@ -166,8 +176,9 @@ def env_entrypoint() -> None:
                     satellite=os.environ["SATCONS_SATELLITE"],
                     window_mins=int(os.getenv("SATCONS_WINDOW_MINS", default="210")),
                     window_end=window_end,
-                    hrv=os.getenv("SATCONS_HRV", "false") == "true",
+                    hrv=os.getenv("SATCONS_HRV", "false").lower() == "true",
                     workdir=os.getenv("SATCONS_WORKDIR", "/mnt/disks/sat"),
+                    consume_missing=os.getenv("SATCONS_CONSUME_MISSING", "false").lower() == "true",
                 )
 
     except KeyError as e:
