@@ -1,44 +1,15 @@
-import contextlib
 import dataclasses
 import tempfile
 import unittest
-from collections.abc import Generator
-from typing import TYPE_CHECKING, TypedDict
-from unittest.mock import patch
+from typing import TypedDict
 
 import numpy as np
 import xarray as xr
-from botocore.session import Session
-from moto.server import ThreadedMotoServer
 
 from satellite_consumer.config import Coordinates
 from satellite_consumer.storage import create_empty_zarr, get_fs, write_to_zarr
+from satellite_consumer.test_mocks import mocks3
 
-if TYPE_CHECKING:
-    from botocore.client import BaseClient as BotocoreClient
-
-
-@contextlib.contextmanager
-def mocks3() -> Generator[str]:
-    server = ThreadedMotoServer()
-    server.start()
-    with patch.dict("os.environ", {
-        "AWS_ACCESS_KEY_ID": "test",
-        "AWS_SECRET_ACCESS_KEY": "test",
-        "AWS_SECURITY_TOKEN": "test",
-        "AWS_SESSION_TOKEN": "test",
-        "AWS_ENDPOINT_URL": "http://localhost:5000",
-        "AWS_DEFAULT_REGION": "us-east-1",
-    }, clear=True):
-        s3_client: BotocoreClient = Session().create_client(
-            service_name="s3", region_name="us-east-1",
-        )
-        s3_client.create_bucket(Bucket="test-bucket")
-        try:
-            yield "s3://test-bucket/"
-        finally:
-            s3_client.close()
-            server.stop()
 
 class TestStorage(unittest.TestCase):
     """Test the storage functions."""
@@ -84,7 +55,7 @@ class TestStorage(unittest.TestCase):
                     self.assertListEqual(
                         list(store_da.dims),
                         ["time", "y_geostationary", "x_geostationary", "variable"],
-                        msg="Dimension ordering of emtpy store is incorrect",
+                        msg="Dimension ordering of empty store is incorrect",
                     )
                     for coord in list(coords.to_dict().keys()):
                         self.assertListEqual(
