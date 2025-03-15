@@ -1,4 +1,5 @@
-name: Non-Default Branch Push CI (Python)
+name: Branch CI (Python)
+run-name: 'Branch CI for ${{ github.event.head_commit.message }} by ${{ github.actor }}'
 
 on:  
   push:
@@ -7,7 +8,7 @@ on:
 
 jobs:
   branch-ci:
-    uses: openclimatefix/.github/.github/workflows/nondefault_branch_push_ci_python.yml@main
+    uses: openclimatefix/.github/.github/workflows/branch_ci.yml@main
     secrets: inherit
     with:
       enable_linting: true

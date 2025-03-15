@@ -15,6 +15,7 @@ from loguru import logger as log
 from satellite_consumer.config import (
     ArchiveCommandOptions,
     ConsumeCommandOptions,
+    MergeCommandOptions,
     SatelliteConsumerConfig,
 )
 from satellite_consumer.download_eumetsat import (
@@ -31,6 +32,7 @@ try:
 except PackageNotFoundError:
     __version__ = "v?"
 
+ add-sentry
 # Sentry initialization as per the suggestion
 sentry_sdk.init(
     dsn=os.getenv("SENTRY_DSN"), 
@@ -42,6 +44,10 @@ sentry_sdk.set_tag("version", __version__)
 
 def _consume_command(command_opts: ArchiveCommandOptions | ConsumeCommandOptions) -> None:
     """Run the download and processing pipeline."""
+
+def _consume_to_store(command_opts: ArchiveCommandOptions | ConsumeCommandOptions) -> None:
+    """Logic for the consume command (and the archive command)."""
+ main
     fs = get_fs(path=command_opts.zarr_path)
     window = command_opts.time_window
 
@@ -94,11 +100,7 @@ add-sentry
     )
 
     if command_opts.validate:
-        validate(dataset_path=command_opts.zarr_path)
-
-    if isinstance(command_opts, ConsumeCommandOptions) and command_opts.latest_zip:
-        zippath: str = create_latest_zip(dst=command_opts.zarr_path)
-        log.info(f"Created latest.zip at {zippath}", dst=zippath)
+        validate(src=command_opts.zarr_path)
 
     if command_opts.delete_raw:
         if command_opts.workdir.startswith("s3://"):
@@ -108,8 +110,40 @@ add-sentry
                 f"Deleting {len(nat_filepaths)} raw files in {command_opts.raw_folder}",
                 num_files=len(nat_filepaths), dst=command_opts.raw_folder,
             )
+ add-sentry
             for f in nat_filepaths:
                 f.unlink()  # type: ignore
+
+            _ = [f.unlink() for f in nat_filepaths] # type:ignore
+
+def _merge_command(command_opts: MergeCommandOptions) -> None:
+    """Logic for the merge command."""
+    zarr_paths = command_opts.zarr_paths
+    log.info(
+        f"Merging {len(zarr_paths)} stores",
+        num=len(zarr_paths), consume_missing=command_opts.consume_missing,
+    )
+    fs = get_fs(path=zarr_paths[0])
+
+    for zarr_path in zarr_paths:
+        if not fs.exists(zarr_path):
+            if command_opts.consume_missing:
+                _consume_to_store(command_opts=ConsumeCommandOptions(
+                    time=dt.datetime.strptime(
+                        zarr_path.split("/")[-1].split("_")[0], "%Y%m%dT%H%M",
+                    ).replace(tzinfo=dt.UTC),
+                    satellite=command_opts.satellite,
+                    workdir=command_opts.workdir,
+                    validate=True,
+                    rescale=True, # TODO: Make this an option
+                    hrv=command_opts.hrv,
+                ))
+            else:
+                raise FileNotFoundError(f"Zarr store not found at {zarr_path}")
+
+    dst = create_latest_zip(srcs=zarr_paths)
+    log.info("Created latest.zip", dst=dst)
+ main
 
 def run(config: SatelliteConsumerConfig) -> None:
     """Run the download and processing pipeline."""
@@ -120,8 +154,14 @@ def run(config: SatelliteConsumerConfig) -> None:
         version=__version__, start_time=str(prog_start), opts=config.command_options.__str__(),
     )
 
-    if config.command == "archive" or config.command == "consume":
-        _consume_command(command_opts=config.command_options)
+    if isinstance(config.command_options, ArchiveCommandOptions):
+        _consume_to_store(command_opts=config.command_options)
+    if isinstance(config.command_options, ConsumeCommandOptions):
+        _consume_to_store(command_opts=config.command_options)
+    elif isinstance(config.command_options, MergeCommandOptions):
+        _merge_command(command_opts=config.command_options)
+    else:
+        pass
 
     runtime = dt.datetime.now(tz=dt.UTC) - prog_start
     log.info(f"Completed satellite consumer run in {runtime!s}.")

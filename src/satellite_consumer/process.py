@@ -120,7 +120,7 @@ def _map_scene_to_dataarray(
             scene.attrs[f"{channel['name']}_{attr}"] = scene[channel].attrs[attr].__repr__()
 
     da: xr.DataArray = scene.to_xarray_dataset().to_array().rename("data")
-    da.attrs.update(scene.attrs)
+    da.attrs = da.attrs | scene.attrs
 
     # Ensure DataArray has a time dimension
     da.attrs["end_time"] = pd.Timestamp(da.attrs["end_time"]).round("5 min").__str__()

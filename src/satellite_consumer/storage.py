@@ -3,6 +3,7 @@
 
 import datetime as dt
 import os
+import shutil
 import tempfile
 
 import fsspec
@@ -53,7 +54,8 @@ def write_to_zarr(
         store_da: xr.DataArray = xr.open_dataarray(dst, engine="zarr", consolidated=False)
         time_idx: int = list(store_da.coords["time"].values).index(da.coords["time"].values[0])
         log.debug("Writing dataarray to zarr store", dst=dst, time_idx=time_idx)
-        _ = da.to_zarr(store=dst, compute=True, mode="a", consolidated=False,
+        _ = da.to_dataset(name="data", promote_attrs=True).to_zarr(
+            store=dst, compute=True, mode="a", consolidated=False,
             region={
                 "time": slice(time_idx, time_idx + 1),
                 "y_geostationary": slice(0, len(store_da.coords["y_geostationary"])),
@@ -66,20 +68,26 @@ def write_to_zarr(
 
     return None
 
-def create_latest_zip(dst: str) -> str:
-    """Convert a zarr store at the given path to a zip store."""
-    fs = get_fs(path=dst)
-
+def create_latest_zip(srcs: list[str]) -> str:
+    """Convert zarr store(s) at the given path to a zip store."""
     # Open the zarr store and write it to a zip store
-    ds: xr.Dataset = xr.open_zarr(dst, consolidated=False)
+    fs = get_fs(srcs[0])
+    ds: xr.Dataset = xr.open_mfdataset(
+        srcs, consolidated=False, concat_dim="time", combine="nested",
+    )
 
-    zippath: str = dst.rsplit("/", 1)[0] + "/latest.zarr.zip"
-    with tempfile.NamedTemporaryFile(suffix=".zip") as fsrc:
+    zippath: str = srcs[0].rsplit("/", 1)[0] + "/latest.zarr.zip"
+    dst: str = zippath.split("s3://")[-1]
+    with tempfile.TemporaryDirectory(suffix=".zarr") as zarrdir,\
+        tempfile.NamedTemporaryFile(suffix=".zarr.zip") as fsrc:
         try:
-            _ = ds.to_zarr(store=zarr.storage.ZipStore(path=fsrc.name, mode="w")) # type: ignore
-            fs.put(lpath=fsrc.name, rpath=zippath, overwrite=True)
+            _ = ds.to_zarr(store=dst, consolidated=False, mode="w")
+            log.debug("Zipping zarr store", src=zarrdir, dst=fsrc.name)
+            shutil.make_archive(fsrc.name, "zip", zarrdir)
+            log.debug("Copying zipped store to destination", src=fsrc.name, dst=zippath)
+            fs.put(lpath=fsrc.name, rpath=dst, overwrite=True)
         except Exception as e:
-            raise OSError(f"Error writing dataset to zip store '{zippath}': {e}") from e
+            raise OSError(f"Error writing dataset to zip store '{dst}': {e}") from e
     return zippath
 
 
@@ -90,6 +98,7 @@ def create_empty_zarr(dst: str, coords: Coordinates) -> xr.DataArray:
     The array is initialized with NaN values.
     """
     group: zarr.Group = zarr.create_group(dst, overwrite=True)
+
     time_zarray: zarr.Array = group.create_array(
         name="time", dimension_names=["time"],
         shape=(len(coords.time),), dtype="int", attributes={
@@ -97,13 +106,7 @@ def create_empty_zarr(dst: str, coords: Coordinates) -> xr.DataArray:
         },
     )
     time_zarray[:] = coords.time
-    x_geo_zarray = group.create_array(
-        name="x_geostationary", dimension_names=["x_geostationary"],
-        shape=(len(coords.x_geostationary),), dtype="float", attributes={
-            "coordinate_reference_system": "geostationary",
-        },
-    )
-    x_geo_zarray[:] = coords.x_geostationary
+
     y_geo_zarray = group.create_array(
         name="y_geostationary", dimension_names=["y_geostationary"],
         shape=(len(coords.y_geostationary),), dtype="float", attributes={
@@ -111,16 +114,26 @@ def create_empty_zarr(dst: str, coords: Coordinates) -> xr.DataArray:
         },
     )
     y_geo_zarray[:] = coords.y_geostationary
+
+    x_geo_zarray = group.create_array(
+        name="x_geostationary", dimension_names=["x_geostationary"],
+        shape=(len(coords.x_geostationary),), dtype="float", attributes={
+            "coordinate_reference_system": "geostationary",
+        },
+    )
+    x_geo_zarray[:] = coords.x_geostationary
+
     var_zarray = group.create_array(
         name="variable", dimension_names=["variable"], shape=(len(coords.variable),), dtype="str",
     )
     var_zarray[:] = coords.variable
 
     _ = group.create_array(
-        name="data", dimension_names=coords.dims(),
-        dtype="float", shape=coords.shape(), chunks=(1, 3712, 3712, 11), fill_value=np.nan,
-        config={"write_empty_chunks": False},
+        name="data", dimension_names=coords.dims(), dtype="float",
+        shape=coords.shape(), chunks=coords.chunks(), shards=coords.shards(),
+        fill_value=np.nan, config={"write_empty_chunks": False},
     )
+
     da = xr.open_dataarray(dst, engine="zarr", consolidated=False)
     return da
 
