@@ -3,6 +3,7 @@
 
 import datetime as dt
 import os
+import shutil
 import tempfile
 
 import fsspec
@@ -77,10 +78,12 @@ def create_latest_zip(srcs: list[str]) -> str:
 
     zippath: str = srcs[0].rsplit("/", 1)[0] + "/latest.zarr.zip"
     dst: str = zippath.split("s3://")[-1]
-    with tempfile.NamedTemporaryFile(suffix=".zip") as fsrc,\
-        zarr.storage.ZipStore(path=fsrc.name, mode="w") as store:
+    with tempfile.TemporaryDirectory(suffix=".zarr") as zarrdir,\
+        tempfile.NamedTemporaryFile(suffix=".zarr.zip") as fsrc:
         try:
-            _ = ds.to_zarr(store=store) # type: ignore
+            _ = ds.to_zarr(store=dst, consolidated=False, mode="w")
+            log.debug("Zipping zarr store", src=zarrdir, dst=fsrc.name)
+            shutil.make_archive(fsrc.name, "zip", zarrdir)
             log.debug("Copying zipped store to destination", src=fsrc.name, dst=zippath)
             fs.put(lpath=fsrc.name, rpath=dst, overwrite=True)
         except Exception as e:
