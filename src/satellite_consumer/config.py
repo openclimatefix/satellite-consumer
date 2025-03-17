@@ -17,8 +17,8 @@ class Coordinates:
     """
 
     time: list[np.datetime64]
-    x_geostationary: list[float]
     y_geostationary: list[float]
+    x_geostationary: list[float]
     variable: list[str]
 
     def to_dict(self) -> dict[str, list[float] | list[str] | list[np.datetime64]]:
@@ -33,11 +33,58 @@ class Coordinates:
         """Get the dimensions of the dataset."""
         return list(self.to_dict().keys())
 
+    def shards(self) -> tuple[int, ...]:
+        """Get the shard size for each dimension.
+
+        In order for the validate function to work, the shard size must be
+        1 along the dimensions that are not core input dimensions;
+        'time' and 'variable'.
+        """
+        return tuple([
+            1 if k in ["time", "variable"]
+            else len(v)
+            for k, v in self.to_dict().items()
+        ])
+
+    def chunks(self) -> tuple[int, ...]:
+        """Get the chunk size for each dimension."""
+        return tuple([
+            1 if k in ["time", "variable"]
+            else 116 if k in ["x_geostationary", "y_geostationary"]
+            else len(v)
+            for k, v in self.to_dict().items()
+        ])
+
+    def __post_init__(self) -> None:
+        """Perform some validation on the input data."""
+        if len(self.time) == 0:
+            raise ValueError("Time coordinate must have at least one value.")
+        if len(self.x_geostationary) == 0:
+            raise ValueError("X coordinate must have at least one value.")
+        if len(self.y_geostationary) == 0:
+            raise ValueError("Y coordinate must have at least one value.")
+        if len(self.variable) == 0:
+            raise ValueError("Variable coordinate must have at least one value.")
+        self.x_geostationary = sorted(self.x_geostationary, reverse=True)
+        self.y_geostationary = sorted(self.y_geostationary)
+        self.variable = sorted(self.variable)
+
 class Command(StrEnum):
     """The available commands for the satellite consumer."""
 
-    archive = auto()
-    consume = auto()
+    ARCHIVE = auto()
+    """Download and process all scans into an archive store for a given month.
+
+    Archive stores are a single Zarr store containing data for all scans
+    in the given time period.
+    """
+    CONSUME = auto()
+    """Download and process a single scan into a scan store.
+
+    Scan stores are a single Zarr store containing data for an individual scan.
+    """
+    MERGE = auto()
+    """Merge multiple consumed stores into a single zarr store."""
 
 @dataclasses.dataclass
 class ArchiveCommandOptions:
@@ -120,7 +167,7 @@ class ConsumeCommandOptions:
     satellite: str
     """The satellite to consume data from."""
     time: dt.datetime | None = None
-    """The time to download data for. Pulls 3.5 hours of data up to this time."""
+    """The time to download data for."""
     delete_raw: bool = False
     """Whether to delete the raw data after downloading it."""
     validate: bool = False
@@ -134,8 +181,6 @@ class ConsumeCommandOptions:
 
     Can be either a local path or an S3 path (s3://bucket-name/path).
     """
-    latest_zip: bool = False
-    """Whether to zip the zarr store into a latest.zarr.zip after creating it."""
     num_workers: int = 1
     """The number of workers to use for downloading and processing the data."""
 
@@ -172,7 +217,9 @@ class ConsumeCommandOptions:
     def time_window(self) -> tuple[dt.datetime, dt.datetime]:
         """Get the time window for the given time."""
         # Round the start time down to the nearest interval given by the channel cadence
-        start: dt.datetime = (self.time - pd.DateOffset(hours=3, minutes=30)) # type:ignore
+        start: dt.datetime = (
+            self.time - pd.DateOffset(minutes=self.satellite_metadata.cadence_mins) # type: ignore
+        )
         return start, self.time # type:ignore  # safe due to post_init
 
     @property
@@ -199,6 +246,65 @@ class ConsumeCommandOptions:
             variable=[ch.name for ch in SEVIRI_CHANNELS if ch.is_high_res == self.hrv],
         )
 
+@dataclasses.dataclass
+class MergeCommandOptions:
+    """Options for the merge command."""
+
+    satellite: str
+    """The satellite to merge data for."""
+    window_mins: int = 210
+    """The time window of consumed data to merge."""
+    window_end: dt.datetime | None = None
+    """The end time of the time window to merge data for."""
+    workdir: str = "/mnt/disks/sat"
+    """The parent folder to store downloaded and processed data in.
+
+    Can be either a local path or an S3 path (s3://bucket-name/path).
+    """
+    hrv: bool = False
+    """Whether to merge the high resolution channel data (defaults to low res)."""
+    consume_missing: bool = False
+    """Whether to consume missing data instead of erroring before merging."""
+
+    def __post_init__(self) -> None:
+        """Perform some validation on the input data."""
+        if self.satellite not in SATELLITE_METADATA:
+            raise ValueError(
+                f"Invalid satellite '{self.satellite}'. Must be one of {SATELLITE_METADATA.keys()}",
+            )
+        if self.window_mins <= 0:
+            raise ValueError("Window size must be positive.")
+        if self.window_end is not None:
+            if self.window_end.replace(tzinfo=dt.UTC) > dt.datetime.now(tz=dt.UTC):
+                raise ValueError("Window end must be in the past.")
+        else:
+            self.window_end = dt.datetime.now(tz=dt.UTC)
+
+    @property
+    def time_window(self) -> tuple[dt.datetime, dt.datetime]:
+        """Get the time window for the given window end and size."""
+        end: dt.datetime = self.window_end # type: ignore
+        start: dt.datetime = end - pd.DateOffset(minutes=self.window_mins)
+        return start, end
+
+    @property
+    def zarr_paths(self) -> list[str]:
+        """Get the path to the zarr stores for the given time window."""
+        resstr: str = "hrv" if self.hrv else "nonhrv"
+        return [
+            f"{self.workdir}/data/{ts.strftime('%Y%m%dT%H%M')}_{resstr}.zarr"
+            for ts in pd.date_range(
+                start=self.time_window[0], end=self.time_window[1],
+                freq=f"{SATELLITE_METADATA[self.satellite].cadence_mins}min",
+                inclusive="right",
+            )
+        ]
+
+    @property
+    def merged_path(self) -> str:
+        """Get the path to the merged zarr store for the given time window."""
+        return f"{self.workdir}/data/latest.zarr.zip"
+
 
 @dataclasses.dataclass
 class SatelliteConsumerConfig:
@@ -206,7 +312,7 @@ class SatelliteConsumerConfig:
 
     command: Command
     """The operational mode of the consumer."""
-    command_options:  ArchiveCommandOptions | ConsumeCommandOptions
+    command_options:  ArchiveCommandOptions | ConsumeCommandOptions | MergeCommandOptions
     """Options for the chosen command."""
 
 
