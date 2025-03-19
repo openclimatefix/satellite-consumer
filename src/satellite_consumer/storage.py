@@ -72,22 +72,34 @@ def create_latest_zip(srcs: list[str]) -> str:
     """Convert zarr store(s) at the given path to a zip store."""
     # Open the zarr store and write it to a zip store
     fs = get_fs(srcs[0])
-    ds: xr.Dataset = xr.open_mfdataset(
-        srcs, consolidated=False, concat_dim="time", combine="nested",
-    )
-
     zippath: str = srcs[0].rsplit("/", 1)[0] + "/latest.zarr.zip"
+
     dst: str = zippath.split("s3://")[-1]
-    with tempfile.TemporaryDirectory(suffix=".zarr") as zarrdir,\
-        tempfile.NamedTemporaryFile(suffix=".zarr.zip") as fsrc:
-        try:
-            _ = ds.to_zarr(store=dst, consolidated=False, mode="w")
-            log.debug("Zipping zarr store", src=zarrdir, dst=fsrc.name)
-            shutil.make_archive(fsrc.name, "zip", zarrdir)
-            log.debug("Copying zipped store to destination", src=fsrc.name, dst=zippath)
-            fs.put(lpath=fsrc.name, rpath=dst, overwrite=True)
-        except Exception as e:
-            raise OSError(f"Error writing dataset to zip store '{dst}': {e}") from e
+    with tempfile.TemporaryDirectory() as tmpdir:
+        for i, src in enumerate(srcs):
+            try:
+                ds = xr.open_dataset(src, consolidated=False)
+                _ = ds.to_zarr(
+                    store=tmpdir+"/merged.zarr",
+                    consolidated=False,
+                    mode="w" if i==0 else "a-",
+                    append_dim=None if i==0 else "time",
+                )
+                log.debug(
+                    "Written dataset to merged store",
+                    src=src, num=f"{i+1}/{len(srcs)}",
+                )
+            except Exception as e:
+                raise OSError(f"Error writing dataset to merged store '{dst}': {e}") from e
+        shutil.make_archive(
+            base_name=tmpdir+"/merged_zipped",
+            format="zip",
+            root_dir=tmpdir,
+            base_dir="merged.zarr",
+        )
+        log.debug("Zipped merged store")
+        fs.put(lpath=tmpdir+"/merged_zipped.zip", rpath=dst)
+
     return zippath
 
 
