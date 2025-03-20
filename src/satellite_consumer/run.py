@@ -4,8 +4,10 @@ Consolidates the old cli_downloader, backfill_hrv and backfill_nonhrv scripts.
 """
 
 import datetime as dt
+import os
 from importlib.metadata import PackageNotFoundError, version
 
+import sentry_sdk
 import eumdac.product
 from joblib import Parallel, delayed
 from loguru import logger as log
@@ -30,10 +32,23 @@ try:
 except PackageNotFoundError:
     __version__ = "v?"
 
+
+# Sentry initialization as per the suggestion
+sentry_sdk.init(
+    dsn=os.getenv("SENTRY_DSN"), 
+    environment=os.getenv("ENVIRONMENT", "local"), 
+    traces_sample_rate=1,
+)
+sentry_sdk.set_tag("app_name", "satellite_consumer")
+sentry_sdk.set_tag("version", __version__)
+
+def _consume_command(command_opts: ArchiveCommandOptions | ConsumeCommandOptions) -> None:
+    """Run the download and processing pipeline."""
+
 def _consume_to_store(command_opts: ArchiveCommandOptions | ConsumeCommandOptions) -> None:
     """Logic for the consume command (and the archive command)."""
-    fs = get_fs(path=command_opts.zarr_path)
 
+    fs = get_fs(path=command_opts.zarr_path)
     window = command_opts.time_window
 
     product_iter = get_products_iterator(
@@ -42,11 +57,9 @@ def _consume_to_store(command_opts: ArchiveCommandOptions | ConsumeCommandOption
         end=window[1],
     )
 
-    # Use existing zarr store if it exists
     if fs.exists(command_opts.zarr_path.replace("s3://", "")):
         log.info("Using existing zarr store", dst=command_opts.zarr_path)
     else:
-        # Create new store
         log.info("Creating new zarr store", dst=command_opts.zarr_path)
         _ = create_empty_zarr(dst=command_opts.zarr_path, coords=command_opts.as_coordinates())
 
@@ -60,8 +73,11 @@ def _consume_to_store(command_opts: ArchiveCommandOptions | ConsumeCommandOption
         return nat_filepath
 
     nat_filepaths: list[str] = []
+
+
     num_skipped: int = 0
     # Iterate through all products in search
+
     for nat_filepath in Parallel(
         n_jobs=command_opts.num_workers, return_as="generator",
     )(delayed(_etl)(product) for product in product_iter):
@@ -95,6 +111,10 @@ def _consume_to_store(command_opts: ArchiveCommandOptions | ConsumeCommandOption
                 f"Deleting {len(nat_filepaths)} raw files in {command_opts.raw_folder}",
                 num_files=len(nat_filepaths), dst=command_opts.raw_folder,
             )
+
+            for f in nat_filepaths:
+                f.unlink()  # type: ignore
+
             _ = [f.unlink() for f in nat_filepaths] # type:ignore
 
 def _merge_command(command_opts: MergeCommandOptions) -> None:
@@ -125,7 +145,6 @@ def _merge_command(command_opts: MergeCommandOptions) -> None:
     dst = create_latest_zip(srcs=zarr_paths)
     log.info("Created latest.zip", dst=dst)
 
-
 def run(config: SatelliteConsumerConfig) -> None:
     """Run the download and processing pipeline."""
     prog_start = dt.datetime.now(tz=dt.UTC)
@@ -146,4 +165,3 @@ def run(config: SatelliteConsumerConfig) -> None:
 
     runtime = dt.datetime.now(tz=dt.UTC) - prog_start
     log.info(f"Completed satellite consumer run in {runtime!s}.")
-
