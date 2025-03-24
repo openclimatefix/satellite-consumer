@@ -1,7 +1,5 @@
 # Satellite Consumer
 
-⚠️ Note this repo will soon be deprecated in favour of [satellite-consumer](https://github.com/openclimatefix/satellite-consumer)
-
 **Download and convert satellite data for use in ML pipelines**
  
 [![workflows badge](https://img.shields.io/github/actions/workflow/status/openclimatefix/satellite-consumer/merged_ci.yml?label=workflow&color=FFD053)](https://github.com/openclimatefix/satellite-consumer/actions/workflows/merged_ci.yml)
