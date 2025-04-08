@@ -5,6 +5,7 @@ import datetime as dt
 import os
 import shutil
 import tempfile
+import warnings
 
 import fsspec
 import numpy as np
@@ -51,18 +52,23 @@ def write_to_zarr(
             da.attrs[key] = value.isoformat()
 
     try:
-        store_da: xr.DataArray = xr.open_dataarray(dst, engine="zarr", consolidated=False)
+        # TODO: Remove warnings catch when Zarr makes up its mind on time objects
+        with warnings.catch_warnings(action="ignore"):
+            store_da: xr.DataArray = xr.open_dataarray(dst, engine="zarr", consolidated=False)
+
         time_idx: int = list(store_da.coords["time"].values).index(da.coords["time"].values[0])
         log.debug("Writing dataarray to zarr store", dst=dst, time_idx=time_idx)
-        _ = da.to_dataset(name="data", promote_attrs=True).to_zarr(
-            store=dst, compute=True, mode="a", consolidated=False,
-            region={
-                "time": slice(time_idx, time_idx + 1),
-                "y_geostationary": slice(0, len(store_da.coords["y_geostationary"])),
-                "x_geostationary": slice(0, len(store_da.coords["x_geostationary"])),
-                "variable": "auto",
-            },
-        )
+
+        with warnings.catch_warnings(action="ignore"):
+            _ = da.to_dataset(name="data", promote_attrs=True).to_zarr(
+                store=dst, compute=True, mode="a", consolidated=False,
+                region={
+                    "time": slice(time_idx, time_idx + 1),
+                    "y_geostationary": slice(0, len(store_da.coords["y_geostationary"])),
+                    "x_geostationary": slice(0, len(store_da.coords["x_geostationary"])),
+                    "variable": "auto",
+                },
+            )
     except Exception as e:
         raise OSError(f"Error writing dataset to zarr store {dst}: {e}") from e
 
@@ -78,19 +84,21 @@ def create_latest_zip(srcs: list[str]) -> str:
     with tempfile.TemporaryDirectory() as tmpdir:
         for i, src in enumerate(srcs):
             try:
-                ds = xr.open_dataset(src, consolidated=False)
-                _ = ds.to_zarr(
-                    store=tmpdir+"/merged.zarr",
-                    consolidated=False,
-                    mode="w" if i==0 else "a-",
-                    append_dim=None if i==0 else "time",
-                )
+                store: str = tmpdir + "/merged.zarr"
+                with warnings.catch_warnings(action="ignore"):
+                    ds = xr.open_zarr(src, consolidated=False)
+                    _ = ds.to_zarr(
+                        store=store,
+                        consolidated=False,
+                        mode="w" if i==0 else "a-",
+                        append_dim=None if i==0 else "time",
+                    )
                 log.debug(
                     "Written dataset to merged store",
                     src=src, num=f"{i+1}/{len(srcs)}",
                 )
             except Exception as e:
-                raise OSError(f"Error writing dataset to merged store '{dst}': {e}") from e
+                raise OSError(f"Error writing dataset to merged store '{store}': {e}") from e
         shutil.make_archive(
             base_name=tmpdir+"/merged_zipped",
             format="zip",
@@ -135,10 +143,12 @@ def create_empty_zarr(dst: str, coords: Coordinates) -> xr.DataArray:
     )
     x_geo_zarray[:] = coords.x_geostationary
 
-    var_zarray = group.create_array(
-        name="variable", dimension_names=["variable"], shape=(len(coords.variable),), dtype="str",
-    )
-    var_zarray[:] = coords.variable
+    # TODO: Remove this when Zarr makes up its mind on string codecs
+    with warnings.catch_warnings(action="ignore"):
+        var_zarray = group.create_array(
+            name="variable", dimension_names=["variable"], shape=(len(coords.variable),), dtype="str",
+        )
+        var_zarray[:] = coords.variable
 
     _ = group.create_array(
         name="data", dimension_names=coords.dims(), dtype="float",
@@ -146,7 +156,8 @@ def create_empty_zarr(dst: str, coords: Coordinates) -> xr.DataArray:
         fill_value=np.nan, config={"write_empty_chunks": False},
     )
 
-    da = xr.open_dataarray(dst, engine="zarr", consolidated=False)
+    with warnings.catch_warnings(action="ignore"):
+        da = xr.open_dataarray(dst, engine="zarr", consolidated=False)
     return da
 
 

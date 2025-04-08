@@ -3,6 +3,7 @@
 import numpy as np
 import xarray as xr
 from loguru import logger as log
+import warnings
 
 from satellite_consumer.exceptions import ValidationError
 
@@ -42,7 +43,9 @@ def validate(
             return 1.0
         return float(nulls.sum() / len(nulls))
 
-    da = xr.open_dataarray(src, engine="zarr", consolidated=False)
+    # TODO: Remove warnings catch when Zarr makes up its mind about codecs
+    with warnings.catch_warnings(action="ignore"):
+        da = xr.open_dataarray(src, engine="zarr", consolidated=False)
     if not {"x_geostationary", "y_geostationary"}.issubset(set(da.dims)):
         raise ValidationError(
             "Cannot validate dataset at path {src}. "

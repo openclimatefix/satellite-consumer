@@ -280,6 +280,23 @@ class MergeCommandOptions:
         else:
             self.window_end = dt.datetime.now(tz=dt.UTC)
 
+        if self.window_end.minute % self.satellite_metadata.cadence_mins != 0 or self.window_end.second != 0:
+            newtime: dt.datetime = (self.window_end - dt.timedelta(
+                minutes=self.window_end.minute % self.satellite_metadata.cadence_mins,
+            )).replace(second=0, microsecond=0)
+            log.debug(
+                "Input window end is not a multiple of the chosen satellite's image cadence. " + \
+                "Adjusting to nearest image time.",
+                input_window_end=str(self.window_end),
+                adjusted_time=str(newtime),
+            )
+            self.window_end = newtime
+
+    @property
+    def satellite_metadata(self) -> "SatelliteMetadata":
+        """Get the metadata for the chosen satellite."""
+        return SATELLITE_METADATA[self.satellite]
+
     @property
     def time_window(self) -> tuple[dt.datetime, dt.datetime]:
         """Get the time window for the given window end and size."""
