@@ -87,7 +87,7 @@ class ConsumeCommandOptions:
 
     satellite: str
     """The satellite to consume data from."""
-    time: dt.datetime = dt.datetime.now(tz=dt.UTC)
+    time: dt.datetime = dataclasses.field(default_factory=dt.datetime.now)
     """The time to download data for."""
     window_mins: int = 0
     """The time window to fetch data for (defaults to a single time)."""
@@ -166,11 +166,11 @@ class ConsumeCommandOptions:
             case 0, 0:
                 windowstr: str = self.time.strftime("%Y%m%dT%H%M")
             case _, 0:
-                windowstr: str = f"{self.time:%Y%m%dT%H%M}_window{self.window_mins}mins"
+                windowstr = f"{self.time:%Y%m%dT%H%M}_window{self.window_mins}mins"
             case _, 1:
-                windowstr: str = f"{self.time:%Y%m}"
+                windowstr = f"{self.time:%Y%m}"
             case _, _:
-                windowstr: str = f"{self.time:%Y%m}_window{self.window_months}months"
+                windowstr = f"{self.time:%Y%m}_window{self.window_months}months"
 
         return f"{self.workdir}/data/{windowstr}_{resstr}.zarr"
 

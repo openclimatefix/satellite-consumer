@@ -36,7 +36,7 @@ def cli_entrypoint() -> None:
             default=dt.datetime.now(tz=dt.UTC),
     )
     window_ex_group = consume_parser.add_mutually_exclusive_group(required=False)
-    window_ex_group.add_argument("--window-mins", 
+    window_ex_group.add_argument("--window-mins",
         type=int, help="Window size in minutes", default=0,
     )
     window_ex_group.add_argument("--window-months",
