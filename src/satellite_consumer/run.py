@@ -63,6 +63,7 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
     # Iterate through all products in search
     for nat_filepath in Parallel(
         n_jobs=command_opts.num_workers, return_as="generator",
+        prefer="threads",
     )(delayed(_etl)(product) for product in product_iter):
         if nat_filepath is None:
             num_skipped += 1
