@@ -47,7 +47,6 @@ def cli_entrypoint() -> None:
     consume_parser.add_argument("--hrv", action="store_true")
     consume_parser.add_argument("--rescale", action="store_true")
     consume_parser.add_argument("--workdir", type=str, default="/mnt/disks/sat")
-    consume_parser.add_argument("--zip", action="store_true")
     consume_parser.add_argument("--num-workers", type=int, default=1)
     consume_parser.add_argument("--eumetsat-key", type=str, required=True)
     consume_parser.add_argument("--eumetsat-secret", type=str, required=True)
