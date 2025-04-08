@@ -72,93 +72,14 @@ class Coordinates:
 class Command(StrEnum):
     """The available commands for the satellite consumer."""
 
-    ARCHIVE = auto()
-    """Download and process all scans into an archive store for a given month.
-
-    Archive stores are a single Zarr store containing data for all scans
-    in the given time period.
-    """
     CONSUME = auto()
     """Download and process a single scan into a scan store.
 
-    Scan stores are a single Zarr store containing data for an individual scan.
+    Scan stores are a single Zarr store containing data for all scana
+    withing a given time window.
     """
     MERGE = auto()
     """Merge multiple consumed stores into a single zarr store."""
-
-@dataclasses.dataclass
-class ArchiveCommandOptions:
-    """Options for the archive command."""
-
-    satellite: str
-    """The satellite to create an archive dataset for."""
-    month: str
-    """The month to create an archive dataset for (YYYY-MM)."""
-    delete_raw: bool = False
-    """Whether to delete the raw data after creating the archive dataset."""
-    validate: bool = False
-    """Whether to validate the archive dataset after creating it."""
-    hrv: bool = False
-    """Whether to pull the high resolution channel data instead of the low res."""
-    rescale: bool = False
-    """Whether to rescale the data."""
-    workdir: str = "/mnt/disks/sat"
-    """The parent folder to store downloaded and processed data in.
-
-    Can be either a local path or an S3 path (s3://bucket-name/path).
-    """
-    num_workers: int = 1
-    """The number of workers to use for downloading and processing the data."""
-
-    def __post_init__(self) -> None:
-        """Perform some validation on the input data."""
-        if self.satellite not in SATELLITE_METADATA:
-            raise ValueError(
-                f"Invalid satellite '{self.satellite}'. Must be one of {SATELLITE_METADATA.keys()}",
-            )
-        try:
-            month = dt.datetime.strptime(self.month, "%Y-%m").replace(tzinfo=dt.UTC)
-        except ValueError as e:
-            raise ValueError("Invalid month format. Must be YYYY-MM.") from e
-        if month > dt.datetime.now(tz=dt.UTC):
-            raise ValueError("Month must be in the past.")
-
-    @property
-    def satellite_metadata(self) -> "SatelliteMetadata":
-        """Get the metadata for the chosen satellite."""
-        return SATELLITE_METADATA[self.satellite]
-
-    @property
-    def time_window(self) -> tuple[dt.datetime, dt.datetime]:
-        """Get the time window for the given month."""
-        start: dt.datetime = dt.datetime.strptime(self.month, "%Y-%m").replace(tzinfo=dt.UTC)
-        end: dt.datetime = (start + pd.DateOffset(months=1, minutes=-1))
-        return start, end
-
-    @property
-    def zarr_path(self) -> str:
-        """Get the path to the zarr store for the given month."""
-        resstr: str = "hrv" if self.hrv else "nonhrv"
-        satstr: str = "" if self.satellite == "rss" else self.satellite
-        return f"{self.workdir}/data/{self.month}_{resstr}_{satstr}.zarr"
-
-    @property
-    def raw_folder(self) -> str:
-        """Get the path to the raw data folder for the given time."""
-        return f"{self.workdir}/raw"
-
-    def as_coordinates(self) -> Coordinates:
-        """Return the coordinates of the data associated with the command options."""
-        start, end = self.time_window
-        return Coordinates(
-            time=[
-                ts.to_numpy() for ts in pd.date_range(
-                start=start, end=end, freq=f"{self.satellite_metadata.cadence_mins}min",
-            )], # TODO: Determine inclusive bounds
-            y_geostationary=self.satellite_metadata.spatial_coordinates["y_geostationary"],
-            x_geostationary=self.satellite_metadata.spatial_coordinates["x_geostationary"],
-            variable=[ch.name for ch in SEVIRI_CHANNELS if ch.is_high_res == self.hrv],
-        )
 
 @dataclasses.dataclass
 class ConsumeCommandOptions:
@@ -166,8 +87,12 @@ class ConsumeCommandOptions:
 
     satellite: str
     """The satellite to consume data from."""
-    time: dt.datetime | None = None
+    time: dt.datetime = dt.datetime.now(tz=dt.UTC)
     """The time to download data for."""
+    window_mins: int = 0
+    """The time window to fetch data for (defaults to a single time)."""
+    window_months: int = 0
+    """The number of months to fetch data for (overrides window_mins)."""
     delete_raw: bool = False
     """Whether to delete the raw data after downloading it."""
     validate: bool = False
@@ -190,16 +115,16 @@ class ConsumeCommandOptions:
             raise ValueError(
                 f"Invalid satellite '{self.satellite}'. Must be one of {SATELLITE_METADATA.keys()}",
             )
-        if self.time is not None:
-            if self.time.replace(tzinfo=dt.UTC) > dt.datetime.now(tz=dt.UTC):
-                raise ValueError(f"Invalid time '{self.time}'. Must be in the past.")
-        else:
-            self.time = dt.datetime.now(tz=dt.UTC)
+
+        if self.time.replace(tzinfo=dt.UTC) > dt.datetime.now(tz=dt.UTC):
+            raise ValueError(f"Invalid time '{self.time}'. Must be in the past.")
 
         if self.time.minute % self.satellite_metadata.cadence_mins != 0 or self.time.second != 0:
-            newtime: dt.datetime = (self.time - dt.timedelta(
-                minutes=self.time.minute % self.satellite_metadata.cadence_mins,
-            )).replace(second=0, microsecond=0)
+            newtime: dt.datetime = (
+                self.time - dt.timedelta(
+                    minutes=self.time.minute % self.satellite_metadata.cadence_mins,
+                )
+            ).replace(second=0, microsecond=0)
             log.debug(
                 "Input time is not a multiple of the chosen satellite's image cadence. " + \
                 "Adjusting to nearest image time.",
@@ -207,6 +132,12 @@ class ConsumeCommandOptions:
                 adjusted_time=str(newtime),
             )
             self.time = newtime
+
+        if self.window_months > 0 and self.window_mins > 0:
+            raise ValueError("Cannot specify both window_months and window_mins.")
+        if self.window_months < 0 or self.window_mins < 0:
+            raise ValueError("Window size must be positive.")
+
 
     @property
     def satellite_metadata(self) -> "SatelliteMetadata":
@@ -216,17 +147,32 @@ class ConsumeCommandOptions:
     @property
     def time_window(self) -> tuple[dt.datetime, dt.datetime]:
         """Get the time window for the given time."""
-        # Round the start time down to the nearest interval given by the channel cadence
-        start: dt.datetime = (
-            self.time - pd.DateOffset(minutes=self.satellite_metadata.cadence_mins) # type: ignore
-        )
-        return start, self.time # type:ignore  # safe due to post_init
+        if self.window_months > 0:
+            # Ignore the window_mins if window_months is set
+            start: dt.datetime = self.time.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            end: dt.datetime = start + pd.DateOffset(months=self.window_months)
+        else:
+            start = self.time
+            end = self.time + pd.DateOffset(
+                minutes=self.window_mins + self.satellite_metadata.cadence_mins,
+            )
+        return start, end
 
     @property
     def zarr_path(self) -> str:
         """Get the path to the zarr store for the given time."""
         resstr: str = "hrv" if self.hrv else "nonhrv"
-        return f"{self.workdir}/data/{self.time.strftime('%Y%m%dT%H%M')}_{resstr}.zarr" # type:ignore
+        match self.window_mins, self.window_months:
+            case 0, 0:
+                windowstr: str = self.time.strftime("%Y%m%dT%H%M")
+            case _, 0:
+                windowstr: str = f"{self.time:%Y%m%dT%H%M}_window{self.window_mins}mins"
+            case _, 1:
+                windowstr: str = f"{self.time:%Y%m}"
+            case _, _:
+                windowstr: str = f"{self.time:%Y%m}_window{self.window_months}months"
+
+        return f"{self.workdir}/data/{windowstr}_{resstr}.zarr"
 
     @property
     def raw_folder(self) -> str:
@@ -237,6 +183,11 @@ class ConsumeCommandOptions:
         """Return the coordinates of the data associated with the command options."""
         start, end = self.time_window
         return Coordinates(
+            # The bounds are "inclusive='right' here because for historical reasons
+            # the image time is set to be the end time of the scan (rounded to the
+            # satellite's cadence) rather than the start...
+            # This means functionally that the time coordinates in the zarr store
+            # do not line up with the time coordinates of the file names!
             time=[ts.to_numpy() for ts in pd.date_range(
                 inclusive="right", start=start, end=end,
                 freq=f"{self.satellite_metadata.cadence_mins}min",
@@ -330,7 +281,7 @@ class SatelliteConsumerConfig:
 
     command: Command
     """The operational mode of the consumer."""
-    command_options:  ArchiveCommandOptions | ConsumeCommandOptions | MergeCommandOptions
+    command_options: ConsumeCommandOptions | MergeCommandOptions
     """Options for the chosen command."""
 
 
