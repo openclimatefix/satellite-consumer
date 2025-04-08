@@ -280,7 +280,8 @@ class MergeCommandOptions:
         else:
             self.window_end = dt.datetime.now(tz=dt.UTC)
 
-        if self.window_end.minute % self.satellite_metadata.cadence_mins != 0 or self.window_end.second != 0:
+        if self.window_end.minute % self.satellite_metadata.cadence_mins != 0 \
+                or self.window_end.second != 0:
             newtime: dt.datetime = (self.window_end - dt.timedelta(
                 minutes=self.window_end.minute % self.satellite_metadata.cadence_mins,
             )).replace(second=0, microsecond=0)

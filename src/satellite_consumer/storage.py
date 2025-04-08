@@ -146,7 +146,8 @@ def create_empty_zarr(dst: str, coords: Coordinates) -> xr.DataArray:
     # TODO: Remove this when Zarr makes up its mind on string codecs
     with warnings.catch_warnings(action="ignore"):
         var_zarray = group.create_array(
-            name="variable", dimension_names=["variable"], shape=(len(coords.variable),), dtype="str",
+            name="variable", dimension_names=["variable"],
+            shape=(len(coords.variable),), dtype="str",
         )
         var_zarray[:] = coords.variable
 

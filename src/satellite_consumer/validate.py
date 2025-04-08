@@ -1,9 +1,10 @@
 """Functions for validating the quality of the data in a dataset."""
 
+import warnings
+
 import numpy as np
 import xarray as xr
 from loguru import logger as log
-import warnings
 
 from satellite_consumer.exceptions import ValidationError
 
