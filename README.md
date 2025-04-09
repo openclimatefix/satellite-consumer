@@ -71,7 +71,7 @@ options that are shared between all commands:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SATCONS_COMMAND` |  | The command to run (consume/archive/merge). |
+| `SATCONS_COMMAND` |  | The command to run (consume/merge). |
 | `SATCONS_SATELLITE` | | The satellite to consume data from. |
 | `SATCONS_WORKDIR` | `/mnt/disks/sat` | The working directory. In the container, this is set to `/work` for easy mounting. |
 | `SATCONS_HRV` | `false` | Whether to download the HRV channel. |
@@ -82,21 +82,13 @@ Each command then has its own set of configuration options:
 
 **Consume:**
 
-*Downloads a single scan for a given time into it's own store in the working directory.*
+*Downloads scans for a given time and window into a zarr store in the given working directory.*
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SATCONS_TIME` | | The time to consume data for (when using the `consume` command). Leave unset to download latest available. | 
-| `SATCONS_VALIDATE` | `false` | Whether to validate the downloaded data. |
-| `SATCONS_RESCALE` | `false` | Whether to rescale the downloaded data to the unit interval. |
-
-**Archive:**
-
-*Downloads all scans for a given month into a single store in the working directory.*
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `SATCONS_MONTH` | | The month to consume data for (when using the `archive` command). |
+| `SATCONS_WINDOW_MINS` | `0` | The time window to consume data for in minutes (defaults to a single scan). |
+| `SATCONS_WINDOW_MONTHS` | `0` | The number of months to consume data for (takes precedence over `SATCONS_WINDOW_MINS`). |
 | `SATCONS_VALIDATE` | `false` | Whether to validate the downloaded data. |
 | `SATCONS_RESCALE` | `false` | Whether to rescale the downloaded data to the unit interval. |
 | `SATCONS_NUM_WORKERS` | `1` | The number of workers to use for processing. |
