@@ -162,6 +162,7 @@ class ConsumeCommandOptions:
     def zarr_path(self) -> str:
         """Get the path to the zarr store for the given time."""
         resstr: str = "hrv" if self.hrv else "nonhrv"
+        satstr: str = "" if self.satellite == "rss" else f"_{self.satellite}"
         match self.window_mins, self.window_months:
             case 0, 0:
                 windowstr: str = self.time.strftime("%Y%m%dT%H%M")
@@ -172,7 +173,7 @@ class ConsumeCommandOptions:
             case _, _:
                 windowstr = f"{self.time:%Y%m}_window{self.window_months}months"
 
-        return f"{self.workdir}/data/{windowstr}_{resstr}.zarr"
+        return f"{self.workdir}/data/{windowstr}_{resstr}{satstr}.zarr"
 
     @property
     def raw_folder(self) -> str:
