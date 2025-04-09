@@ -11,7 +11,6 @@ from joblib import Parallel, delayed
 from loguru import logger as log
 
 from satellite_consumer.config import (
-    ArchiveCommandOptions,
     ConsumeCommandOptions,
     MergeCommandOptions,
     SatelliteConsumerConfig,
@@ -30,7 +29,7 @@ try:
 except PackageNotFoundError:
     __version__ = "v?"
 
-def _consume_to_store(command_opts: ArchiveCommandOptions | ConsumeCommandOptions) -> None:
+def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
     """Logic for the consume command (and the archive command)."""
     fs = get_fs(path=command_opts.zarr_path)
 
@@ -64,6 +63,7 @@ def _consume_to_store(command_opts: ArchiveCommandOptions | ConsumeCommandOption
     # Iterate through all products in search
     for nat_filepath in Parallel(
         n_jobs=command_opts.num_workers, return_as="generator",
+        prefer="threads",
     )(delayed(_etl)(product) for product in product_iter):
         if nat_filepath is None:
             num_skipped += 1
@@ -135,8 +135,6 @@ def run(config: SatelliteConsumerConfig) -> None:
         version=__version__, start_time=str(prog_start), opts=config.command_options.__str__(),
     )
 
-    if isinstance(config.command_options, ArchiveCommandOptions):
-        _consume_to_store(command_opts=config.command_options)
     if isinstance(config.command_options, ConsumeCommandOptions):
         _consume_to_store(command_opts=config.command_options)
     elif isinstance(config.command_options, MergeCommandOptions):

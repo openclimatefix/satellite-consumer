@@ -53,6 +53,11 @@ def get_products_iterator(
         raise DownloadError(
             f"Error searching for products for '{sat_metadata.product_id}': '{e}'",
         ) from e
+    if search_results.total_results == 0:
+        raise DownloadError(
+            f"No products found for {sat_metadata.product_id} "
+            f"in the given time range '{start!s}-{end!s}.",
+        )
     if (1 - search_results.total_results/expected_products_count) > missing_product_threshold:
         raise DownloadError(
             f"Threshold for missing products exceeded: "
