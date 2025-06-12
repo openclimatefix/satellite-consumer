@@ -10,7 +10,7 @@ from satellite_consumer.exceptions import ValidationError
 
 
 def validate(
-        src: str,
+        src: str | xr.DataArray,
         nans_in_check_region_threshold: float = 0.05,
         images_failing_nan_check_threshold: float = 0,
         check_region_xy_slices: tuple[slice, slice] = (
@@ -46,7 +46,9 @@ def validate(
 
     # TODO: Remove warnings catch when Zarr makes up its mind about codecs
     with warnings.catch_warnings(action="ignore"):
-        da = xr.open_dataarray(src, engine="zarr", consolidated=False)
+        da: xr.DataArray = src if isinstance(src, xr.DataArray) else xr.open_dataarray(
+            src, engine="zarr", consolidated=False,
+        )
     if not {"x_geostationary", "y_geostationary"}.issubset(set(da.dims)):
         raise ValidationError(
             "Cannot validate dataset at path {src}. "

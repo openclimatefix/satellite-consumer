@@ -44,12 +44,13 @@ def cli_entrypoint() -> None:
     )
     consume_parser.add_argument("--delete-raw", action="store_true")
     consume_parser.add_argument("--validate", action="store_true")
-    consume_parser.add_argument("--hrv", action="store_true")
+    consume_parser.add_argument("--resolution", type=int, default=3000)
     consume_parser.add_argument("--rescale", action="store_true")
     consume_parser.add_argument("--workdir", type=str, default="/mnt/disks/sat")
     consume_parser.add_argument("--num-workers", type=int, default=1)
     consume_parser.add_argument("--eumetsat-key", type=str, required=True)
     consume_parser.add_argument("--eumetsat-secret", type=str, required=True)
+    consume_parser.add_argument("--icechunk", action="store_true")
 
     merge_parser = subparsers.add_parser("merge",
         help="Merge satellite data for a given window",
@@ -63,7 +64,7 @@ def cli_entrypoint() -> None:
         help="End of merge window (YYYY-MM-DDTHH:MM:SS)",
     )
     merge_parser.add_argument("--workdir", type=str, default="/mnt/disks/sat")
-    merge_parser.add_argument("--hrv", action="store_true")
+    merge_parser.add_argument("--resolution", type=int, default=3000)
     merge_parser.add_argument("--consume-missing", action="store_true")
 
     args = parser.parse_args()
@@ -82,16 +83,17 @@ def cli_entrypoint() -> None:
                 window_months=args.window_months,
                 delete_raw=args.delete_raw,
                 validate=args.validate,
-                hrv=args.hrv,
+                resolution=args.resolution,
                 rescale=args.rescale,
                 workdir=args.workdir,
+                icechunk=args.icechunk,
             )
         case Command.MERGE:
             command_opts = MergeCommandOptions(
                 satellite=args.satellite,
                 window_mins=args.window_mins,
                 window_end=args.window_end,
-                hrv=args.hrv,
+                resolution=args.resolution,
                 workdir=args.workdir,
                 consume_missing=args.consume_missing,
             )
@@ -130,10 +132,11 @@ def env_entrypoint() -> None:
                     window_months=int(os.getenv("SATCONS_WINDOW_MONTHS", default="0")),
                     delete_raw=os.getenv("SATCONS_DELETE_RAW", "false").lower() == "true",
                     validate=os.getenv("SATCONS_VALIDATE", "false").lower() == "true",
-                    hrv=os.getenv("SATCONS_HRV", "false").lower() == "true",
+                    resolution=int(os.getenv("SATCONS_RESOLUTION", default="3000")),
                     rescale=os.getenv("SATCONS_RESCALE", "false").lower() == "true",
                     workdir=os.getenv("SATCONS_WORKDIR", "/mnt/disks/sat"),
                     num_workers=int(os.getenv("SATCONS_NUM_WORKERS", default="1")),
+                    icechunk=os.getenv("SATCONS_ICECHUNK", "false").lower() == "true",
                 )
 
             case Command.MERGE:
@@ -150,7 +153,7 @@ def env_entrypoint() -> None:
                     satellite=os.environ["SATCONS_SATELLITE"],
                     window_mins=int(os.getenv("SATCONS_WINDOW_MINS", default="210")),
                     window_end=window_end,
-                    hrv=os.getenv("SATCONS_HRV", "false").lower() == "true",
+                    resolution=int(os.getenv("SATCONS_RESOLUTION", default="3000")),
                     workdir=os.getenv("SATCONS_WORKDIR", "/mnt/disks/sat"),
                     consume_missing=os.getenv("SATCONS_CONSUME_MISSING", "false").lower() == "true",
                 )

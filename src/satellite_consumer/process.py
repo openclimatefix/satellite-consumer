@@ -1,13 +1,18 @@
 """Functions for processing satellite data."""
 
+import datetime as dt
+from typing import Any
+
+import hdf5plugin  # type: ignore # noqa: F401
 import numpy as np
 import pandas as pd
 import pyproj
 import satpy
 import xarray as xr
+import yaml
 from loguru import logger as log
 
-from satellite_consumer.config import SEVIRI_CHANNELS
+from satellite_consumer.config import SpectralChannelMetadata
 
 OSGB, WGS84 = (27700, 4326)
 transformer: pyproj.Transformer = pyproj.Transformer.from_crs(crs_from=WGS84, crs_to=OSGB)
@@ -23,39 +28,44 @@ See (see https://satpy.readthedocs.io/en/stable/_modules/satpy/scene.html)
 """
 
 
-def process_nat(
-    path: str,
-    hrv: bool = False,
+def process_raw(
+    paths: list[str],
+    channels: list[SpectralChannelMetadata],
+    resolution_meters: int,
     normalize: bool = True,
 ) -> xr.DataArray:
-    """Process a `.nat` file into an xarray dataset.
+    """Process a set of raw files into an xarray dataset.
 
     Args:
-        path: Path to the `.nat` file to open. Can be a local path or
-            S3 url e.g. `s3://bucket-name/path/to/file`.
-        hrv: Whether to process the high resolution channel data.
+        paths: List of paths to the raw files to open. Can be a local paths or
+            S3 urls e.g. `s3://bucket-name/path/to/file`.
+        channels: List of channel names to load from the raw files.
+        resolution_meters: The resolution in meters to load the data at.
         normalize: Whether to normalize the data to the unit interval [0, 1].
     """
-    log.debug("Reading raw file as a satpy Scene", hrv=hrv, src=path)
+    log.debug(
+        "Reading raw files as a satpy Scene",
+        resolution=resolution_meters, num_files=len(paths),
+    )
     try:
-        scene: satpy.Scene = satpy.Scene(filenames={"seviri_l1b_native": [path]}) # type:ignore
-        scene.load([
-            c.name for c in SEVIRI_CHANNELS
-            if (c.is_high_res and hrv)
-            or (not c.is_high_res and not hrv)
-        ])
+        loader: str = "seviri_l1b_native" if paths[0].endswith(".nat") else "fci_l1c_nc"
+        scene: satpy.Scene = satpy.Scene(filenames={loader: paths}) # type:ignore
+        scene.load(
+            [c.name for c in channels if resolution_meters in c.resolution_meters],
+            resolution=resolution_meters if resolution_meters < 3000 else "*",
+        )
     except Exception as e:
-        raise OSError(f"Error reading '{path}' as satpy Scene: {e}") from e
+        raise OSError(f"Error reading paths as satpy Scene: {e}") from e
 
     try:
-        log.debug("Converting Scene to dataarray", src=path, normalize=normalize)
+        log.debug("Converting Scene to dataarray", normalize=normalize)
         da: xr.DataArray = _map_scene_to_dataarray(
             scene=scene,
             crop_region=None,
             calculate_osgb=False,
         )
     except Exception as e:
-        raise ValueError(f"Error converting '{path!s}' to DataArray: {e}") from e
+        raise ValueError(f"Error converting paths to DataArray: {e}") from e
 
     if normalize:
         # Rescale the data, save as dataarray
@@ -152,6 +162,9 @@ def _map_scene_to_dataarray(
         chunks={"time": 1, "y_geostationary": -1, "x_geostationary": -1, "variable": 1},
     ).sortby(["variable", "y_geostationary"]).sortby("x_geostationary", ascending=False)
 
+    da.attrs = _serialize_attrs(da.attrs)
+    log.debug("Attributes", **da.attrs)
+
     return da
 
 
@@ -184,4 +197,41 @@ def _normalize(da: xr.DataArray) -> xr.DataArray:
     da = da.clip(min=0, max=1).astype(np.float32)
 
     return da
+
+def _serialize_attrs(attrs: dict[str, Any]) -> dict[str, Any]:
+    """Ensure each value of dict can be serialized.
+
+    This is required before saving to Zarr because Zarr represents attrs values in a
+    JSON file (.zmetadata).
+
+    The `area` field (which is a `pyresample.geometry.AreaDefinition` object gets turned
+    into a YAML string, which can be loaded again using
+    `area_definition = pyresample.area_config.load_area_from_string(data_array.attrs['area'])`
+
+    Returns attrs dict where every value has been made serializable.
+    """
+    for key, value in attrs.items():
+        # Convert Dicts
+        if isinstance(value, dict):
+            # Convert np.float32 to Python floats (otherwise yaml.dump complains)
+            for inner_key in value:
+                inner_value = value[inner_key]
+                if isinstance(inner_value, np.floating):
+                    value[inner_key] = float(inner_value)
+            attrs[key] = yaml.dump(value)
+
+        # Convert Numpy bools
+        if isinstance(value, bool | np.bool_):
+            attrs[key] = str(value)
+        elif isinstance(value, dt.datetime):
+            attrs[key] = value.isoformat()
+        # Convert other dumpable things
+        else:
+            try:
+                attrs[key] = value.dump() # type: ignore
+            except AttributeError:
+                # If the value is not dumpable, just convert it to a string
+                attrs[key] = str(value)
+
+    return attrs
 
