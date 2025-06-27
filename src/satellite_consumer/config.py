@@ -58,9 +58,9 @@ MTG_1KM_CHANNELS: list[SpectralChannelMetadata] = [
     SpectralChannelMetadata("nir_13", [1000]),
     SpectralChannelMetadata("nir_16", [1000]),
     SpectralChannelMetadata("nir_22", [1000, 500]),
-    SpectralChannelMetadata("ir_38", [2000, 1000]),
     SpectralChannelMetadata("wv_63", [2000]),
     SpectralChannelMetadata("wv_73", [2000]),
+    SpectralChannelMetadata("ir_38", [2000, 1000]),
     SpectralChannelMetadata("ir_87", [2000]),
     SpectralChannelMetadata("ir_97", [2000]),
     SpectralChannelMetadata("ir_105", [2000, 1000]),
@@ -107,20 +107,26 @@ class Coordinates:
         'time' and 'variable'.
         """
         return tuple(
-            [1 if k in ["time", "variable"] else len(v) for k, v in self.to_dict().items()]
+            [1 if k in ["time", "variable"] else len(v) for k, v in self.to_dict().items()],
         )
 
     def chunks(self) -> tuple[int, ...]:
         """Get the chunk size for each dimension."""
+        def _get_factor_near(n: int, initial_divisor: int = 8) -> int:
+            for i in range(initial_divisor, n, 1):
+                if n % i == 0:
+                    return i
+            return 1
+
         return tuple(
             [
                 1
                 if k in ["time", "variable"]
-                else 116
+                else len(v) // _get_factor_near(len(v), initial_divisor=8)
                 if k in ["x_geostationary", "y_geostationary"]
                 else len(v)
                 for k, v in self.to_dict().items()
-            ]
+            ],
         )
 
     def __post_init__(self) -> None:
@@ -180,6 +186,8 @@ class ConsumeCommandOptions:
     """The number of workers to use for downloading and processing the data."""
     icechunk: bool = False
     """Whether to use icechunk for storage."""
+    crop_region: str = ""
+    """The name of the region to crop to. An empty string means no cropping."""
 
     def __post_init__(self) -> None:
         """Perform some validation on the input data."""
@@ -211,10 +219,16 @@ class ConsumeCommandOptions:
         if self.window_months < 0 or self.window_mins < 0:
             raise ValueError("Window size must be positive.")
 
-        if len([
-            c for c in self.satellite_metadata.channels
-            if self.resolution in c.resolution_meters
-        ]) == 0:
+        if (
+            len(
+                [
+                    c
+                    for c in self.satellite_metadata.channels
+                    if self.resolution in c.resolution_meters
+                ],
+            )
+            == 0
+        ):
             raise ValueError(
                 f"No channels found for resolution {self.resolution} in the provided satellite.",
             )
@@ -243,8 +257,9 @@ class ConsumeCommandOptions:
     def zarr_path(self) -> str:
         """Get the path to the zarr store for the given time."""
         # The nonhrv and rss prefixes here are used to stay accurate with the historic datasets.
-        resstr: str = "nonhrv_" if self.resolution == 3000 else f"{self.resolution}m_"
-        satstr: str = "" if self.satellite == "rss" else f"{self.satellite}"
+        resstr: str = "nonhrv_" if self.resolution == 3000 else f"{self.resolution}m"
+        satstr: str = "" if self.satellite == "rss" else f"{self.satellite}_"
+        # cropstr: str = f"{self.crop_region}" if self.crop_region not in ["", "uk"] else ""
         match self.window_mins, self.window_months, self.icechunk:
             case 0, 0, False:
                 windowstr: str = self.time.strftime("%Y%m%dT%H%M_")
@@ -267,6 +282,8 @@ class ConsumeCommandOptions:
     def as_coordinates(self) -> Coordinates:
         """Return the coordinates of the data associated with the command options."""
         start, end = self.time_window
+        bounds = self.crop_region_geos
+
         return Coordinates(
             # The bounds are "inclusive='right' here because for historical reasons
             # the image time is set to be the end time of the scan (rounded to the
@@ -282,10 +299,72 @@ class ConsumeCommandOptions:
                     freq=f"{self.satellite_metadata.cadence_mins}min",
                 )
             ],
-            y_geostationary=self.satellite_metadata.spatial_coordinates["y_geostationary"],
-            x_geostationary=self.satellite_metadata.spatial_coordinates["x_geostationary"],
-            variable=[ch.name for ch in SEVIRI_CHANNELS if ch.is_high_res == self.hrv],
+            y_geostationary=[
+                y
+                for y in self.satellite_metadata.spatial_coordinates["y_geostationary"]
+                if (y >= bounds[1] and y <= bounds[3])
+            ]
+            if bounds is not None
+            else self.satellite_metadata.spatial_coordinates["y_geostationary"],
+            x_geostationary=[
+                x
+                for x in self.satellite_metadata.spatial_coordinates["x_geostationary"]
+                if (x >= bounds[0] and x <= bounds[2])
+            ]
+            if bounds is not None
+            else self.satellite_metadata.spatial_coordinates["x_geostationary"],
+            variable=[
+                ch.name
+                for ch in self.satellite_metadata.channels
+                if self.resolution in ch.resolution_meters
+            ],
         )
+
+    @property
+    def crop_region_geos(self) -> tuple[float, float, float, float] | None:
+        """Get the bounds of the crop region (if any) in geostationary coordinates.
+
+        Returns a float tuple of (min_x, min_y, max_x, max_y) in geostationary coordinates.
+        If no cropping is wanted, returns None.
+        """
+        crop_region_map: dict[str, dict[str, int]] = {
+            "uk": {"left": -17, "bottom": 44, "right": 11, "top": 73},
+            "west-europe": {"left": -17, "bottom": 35, "right": 26, "top": 73},
+            "india": {"left": 60, "bottom": 6, "right": 97, "top": 37},
+        }
+        if self.crop_region in crop_region_map:
+            import pyproj
+
+            transformer = pyproj.Transformer.from_proj(
+                pyproj.Proj(proj="latlong", datum="WGS84"),
+                pyproj.Proj(
+                    proj="geos",
+                    h=self.satellite_metadata.height,
+                    lon_0=self.satellite_metadata.longitude,
+                    sweep="y",
+                ),
+            )
+            geos_bounds = transformer.transform_bounds(**crop_region_map[self.crop_region])
+
+            # Check the produced bounds are within the satellite's spatial coordinates
+            cs = self.satellite_metadata.spatial_coordinates
+            if (
+                geos_bounds[0] < min(cs["x_geostationary"])
+                or geos_bounds[1] < min(cs["y_geostationary"])
+                or geos_bounds[2] > max(cs["x_geostationary"])
+                or geos_bounds[3] > max(cs["y_geostationary"])
+            ):
+                raise ValueError(
+                    f"Crop region {self.crop_region} is outside the bounds of the satellite data.",
+                )
+            return geos_bounds
+        elif self.crop_region == "":
+            return None
+        else:
+            raise ValueError(
+                f"Unknown crop region '{self.crop_region}'. "
+                f"Expected one of {list(crop_region_map.keys())}.",
+            )
 
 
 @dataclasses.dataclass
@@ -340,10 +419,16 @@ class MergeCommandOptions:
             )
             self.window_end = newtime
 
-        if len([
-            c for c in self.satellite_metadata.channels
-            if self.resolution in c.resolution_meters
-        ]) == 0:
+        if (
+            len(
+                [
+                    c
+                    for c in self.satellite_metadata.channels
+                    if self.resolution in c.resolution_meters
+                ],
+            )
+            == 0
+        ):
             raise ValueError(
                 f"No channels found for resolution {self.resolution} in the provided satellite.",
             )
@@ -405,6 +490,8 @@ class SatelliteMetadata:
     """The cadence in minutes at which the satellite images are taken."""
     longitude: float
     """The longitude of the satellite."""
+    height: float
+    """The height of the satelite above the Earth's surface in meters."""
     product_id: str
     """The product ID of the satellite image set."""
     description: str
@@ -412,11 +499,9 @@ class SatelliteMetadata:
     channels: list[SpectralChannelMetadata]
     """The spectral channels available in the satellite data set."""
     spatial_coordinates: dict[str, list[float]]
-    """The spatial coordinates of the satellite data set."""
+    """The spatial coordinates of the full satellite data set."""
     file_filter_regex: str
     """A pattern to filter what files are downloaded for the product."""
-    crop_region_nswe: tuple[float, float, float, float] | None = None
-    """Region of interest to crop to, in decimal degrees (north, south, west, east)."""
 
 
 SATELLITE_METADATA: dict[str, SatelliteMetadata] = {
@@ -424,6 +509,7 @@ SATELLITE_METADATA: dict[str, SatelliteMetadata] = {
         region="europe",
         cadence_mins=5,
         longitude=9.5,
+        height=35785831,
         product_id="EO:EUM:DAT:MSG:MSG15-RSS",
         channels=SEVIRI_CHANNELS,
         description="".join(
@@ -434,7 +520,7 @@ SATELLITE_METADATA: dict[str, SatelliteMetadata] = {
                 "The data is transmitted as High Rate transmissions in 12 spectral channels "
                 "(11 low and one high resolution). ",
                 "See https://user.eumetsat.int/catalogue/EO:EUM:DAT:MSG:MSG15-RSS",
-            )
+            ),
         ),
         spatial_coordinates={
             "x_geostationary": list(np.linspace(5565747.79846191, -5568748.01721191, 3712)),
@@ -446,6 +532,7 @@ SATELLITE_METADATA: dict[str, SatelliteMetadata] = {
         region="india",
         cadence_mins=15,
         longitude=45.5,
+        height=35785831,
         product_id="EO:EUM:DAT:MSG:HRSEVIRI-IODC",
         channels=SEVIRI_CHANNELS,
         description="".join(
@@ -454,7 +541,7 @@ SATELLITE_METADATA: dict[str, SatelliteMetadata] = {
                 "The data is transmitted as High Rate transmissions in 12 spectral channels "
                 "(11 low and one high resolution). ",
                 "See https://user.eumetsat.int/catalogue/EO:EUM:DAT:MSG:HRSEVIRI-IODC",
-            )
+            ),
         ),
         spatial_coordinates={
             "x_geostationary": list(np.linspace(5565747.79846191, -5568748.01721191, 3712)),
@@ -466,6 +553,7 @@ SATELLITE_METADATA: dict[str, SatelliteMetadata] = {
         region="europe, africa",
         cadence_mins=15,
         longitude=0.0,
+        height=35785831,
         product_id="EO:EUM:DAT:MSG:HRSEVIRI",
         channels=SEVIRI_CHANNELS,
         description="".join(
@@ -474,7 +562,7 @@ SATELLITE_METADATA: dict[str, SatelliteMetadata] = {
                 "The data is transmitted as High Rate transmissions in 12 spectral channels ",
                 "(11 low and one high resolution). ",
                 "See https://user.eumetsat.int/catalogue/EO:EUM:DAT:MSG:HRSEVIRI",
-            )
+            ),
         ),
         spatial_coordinates={
             "x_geostationary": list(np.linspace(5565747.79846191, -5568748.01721191, 3712)),
@@ -486,6 +574,7 @@ SATELLITE_METADATA: dict[str, SatelliteMetadata] = {
         region="europe, africa",
         cadence_mins=10,
         longitude=0.0,
+        height=35786400,
         product_id="EO:EUM:DAT:0662",
         channels=MTG_1KM_CHANNELS,
         description="".join(
@@ -494,13 +583,14 @@ SATELLITE_METADATA: dict[str, SatelliteMetadata] = {
                 "The data is transmitted as High Rate transmissions in 16 spectral channels ",
                 "(12 low and 4 high resolution). ",
                 "See https://user.eumetsat.int/catalogue/EO:EUM:DAT:0662",
-            )
+            ),
         ),
         spatial_coordinates={
-            "x_geostationary": list(np.linspace(5565747.79846191, -5568748.01721191, 3712)),
-            "y_geostationary": list(np.linspace(-5565747.79846191, 5568748.01721191, 3712)),
+            "x_geostationary": list(np.linspace(-5567499.9985508835, 5567499.998550878, 11136)),
+            "y_geostationary": list(np.linspace(-5567499.998550887, 5567499.998550878, 11136)),
         },
-        file_filter_regex=r"\S+00[34]\d.nc$",  # Matches the files that cover only the disk top
+        # Matches the files that cover only the top of the disk (UK)
+        file_filter_regex=r"\S+BODY\S+00(?:[3][2-9]|40).nc$",
     ),
 }
 """Metadata for the available satellite data sets."""

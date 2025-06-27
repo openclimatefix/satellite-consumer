@@ -51,6 +51,7 @@ def cli_entrypoint() -> None:
     consume_parser.add_argument("--eumetsat-key", type=str, required=True)
     consume_parser.add_argument("--eumetsat-secret", type=str, required=True)
     consume_parser.add_argument("--icechunk", action="store_true")
+    consume_parser.add_argument("--crop-region", type=str, default="")
 
     merge_parser = subparsers.add_parser("merge",
         help="Merge satellite data for a given window",
@@ -87,6 +88,7 @@ def cli_entrypoint() -> None:
                 rescale=args.rescale,
                 workdir=args.workdir,
                 icechunk=args.icechunk,
+                crop_region=args.crop_region.lower(),
             )
         case Command.MERGE:
             command_opts = MergeCommandOptions(
@@ -137,6 +139,7 @@ def env_entrypoint() -> None:
                     workdir=os.getenv("SATCONS_WORKDIR", "/mnt/disks/sat"),
                     num_workers=int(os.getenv("SATCONS_NUM_WORKERS", default="1")),
                     icechunk=os.getenv("SATCONS_ICECHUNK", "false").lower() == "true",
+                    crop_region=os.getenv("SATCONS_CROP_REGION", "").lower(),
                 )
 
             case Command.MERGE:

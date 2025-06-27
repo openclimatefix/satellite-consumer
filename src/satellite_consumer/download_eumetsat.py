@@ -211,7 +211,7 @@ def download_raw(
                     product.open(raw_file) as fsrc,
                     tempfile.NamedTemporaryFile() as fdst,
                 ):
-                    shutil.copyfileobj(fsrc, fdst, length=16 * 1024)
+                    shutil.copyfileobj(fsrc, fdst, length=1024 * 1024)
                     fs.put(fdst.name, filepath)
                     if os.stat(fdst.name).st_size != fs.info(filepath).get("size", 0):
                         raise DownloadError(

@@ -8,9 +8,12 @@ from importlib.metadata import PackageNotFoundError, version
 
 import eumdac.product
 import icechunk
+import xarray as xr
+from icechunk.xarray import to_icechunk
 from joblib import Parallel, delayed
 from loguru import logger as log
 
+from satellite_consumer import storage
 from satellite_consumer.config import (
     ConsumeCommandOptions,
     MergeCommandOptions,
@@ -22,10 +25,7 @@ from satellite_consumer.download_eumetsat import (
 )
 from satellite_consumer.exceptions import ValidationError
 from satellite_consumer.process import process_raw
-from satellite_consumer import storage
 from satellite_consumer.validate import validate
-
-from icechunk.xarray import to_icechunk
 
 try:
     __version__ = version("satellite-consumer")
@@ -74,12 +74,16 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                 channels=command_opts.satellite_metadata.channels,
                 resolution_meters=command_opts.resolution,
                 normalize=False,
+                crop_region_geos=command_opts.crop_region_geos,
             )
             validate(src=da)
             if (i == 0 and was_created):
-                to_icechunk(da.to_dataset(promote_attrs=True), session=session)
+                to_icechunk(da.to_dataset(name="data", promote_attrs=True), session=session)
             else:
-                to_icechunk(da.to_dataset(promote_attrs=True), session=session, append_dim="time")
+                to_icechunk(
+                    da.to_dataset(name="data", promote_attrs=True),
+                    session=session, append_dim="time",
+                )
             commit_id: str = session.commit(message="append data")
             log.debug(
                 "Committed data to icechunk store",
@@ -99,7 +103,7 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
             log.info("Using existing store", dst=command_opts.zarr_path)
         else:
             # Create new store
-            log.info("Creating new zarr store", dst=command_opts.zarr_path)
+            log.debug("Creating new zarr store", dst=command_opts.zarr_path)
             _ = storage.create_empty_zarr(
                 dst=command_opts.zarr_path,
                 coords=command_opts.as_coordinates(),
@@ -119,6 +123,7 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                 channels=command_opts.satellite_metadata.channels,
                 resolution_meters=command_opts.resolution,
                 normalize=command_opts.rescale,
+                crop_region_geos=command_opts.crop_region_geos,
             )
             storage.write_to_zarr(da=da, dst=command_opts.zarr_path)
             return raw_filepaths

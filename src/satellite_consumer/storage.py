@@ -35,23 +35,7 @@ def write_to_zarr(
         da: The data array to write as a Zarr store.
         dst: The path to the Zarr store to write to. Can be a local filepath or S3 URL.
     """
-    # Convert attributes to be json	serializable
-    for key, value in da.attrs.items():
-        if isinstance(value, dict):
-            # Convert np.float32 to Python floats (otherwise yaml.dump complains)
-            for inner_key in value:
-                inner_value = value[inner_key]
-                if isinstance(inner_value, np.floating):
-                    value[inner_key] = float(inner_value)
-            da.attrs[key] = yaml.dump(value)
-        if isinstance(value, bool | np.bool_):
-            da.attrs[key] = str(value)
-        if isinstance(value, pyresample.geometry.AreaDefinition):
-            da.attrs[key] = value.dump() # type:ignore
-        # Convert datetimes
-        if isinstance(value, dt.datetime):
-            da.attrs[key] = value.isoformat()
-
+    log.debug("Writing to store", coords=da.coords.sizes, dst=dst)
     try:
         # TODO: Remove warnings catch when Zarr makes up its mind on time objects
         with warnings.catch_warnings(action="ignore"):
@@ -160,6 +144,8 @@ def create_empty_zarr(dst: str, coords: Coordinates) -> xr.DataArray:
 
     with warnings.catch_warnings(action="ignore"):
         da = xr.open_dataarray(dst, engine="zarr", consolidated=False)
+
+    log.debug("Created empty zarr store", dst=dst, coords=da.coords.sizes)
     return da
 
 
@@ -192,7 +178,7 @@ def get_icechunk_repo(path: str) -> tuple[icechunk.Repository, bool]:
 
     Returns:
         A tuple containing the icechunk repository and a boolean indicating whether
-        the repository was created fresh.
+        the repository was newly created.
     """
     result = re.match(r"^(?P<protocol>[\w]{2,6}):\/\/(?P<bucket>[\w-]+)\/(?P<prefix>[\w\/-]+)$", path)
     storage_config: icechunk.Storage

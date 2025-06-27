@@ -1,12 +1,14 @@
 """Functions for processing satellite data."""
 
 import datetime as dt
+import json
 from typing import Any
 
 import hdf5plugin  # type: ignore # noqa: F401
 import numpy as np
 import pandas as pd
 import pyproj
+import pyresample.geometry
 import satpy
 import xarray as xr
 import yaml
@@ -18,23 +20,15 @@ OSGB, WGS84 = (27700, 4326)
 transformer: pyproj.Transformer = pyproj.Transformer.from_crs(crs_from=WGS84, crs_to=OSGB)
 """Transformer for converting between WGS84 and OSGB coordinates."""
 
-REGION_MAP: dict[str, tuple[int, int, int, int]] = {
-    "UK": (-17, 44, 11, 73), "India": (60, 6, 97, 37),
-}
-"""Geographic bounds for various regions of interest that can be cropped to.
-
-The bounds are in order of min_lon, min_lat, max_lon, max_lat.
-See (see https://satpy.readthedocs.io/en/stable/_modules/satpy/scene.html)
-"""
-
 
 def process_raw(
     paths: list[str],
     channels: list[SpectralChannelMetadata],
     resolution_meters: int,
     normalize: bool = True,
+    crop_region_geos: tuple[float, float, float, float] | None = None,
 ) -> xr.DataArray:
-    """Process a set of raw files into an xarray dataset.
+    """Process a set of raw files into an xarray DataArray.
 
     Args:
         paths: List of paths to the raw files to open. Can be a local paths or
@@ -42,16 +36,21 @@ def process_raw(
         channels: List of channel names to load from the raw files.
         resolution_meters: The resolution in meters to load the data at.
         normalize: Whether to normalize the data to the unit interval [0, 1].
+        crop_region_geos: Optional bounds to crop the data to, in the format
+            (west, south, east, north) in geostationary coordinates.
+            If None, no cropping is applied.
     """
     log.debug(
         "Reading raw files as a satpy Scene",
-        resolution=resolution_meters, num_files=len(paths),
+        resolution=resolution_meters,
+        num_files=len(paths),
     )
     try:
         loader: str = "seviri_l1b_native" if paths[0].endswith(".nat") else "fci_l1c_nc"
-        scene: satpy.Scene = satpy.Scene(filenames={loader: paths}) # type:ignore
+        scene: satpy.Scene = satpy.Scene(filenames={loader: paths})  # type:ignore
+        cnames: list[str] = [c.name for c in channels if resolution_meters in c.resolution_meters]
         scene.load(
-            [c.name for c in channels if resolution_meters in c.resolution_meters],
+            cnames,
             resolution=resolution_meters if resolution_meters < 3000 else "*",
         )
     except Exception as e:
@@ -61,8 +60,8 @@ def process_raw(
         log.debug("Converting Scene to dataarray", normalize=normalize)
         da: xr.DataArray = _map_scene_to_dataarray(
             scene=scene,
-            crop_region=None,
             calculate_osgb=False,
+            crop_region_geos=crop_region_geos,
         )
     except Exception as e:
         raise ValueError(f"Error converting paths to DataArray: {e}") from e
@@ -83,9 +82,9 @@ def process_raw(
 
 
 def _map_scene_to_dataarray(
-    scene: satpy.Scene, # type:ignore # Don't know why it dislikes this
-    crop_region: str | None,
+    scene: satpy.Scene,  # type:ignore # Don't know why it dislikes this
     calculate_osgb: bool = True,
+    crop_region_geos: tuple[float, float, float, float] | None = None,
 ) -> xr.DataArray:
     """Converts a Scene with satellite data into a data array.
 
@@ -99,41 +98,53 @@ def _map_scene_to_dataarray(
 
     Args:
         scene: The satpy.Scene containing the satellite data.
-        crop_region: The region to crop the data to.
         calculate_osgb: Whether to calculate OSGB coordinates.
+        crop_region_geos: Optional bounds to crop the data to, in the format
     """
-    if crop_region is not None:
-        if crop_region not in REGION_MAP:
-            raise ValueError(
-                f"Unknown crop_region '{crop_region}'. Expected one of of '{REGION_MAP.keys()}'.",
-            )
-        crop_bounds = REGION_MAP[crop_region]
-        log.debug(f"Cropping scene to region '{crop_region}'", crop_bounds=crop_bounds)
-        try:
-            scene = scene.crop(ll_bbox=crop_bounds)
-        except NotImplementedError:
-            # 15 minutely data by default doesn't work for some reason, have to resample it
-            # * The resampling is different for the HRV band
-            # TODO: Test this works
-            scene = scene.resample(
-                destination="msg_seviri_rss_1km" \
-                    if scene.wishlist == set("HRV") \
-                    else "msg_seviri_rss_3km",
-            ).crop(ll_bbox=crop_bounds)
-
     for channel in scene.wishlist:
+        # Drop unwanted variables
         scene[channel] = scene[channel].drop_vars("acq_time", errors="ignore")
-        # Write individual channel attributes to the top level scene attributes
-        # * This prevents information loss when converting to a dataarray
-        # * Ignores attributes on the channel that are not useful or not serializeable
-        for attr in [ca for ca in scene[channel].attrs if ca not in ["area", "_satpy_id"]]:
-            scene.attrs[f"{channel['name']}_{attr}"] = scene[channel].attrs[attr].__repr__()
 
-    da: xr.DataArray = scene.to_xarray_dataset().to_array().rename("data")
-    da.attrs = da.attrs | scene.attrs
+    # Convert the Scene to a DataArray
+    da: xr.DataArray = scene.to_xarray_dataset().to_array(name="data")
+    if crop_region_geos is not None:
+        da = da.where(da.coords["x"] >= crop_region_geos[0], drop=True)\
+            .where(da.coords["x"] <= crop_region_geos[2], drop=True)\
+            .where(da.coords["y"] >= crop_region_geos[1], drop=True)\
+            .where(da.coords["y"] <= crop_region_geos[3], drop=True)
+
+    # Handle attrs, converting to serializable format
+    da.attrs["variables"] = {}
+    for channel in scene.wishlist:
+        # Add channel metadata dataarray variables attributes
+        da.attrs["variables"][channel["name"]] = {}
+        for attr in [
+            ca
+            for ca in scene[channel].attrs
+            if ca not in ["area", "_satpy_id", "orbital_parameters", "time_parameters"]
+        ]:
+            da.attrs["variables"][channel["name"]][attr] = scene[channel].attrs[attr]
+
+    def _serialize(d: dict[str, Any]) -> dict[str, Any]:
+        sd: dict[str, Any] = {}
+        for key, value in d.items():
+            if isinstance(value, dt.datetime):
+                sd[key] = value.isoformat()
+            elif isinstance(value, bool | np.bool_):
+                sd[key] = str(value)
+            elif isinstance(value, pyresample.geometry.AreaDefinition):
+                sd[key] = yaml.load(value.dump(), Loader=yaml.SafeLoader) # type:ignore
+            elif isinstance(value, dict):
+                sd[key] = _serialize(value)
+            else:
+                sd[key] = str(value)
+        return sd
+    da.attrs = _serialize(da.attrs)
 
     # Ensure DataArray has a time dimension
-    da.attrs["end_time"] = pd.Timestamp(da.attrs["end_time"]).round("5 min").__str__()
+    da.attrs["end_time"] = pd.Timestamp(
+        da.attrs["time_parameters"]["nominal_end_time"]
+    ).round("5 min").__str__()
     if "time" not in da.dims:
         time = pd.to_datetime(pd.Timestamp(da.attrs["end_time"]).round("5 min"))
         da = da.assign_coords({"time": time}).expand_dims("time")
@@ -147,23 +158,31 @@ def _map_scene_to_dataarray(
         log.debug("Calculating OSGB coordinates")
         lon, lat = scene[scene.wishlist[0]].attrs["area"].get_lonlats()
         osgb_x, osgb_y = transformer.transform(lat, lon)
-        da = da.assign_coords(coords={
-            "x_osgb": (("y_geostationary", "x_geostationary"), np.float32(osgb_x)),
-            "y_osgb": (("y_geostationary", "x_geostationary"), np.float32(osgb_y)),
-        })
+        da = da.assign_coords(
+            coords={
+                "x_osgb": (("y_geostationary", "x_geostationary"), np.float32(osgb_x)),
+                "y_osgb": (("y_geostationary", "x_geostationary"), np.float32(osgb_y)),
+            }
+        )
         da.coords["x_osgb"].attrs = {
-            "units": "meter", "coordinate_reference_system": "OSGB", "name": "Easting",
+            "units": "meter",
+            "coordinate_reference_system": "OSGB",
+            "name": "Easting",
         }
         da.coords["y_osgb"].attrs = {
-            "units": "meter", "coordinate_reference_system": "OSGB", "name": "Northing",
+            "units": "meter",
+            "coordinate_reference_system": "OSGB",
+            "name": "Northing",
         }
 
-    da = da.transpose("time", "y_geostationary", "x_geostationary", "variable").chunk(
-        chunks={"time": 1, "y_geostationary": -1, "x_geostationary": -1, "variable": 1},
-    ).sortby(["variable", "y_geostationary"]).sortby("x_geostationary", ascending=False)
-
-    da.attrs = _serialize_attrs(da.attrs)
-    log.debug("Attributes", **da.attrs)
+    da = (
+        da.transpose("time", "y_geostationary", "x_geostationary", "variable")
+        .chunk(
+            chunks={"time": 1, "y_geostationary": -1, "x_geostationary": -1, "variable": 1},
+        )
+        .sortby(["variable", "y_geostationary"])
+        .sortby("x_geostationary", ascending=False)
+    )
 
     return da
 
@@ -181,8 +200,8 @@ def _normalize(da: xr.DataArray) -> xr.DataArray:
     incoming_variables = set(da.coords["variable"].values.tolist())
     if not incoming_variables.issubset(known_variables):
         raise ValueError(
-                "Cannot rescale DataArray as some variables present are not recognized: "
-                f"'{incoming_variables.difference(known_variables)}'",
+            "Cannot rescale DataArray as some variables present are not recognized: "
+            f"'{incoming_variables.difference(known_variables)}'",
         )
 
     # For each channel, subtract the minimum and divide by the range
@@ -197,41 +216,3 @@ def _normalize(da: xr.DataArray) -> xr.DataArray:
     da = da.clip(min=0, max=1).astype(np.float32)
 
     return da
-
-def _serialize_attrs(attrs: dict[str, Any]) -> dict[str, Any]:
-    """Ensure each value of dict can be serialized.
-
-    This is required before saving to Zarr because Zarr represents attrs values in a
-    JSON file (.zmetadata).
-
-    The `area` field (which is a `pyresample.geometry.AreaDefinition` object gets turned
-    into a YAML string, which can be loaded again using
-    `area_definition = pyresample.area_config.load_area_from_string(data_array.attrs['area'])`
-
-    Returns attrs dict where every value has been made serializable.
-    """
-    for key, value in attrs.items():
-        # Convert Dicts
-        if isinstance(value, dict):
-            # Convert np.float32 to Python floats (otherwise yaml.dump complains)
-            for inner_key in value:
-                inner_value = value[inner_key]
-                if isinstance(inner_value, np.floating):
-                    value[inner_key] = float(inner_value)
-            attrs[key] = yaml.dump(value)
-
-        # Convert Numpy bools
-        if isinstance(value, bool | np.bool_):
-            attrs[key] = str(value)
-        elif isinstance(value, dt.datetime):
-            attrs[key] = value.isoformat()
-        # Convert other dumpable things
-        else:
-            try:
-                attrs[key] = value.dump() # type: ignore
-            except AttributeError:
-                # If the value is not dumpable, just convert it to a string
-                attrs[key] = str(value)
-
-    return attrs
-
