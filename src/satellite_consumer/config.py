@@ -258,6 +258,7 @@ class ConsumeCommandOptions:
         """Get the path to the zarr store for the given time."""
         resstr: str = f"{self.resolution}m"
         satstr: str = self.satellite
+        suffix: str = ".icechunk" if self.icechunk else ".zarr"
         # cropstr: str = f"{self.crop_region}" if self.crop_region not in ["", "uk"] else ""
         match self.window_mins, self.window_months, self.icechunk:
             case 0, 0, False:
@@ -271,7 +272,7 @@ class ConsumeCommandOptions:
             case _, _, True:
                 windowstr = ""  # Append all times to the same icechunk store
 
-        return f"{self.workdir}/data/{satstr}_{resstr}{windowstr}.zarr"
+        return f"{self.workdir}/data/{satstr}_{resstr}{windowstr}{suffix}"
 
     @property
     def raw_folder(self) -> str:
