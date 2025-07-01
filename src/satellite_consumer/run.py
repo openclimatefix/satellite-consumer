@@ -4,10 +4,12 @@ Consolidates the old cli_downloader, backfill_hrv and backfill_nonhrv scripts.
 """
 
 import datetime as dt
+import warnings
 from importlib.metadata import PackageNotFoundError, version
+from typing import TYPE_CHECKING
 
 import eumdac.product
-import icechunk
+import numpy as np
 import xarray as xr
 from icechunk.xarray import to_icechunk
 from joblib import Parallel, delayed
@@ -26,6 +28,9 @@ from satellite_consumer.download_eumetsat import (
 from satellite_consumer.exceptions import ValidationError
 from satellite_consumer.process import process_raw
 from satellite_consumer.validate import validate
+
+if TYPE_CHECKING:
+    import icechunk
 
 try:
     __version__ = version("satellite-consumer")
@@ -46,7 +51,6 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
 
     if command_opts.icechunk:
         repo, was_created = storage.get_icechunk_repo(path=command_opts.zarr_path)
-        session: icechunk.Session = repo.writable_session(branch="main")
         # Download products in parallel
         # raw_filegroups: list[list[str]] = Parallel(
         #     n_jobs=command_opts.num_workers,
@@ -76,19 +80,56 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                 normalize=False,
                 crop_region_geos=command_opts.crop_region_geos,
             )
+            # Don't write invalid data to the store
             validate(src=da)
-            if (i == 0 and was_created):
-                to_icechunk(da.to_dataset(name="data", promote_attrs=True), session=session)
-            else:
-                to_icechunk(
-                    da.to_dataset(name="data", promote_attrs=True),
-                    session=session, append_dim="time",
-                )
-            commit_id: str = session.commit(message="append data")
+
+            # Commit the data to the icechunk store
+            # * If the store was just created, write as a fresh repo
             log.debug(
-                "Committed data to icechunk store",
-                dst=command_opts.zarr_path, commit_id=commit_id,
+                "Writing data to icechunk store",
+                dst=command_opts.zarr_path,
+                time=str(np.datetime_as_string(da.coords["time"].values[0], unit="m")),
             )
+            if i == 0 and was_created:
+                session: icechunk.Session = repo.writable_session(branch="main")
+                # TODO: Remove warnings catch when Zarr makes up its mind about codecs
+                with warnings.catch_warnings(action="ignore"):
+                    to_icechunk(
+                        obj=da.to_dataset(name="data", promote_attrs=True),
+                        session=session,
+                        mode="w-",
+                        encoding={"time": {"units": "nanoseconds since 1970-01-01"}},
+                    )
+                _ = session.commit(message="initial commit")
+            # Otherwise, append the data to the existing store
+            else:
+                session = repo.writable_session(branch="main")
+                # TODO: Remove warnings catch when Zarr makes up its mind about codecs
+                with warnings.catch_warnings(action="ignore"):
+                    store_ds = xr.open_zarr(session.store, consolidated=False)
+                # If the store already exists and the incoming data is already in it,
+                # don't write it again. TODO: Determine if we might want to be able to overwrite
+                if set(da.coords["time"].values).issubset(set(store_ds.coords["time"].values)):
+                    log.debug(
+                        "Skipping data that is already in the icechunk store",
+                        times=str(np.datetime_as_string(da.coords["time"].values[0], unit="m")),
+                        dst=command_opts.zarr_path,
+                    )
+                    num_skipped += 1
+                    continue
+                else:
+                    # TODO: Remove warnings catch when Zarr makes up its mind about codecs
+                    with warnings.catch_warnings(action="ignore"):
+                        to_icechunk(
+                            obj=da.to_dataset(name="data", promote_attrs=True),
+                            session=session,
+                            append_dim="time",
+                            mode="a",
+                        )
+                    _ = session.commit(
+                        message=f"add {len(da.coords['time']) * len(da.coords['variable'])} images",
+                    )
+
             processed_filepaths.extend(raw_filepaths)
 
         log.info(

@@ -180,7 +180,10 @@ def get_icechunk_repo(path: str) -> tuple[icechunk.Repository, bool]:
         A tuple containing the icechunk repository and a boolean indicating whether
         the repository was newly created.
     """
-    result = re.match(r"^(?P<protocol>[\w]{2,6}):\/\/(?P<bucket>[\w-]+)\/(?P<prefix>[\w\/-]+)$", path)
+    result = re.match(
+        r"^(?P<protocol>[\w]{2,6}):\/\/(?P<bucket>[\w-]+)\/(?P<prefix>[\w\/-]+)$",
+        path,
+    )
     storage_config: icechunk.Storage
 
     # Make Icechunk storage config according to the given path

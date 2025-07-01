@@ -69,7 +69,14 @@ def process_raw(
     if normalize:
         # Rescale the data, save as dataarray
         try:
-            da = _normalize(da=da)
+            da = _normalize(
+                da=da,
+                channels=[
+                    c
+                    for c in channels
+                    if resolution_meters in c.resolution_meters
+                ],
+            )
         except Exception as e:
             raise ValueError(f"Error rescaling dataarray: {e}") from e
 
@@ -143,7 +150,7 @@ def _map_scene_to_dataarray(
 
     # Ensure DataArray has a time dimension
     da.attrs["end_time"] = pd.Timestamp(
-        da.attrs["time_parameters"]["nominal_end_time"]
+        da.attrs["time_parameters"]["nominal_end_time"],
     ).round("5 min").__str__()
     if "time" not in da.dims:
         time = pd.to_datetime(pd.Timestamp(da.attrs["end_time"]).round("5 min"))
@@ -162,7 +169,7 @@ def _map_scene_to_dataarray(
             coords={
                 "x_osgb": (("y_geostationary", "x_geostationary"), np.float32(osgb_x)),
                 "y_osgb": (("y_geostationary", "x_geostationary"), np.float32(osgb_y)),
-            }
+            },
         )
         da.coords["x_osgb"].attrs = {
             "units": "meter",
@@ -187,7 +194,7 @@ def _map_scene_to_dataarray(
     return da
 
 
-def _normalize(da: xr.DataArray) -> xr.DataArray:
+def _normalize(da: xr.DataArray, channels: list[SpectralChannelMetadata]) -> xr.DataArray:
     """Normalize DataArray values into the unit interval [0, 1].
 
     Normalization is carried out based on an approximation of the minimum and maximum
@@ -196,7 +203,7 @@ def _normalize(da: xr.DataArray) -> xr.DataArray:
 
     NaNs in the original DataArray are preserved in the normalized DataArray.
     """
-    known_variables = {c.name for c in SEVIRI_CHANNELS}
+    known_variables = {c.name for c in channels}
     incoming_variables = set(da.coords["variable"].values.tolist())
     if not incoming_variables.issubset(known_variables):
         raise ValueError(
@@ -206,7 +213,7 @@ def _normalize(da: xr.DataArray) -> xr.DataArray:
 
     # For each channel, subtract the minimum and divide by the range
     for variable in da.coords["variable"]:
-        channel_metadata = next(filter(lambda c: c.name == variable, SEVIRI_CHANNELS))
+        channel_metadata = next(filter(lambda c: c.name == variable, channels))
         da.loc[{"variable": variable}] -= channel_metadata.minimum
         da.loc[{"variable": variable}] /= channel_metadata.range
     # da -= [c.minimum for c in channels]

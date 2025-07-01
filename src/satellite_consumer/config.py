@@ -256,23 +256,22 @@ class ConsumeCommandOptions:
     @property
     def zarr_path(self) -> str:
         """Get the path to the zarr store for the given time."""
-        # The nonhrv and rss prefixes here are used to stay accurate with the historic datasets.
-        resstr: str = "nonhrv_" if self.resolution == 3000 else f"{self.resolution}m"
-        satstr: str = "" if self.satellite == "rss" else f"{self.satellite}_"
+        resstr: str = f"{self.resolution}m"
+        satstr: str = self.satellite
         # cropstr: str = f"{self.crop_region}" if self.crop_region not in ["", "uk"] else ""
         match self.window_mins, self.window_months, self.icechunk:
             case 0, 0, False:
-                windowstr: str = self.time.strftime("%Y%m%dT%H%M_")
+                windowstr: str = self.time.strftime("_%Y%m%dT%H%M")
             case _, 0, False:
-                windowstr = f"{self.time:%Y%m%dT%H%M}_window{self.window_mins}mins_"
+                windowstr = f"_{self.time:%Y%m%dT%H%M}_window{self.window_mins}mins"
             case _, 1, False:
-                windowstr = f"{self.time:%Y%m}_"
+                windowstr = f"_{self.time:%Y%m}"
             case _, _, False:
-                windowstr = f"{self.time:%Y%m}_window{self.window_months}months_"
+                windowstr = f"_{self.time:%Y%m}_window{self.window_months}months"
             case _, _, True:
                 windowstr = ""  # Append all times to the same icechunk store
 
-        return f"{self.workdir}/data/{windowstr}{resstr}{satstr}.zarr"
+        return f"{self.workdir}/data/{satstr}_{resstr}{windowstr}.zarr"
 
     @property
     def raw_folder(self) -> str:
