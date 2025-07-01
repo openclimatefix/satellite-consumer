@@ -169,8 +169,6 @@ class ConsumeCommandOptions:
     """The time window to fetch data for (defaults to a single time)."""
     window_months: int = 0
     """The number of months to fetch data for (overrides window_mins)."""
-    delete_raw: bool = False
-    """Whether to delete the raw data after downloading it."""
     validate: bool = False
     """Whether to validate the downloaded data after downloading it."""
     resolution: int = 3000
@@ -344,7 +342,7 @@ class ConsumeCommandOptions:
                     sweep="y",
                 ),
             )
-            geos_bounds = transformer.transform_bounds(**crop_region_map[self.crop_region])
+            geos_bounds = transformer.transform_bounds(**crop_region_map[self.crop_region]) # type: ignore
 
             # Check the produced bounds are within the satellite's spatial coordinates
             cs = self.satellite_metadata.spatial_coordinates

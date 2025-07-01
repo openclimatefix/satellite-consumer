@@ -42,7 +42,6 @@ def cli_entrypoint() -> None:
     window_ex_group.add_argument("--window-months",
         type=int, help="Window size in months", default=0,
     )
-    consume_parser.add_argument("--delete-raw", action="store_true")
     consume_parser.add_argument("--validate", action="store_true")
     consume_parser.add_argument("--resolution", type=int, default=3000)
     consume_parser.add_argument("--rescale", action="store_true")
@@ -82,7 +81,6 @@ def cli_entrypoint() -> None:
                 time=args.time,
                 window_mins=args.window_mins,
                 window_months=args.window_months,
-                delete_raw=args.delete_raw,
                 validate=args.validate,
                 resolution=args.resolution,
                 rescale=args.rescale,
@@ -132,7 +130,6 @@ def env_entrypoint() -> None:
                     time=t,
                     window_mins=int(os.getenv("SATCONS_WINDOW_MINS", default="0")),
                     window_months=int(os.getenv("SATCONS_WINDOW_MONTHS", default="0")),
-                    delete_raw=os.getenv("SATCONS_DELETE_RAW", "false").lower() == "true",
                     validate=os.getenv("SATCONS_VALIDATE", "false").lower() == "true",
                     resolution=int(os.getenv("SATCONS_RESOLUTION", default="3000")),
                     rescale=os.getenv("SATCONS_RESCALE", "false").lower() == "true",

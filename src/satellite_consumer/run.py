@@ -196,16 +196,6 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
         if command_opts.validate:
             validate(src=command_opts.zarr_path)
 
-    if command_opts.delete_raw:
-        if command_opts.workdir.startswith("s3://"):
-            log.warning("delete-raw was specified, but deleting S3 files is not yet implemented")
-        else:
-            log.info(
-                f"Deleting {len(raw_filepaths)} raw files in {command_opts.raw_folder}",
-                num_files=len(raw_filepaths), dst=command_opts.raw_folder,
-            )
-            _ = [f.unlink() for f in raw_filepaths]
-
 def _merge_command(command_opts: MergeCommandOptions) -> None:
     """Logic for the merge command."""
     zarr_paths = command_opts.zarr_paths

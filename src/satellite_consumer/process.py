@@ -1,7 +1,6 @@
 """Functions for processing satellite data."""
 
 import datetime as dt
-import json
 from typing import Any
 
 import hdf5plugin  # type: ignore # noqa: F401
