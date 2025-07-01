@@ -74,7 +74,7 @@ options that are shared between all commands:
 | `SATCONS_COMMAND` |  | The command to run (consume/merge). |
 | `SATCONS_SATELLITE` | | The satellite to consume data from. |
 | `SATCONS_WORKDIR` | `/mnt/disks/sat` | The working directory. In the container, this is set to `/work` for easy mounting. |
-| `SATCONS_HRV` | `false` | Whether to download the HRV channel. |
+| `SATCONS_RESOLUTION` | `3000` | The desired resolution of the satellite images in meters ('3000', '1000'). |
 | `EUMETSAT_CONSUMER_KEY` |  | The EUMETSAT consumer key. |
 | `EUMETSAT_CONSUMER_SECRET` |  | The EUMETSAT consumer secret. |
 
@@ -92,6 +92,8 @@ Each command then has its own set of configuration options:
 | `SATCONS_VALIDATE` | `false` | Whether to validate the downloaded data. |
 | `SATCONS_RESCALE` | `false` | Whether to rescale the downloaded data to the unit interval. |
 | `SATCONS_NUM_WORKERS` | `1` | The number of workers to use for processing. |
+| `SATCONS_ICECHUNKS` | `false` | Whether to use icechunk repositories for storage. |
+| `SATCONS_CROP_REGION` | `` | The region string to crop data to ('uk', 'india', 'west-europe') |
 
 **Merge:**
 
