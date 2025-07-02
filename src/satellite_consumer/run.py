@@ -29,6 +29,24 @@ try:
 except PackageNotFoundError:
     __version__ = "v?"
 
+#Sentry Integration
+import sentry_sdk
+
+sentry_sdk.init(
+    dsn=os.getenv("SENTRY_DSN"), 
+    environment=os.getenv("ENVIRONMENT", "local"), 
+    traces_sample_rate=1,
+)
+
+sentry_sdk.set_tag("app_name", "satellite_consumer")
+
+# __version__ might not be available in dev/test environments
+try:
+    sentry_sdk.set_tag("version", __version__)
+except Exception:
+    sentry_sdk.set_tag("version", "unknown")
+
+
 def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
     """Logic for the consume command (and the archive command)."""
     fs = get_fs(path=command_opts.zarr_path)
