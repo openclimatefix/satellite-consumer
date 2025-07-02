@@ -211,7 +211,7 @@ def get_icechunk_repo(path: str) -> tuple[icechunk.Repository, list[dt.datetime]
         ro_session = repo.readonly_session(branch="main")
         ds: xr.Dataset = xr.open_zarr(ro_session.store, consolidated=False)
         times: list[dt.datetime] = [
-                dt.datetime.strptime(t, "%Y-%m-%dT%H:%M").replace(tzinfo=dt.UTC) # type: ignore
+                dt.datetime.strptime(t, "%Y-%m-%dT%H:%M").replace(tzinfo=dt.UTC)
             for t in np.datetime_as_string(ds.coords["time"].values, unit="m").tolist()
         ]
         return repo, times
