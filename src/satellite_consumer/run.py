@@ -48,25 +48,17 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
 
     processed_filepaths: list[str] = []
     num_skipped: int = 0
+    num_written: int = 0
 
     if command_opts.icechunk:
-        repo, was_created = storage.get_icechunk_repo(path=command_opts.zarr_path)
-        # Download products in parallel
-        # raw_filegroups: list[list[str]] = Parallel(
-        #     n_jobs=command_opts.num_workers,
-        #     return_as="list",
-        #     prefer="threads",
-        # )(delayed(download_raw)(
-        #     product,
-        #     folder=f"{command_opts.workdir}/raw",
-        #     filter_regex=command_opts.satellite_metadata.file_filter_regex,
-        # ) for product in product_iter)
+        repo, existing_times = storage.get_icechunk_repo(path=command_opts.zarr_path)
 
         raw_filegroups = [
             download_raw(
                 product=p,
                 folder=f"{command_opts.workdir}/raw",
                 filter_regex=command_opts.satellite_metadata.file_filter_regex,
+                existing_times=existing_times,
             ) for p in product_iter
         ]
         for i, raw_filepaths in enumerate(raw_filegroups):
@@ -77,7 +69,7 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                 paths=raw_filepaths,
                 channels=command_opts.satellite_metadata.channels,
                 resolution_meters=command_opts.resolution,
-                normalize=False,
+                normalize=command_opts.rescale,
                 crop_region_geos=command_opts.crop_region_geos,
             )
             # Don't write invalid data to the store
@@ -90,7 +82,7 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                 dst=command_opts.zarr_path,
                 time=str(np.datetime_as_string(da.coords["time"].values[0], unit="m")),
             )
-            if i == 0 and was_created:
+            if i == 0 and len(existing_times) == 0:
                 session: icechunk.Session = repo.writable_session(branch="main")
                 # TODO: Remove warnings catch when Zarr makes up its mind about codecs
                 with warnings.catch_warnings(action="ignore"):
@@ -106,35 +98,21 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                 session = repo.writable_session(branch="main")
                 # TODO: Remove warnings catch when Zarr makes up its mind about codecs
                 with warnings.catch_warnings(action="ignore"):
-                    store_ds = xr.open_zarr(session.store, consolidated=False)
-                # If the store already exists and the incoming data is already in it,
-                # don't write it again. TODO: Determine if we might want to be able to overwrite
-                if set(da.coords["time"].values).issubset(set(store_ds.coords["time"].values)):
-                    log.debug(
-                        "Skipping data that is already in the icechunk store",
-                        times=str(np.datetime_as_string(da.coords["time"].values[0], unit="m")),
-                        dst=command_opts.zarr_path,
+                    to_icechunk(
+                        obj=da.to_dataset(name="data", promote_attrs=True),
+                        session=session,
+                        append_dim="time",
+                        mode="a",
                     )
-                    num_skipped += 1
-                    continue
-                else:
-                    # TODO: Remove warnings catch when Zarr makes up its mind about codecs
-                    with warnings.catch_warnings(action="ignore"):
-                        to_icechunk(
-                            obj=da.to_dataset(name="data", promote_attrs=True),
-                            session=session,
-                            append_dim="time",
-                            mode="a",
-                        )
-                    _ = session.commit(
-                        message=f"add {len(da.coords['time']) * len(da.coords['variable'])} images",
-                    )
-
+                _ = session.commit(
+                    message=f"add {len(da.coords['time']) * len(da.coords['variable'])} images",
+                )
+            num_written += 1
             processed_filepaths.extend(raw_filepaths)
 
         log.info(
             "Finished population of icechunk store",
-            dst=command_opts.zarr_path, num_skipped=num_skipped,
+            dst=command_opts.zarr_path, num_skipped=num_skipped, num_written=num_written,
         )
 
     else:
