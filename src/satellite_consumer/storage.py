@@ -1,5 +1,6 @@
 """Storage module for reading and writing data to disk."""
 
+import datetime as dt
 import os
 import re
 import shutil
@@ -166,7 +167,7 @@ def get_fs(path: str) -> fsspec.AbstractFileSystem:
         )
     return fs
 
-def get_icechunk_repo(path: str) -> tuple[icechunk.Repository, bool]:
+def get_icechunk_repo(path: str) -> tuple[icechunk.Repository, list[dt.datetime]]:
     """Get an icechunk repository for the given path.
 
     Args:
@@ -174,8 +175,7 @@ def get_icechunk_repo(path: str) -> tuple[icechunk.Repository, bool]:
             e.g. `s3://bucket-name/path/to/file` for remote access.
 
     Returns:
-        A tuple containing the icechunk repository and a boolean indicating whether
-        the repository was newly created.
+        A tuple containing the icechunk repository, and a list of times that exist in it already.
     """
     result = re.match(
         r"^(?P<protocol>[\w]{2,6}):\/\/(?P<bucket>[\w-]+)\/(?P<prefix>[\w\/-]+)$",
@@ -205,8 +205,16 @@ def get_icechunk_repo(path: str) -> tuple[icechunk.Repository, bool]:
         storage_config = icechunk.local_filesystem_storage(path=path)
 
     if icechunk.Repository.exists(storage=storage_config):
+        # Return existing store and the times in it
         log.debug("Using existing icechunk store", path=path)
-        return icechunk.Repository.open(storage=storage_config), False
+        repo = icechunk.Repository.open(storage=storage_config)
+        ro_session = repo.readonly_session(branch="main")
+        ds: xr.Dataset = xr.open_zarr(ro_session.store, consolidated=False)
+        times: list[dt.datetime] = [
+                dt.datetime.strptime(t, "%Y-%m-%dT%H:%M").replace(tzinfo=dt.UTC)
+            for t in np.datetime_as_string(ds.coords["time"].values, unit="m").tolist()
+        ]
+        return repo, times
 
     log.debug("Creating new icechunk store", path=path)
-    return icechunk.Repository.create(storage=storage_config), True
+    return icechunk.Repository.create(storage=storage_config), []

@@ -10,6 +10,7 @@ from collections.abc import Iterator
 from typing import TYPE_CHECKING
 
 import eumdac
+import pandas as pd
 from loguru import logger as log
 
 from satellite_consumer.config import SatelliteMetadata
@@ -161,27 +162,43 @@ def download_raw(
     folder: str,
     filter_regex: str,
     retries: int = 6,
+    existing_times: list[dt.datetime] | None = None,
 ) -> list[str]:
     """Download a product to an S3 bucket.
 
     EUMDAC products are collections of files, with a `.nat` file containing the data,
-    and with `.xml` files containing metadata. This function only downloads the `.nat` files,
-    skipping any files that are already present in the folder.
+    and with `.xml` files containing metadata.
+    This function only downloads the `.nat` files,
+    skipping any files that are already present in the folder
+    or that correspond to already existing times.
 
     Args:
         product: Product to download.
         folder: Folder to download the product to. Can be local path or S3 URL.
         filter_regex: Regular expression to filter the files to download.
         retries: Number of times to retry downloading the product.
+        existing_times: List of existing times that do not need to be redownloaded.
 
     Returns:
         Path to the downloaded file, or None if the download failed.
     """
     fs = get_fs(path=folder)
-    # Filter to only files we care about
+    # Filter to only product files we care about
     raw_files: list[str] = [p for p in product.entries if re.search(filter_regex, p)]
 
     downloaded_files: list[str] = []
+
+    if existing_times is not None:
+        rounded_time: dt.datetime = pd.Timestamp(product.sensing_start)\
+            .round("5 min").to_pydatetime().replace(tzinfo=dt.UTC)
+        if rounded_time in existing_times:
+            log.debug(
+                "Skipping product that exists in store",
+                time=product.sensing_end.strftime("%Y-%m-%dT%H:%M"),
+                product=product,
+            )
+            return []
+
     for i, raw_file in enumerate(raw_files):
         if product.qualityStatus != "NOMINAL":
             log.warning(
