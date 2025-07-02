@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING
 
 import eumdac.product
 import numpy as np
-import xarray as xr
 from icechunk.xarray import to_icechunk
 from joblib import Parallel, delayed
 from loguru import logger as log

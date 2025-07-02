@@ -1,8 +1,8 @@
 """Storage module for reading and writing data to disk."""
 
+import datetime as dt
 import os
 import re
-import datetime as dt
 import shutil
 import tempfile
 import warnings

@@ -10,7 +10,6 @@ from collections.abc import Iterator
 from typing import TYPE_CHECKING
 
 import eumdac
-import numpy as np
 import pandas as pd
 from loguru import logger as log
 
