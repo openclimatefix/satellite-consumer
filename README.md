@@ -23,9 +23,18 @@ this consumer processes downloaded data into the `Zarr` format.
 ## Installation
 
 Install using the container image:
+
 ```bash
 $ docker pull ghcr.io/openclimatefix/satellite-consumer
 ```
+
+or, if you prefer a CLI:
+
+```bash
+$ pip install git+https://github.com/openclimatefix/satellite-consumer.git
+```
+
+This will put the `sat-consumer-cli` command in your virtual environments `bin` directory.
 
 ## Example usage
 
@@ -39,6 +48,7 @@ $ docker run \
     ghcr.io/openclimatefix/satellite-consumer
 ```
 
+This will download the latest available data for the `rss` satellite and store it in the `/work` directory.
 For a description of all the possible configuration options, see [Documentation](#documentation).
 
 ## Documentation
@@ -47,19 +57,24 @@ The satellite consumer provides a number of commands for different logical proce
 These commands (and their options) can be seen when using the cli entrypoint:
 
 ```bash
-$ satellite-consumer-cli --help
+$ sat-consumer-cli --help
 ```
 
-When running the satellite consumer using the environment entrypoint (as in the docker container),
+When running the satellite consumer using the environment entrypoint (as in the docker container)
+
+```bash
+$ sat-consumer
+```
+
 the command is chosen via an environment variable. There are also a number of common configuration
 options that are shared between all commands:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SATCONS_COMMAND` |  | The command to run (consume/archive/merge). |
+| `SATCONS_COMMAND` |  | The command to run (consume/merge). |
 | `SATCONS_SATELLITE` | | The satellite to consume data from. |
 | `SATCONS_WORKDIR` | `/mnt/disks/sat` | The working directory. In the container, this is set to `/work` for easy mounting. |
-| `SATCONS_HRV` | `false` | Whether to download the HRV channel. |
+| `SATCONS_RESOLUTION` | `3000` | The desired resolution of the satellite images in meters ('3000', '1000'). |
 | `EUMETSAT_CONSUMER_KEY` |  | The EUMETSAT consumer key. |
 | `EUMETSAT_CONSUMER_SECRET` |  | The EUMETSAT consumer secret. |
 
@@ -67,24 +82,18 @@ Each command then has its own set of configuration options:
 
 **Consume:**
 
-*Downloads a single scan for a given time into it's own store in the working directory.*
+*Downloads scans for a given time and window into a zarr store in the given working directory.*
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SATCONS_TIME` | | The time to consume data for (when using the `consume` command). Leave unset to download latest available. | 
-| `SATCONS_VALIDATE` | `false` | Whether to validate the downloaded data. |
-| `SATCONS_RESCALE` | `false` | Whether to rescale the downloaded data to the unit interval. |
-
-**Archive:**
-
-*Downloads all scans for a given month into a single store in the working directory.*
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `SATCONS_MONTH` | | The month to consume data for (when using the `archive` command). |
+| `SATCONS_WINDOW_MINS` | `0` | The time window to consume data for in minutes (defaults to a single scan). |
+| `SATCONS_WINDOW_MONTHS` | `0` | The number of months to consume data for (takes precedence over `SATCONS_WINDOW_MINS`). |
 | `SATCONS_VALIDATE` | `false` | Whether to validate the downloaded data. |
 | `SATCONS_RESCALE` | `false` | Whether to rescale the downloaded data to the unit interval. |
 | `SATCONS_NUM_WORKERS` | `1` | The number of workers to use for processing. |
+| `SATCONS_ICECHUNKS` | `false` | Whether to use icechunk repositories for storage. |
+| `SATCONS_CROP_REGION` | `` | The region string to crop data to ('uk', 'india', 'west-europe') |
 
 **Merge:**
 
@@ -100,12 +109,20 @@ Each command then has its own set of configuration options:
 
 ### How do I add a new satellite to the consumer?
 
-Current;y the consumer is built to the specific data requirements of Open Climate Fix.
+Currently the consumer is built to the specific data requirements of Open Climate Fix.
 However, adding a new satellite in the from EUMETSAT shouldn't be too hard, provided it uses
 the same `seviri_l1b_native` format and sensor channels - just update the available satellites
 in `config.py`.
 
 ## Development
+
+OCF recommends using [uv](https://docs.astral.sh/uv/) for managing your virtual environments.
+
+```bash
+$ git clone git@github.com:openclimatefix/satellite-consumer.git
+$ cd satellite-consumer
+$ uv sync
+```
 
 ### Running the CLI
 
@@ -133,14 +150,19 @@ but it prevents accidental creation of a whole suite of bugs.
 ### Running the test suite
 
 There are some additional dependencies to be installed for running the tests,
-be sure to pass `--extra=dev` to the `pip install -e .` command when creating your virtualenv.
-(Or use uv and let it do it for you!)
+be sure to pass `--extra=dev` to the `pip install -e .` command when creating your virtualenv
+(`uv sync` includes the development dependencies by default, so `uv` users can ignore this!).
 
 Run the unit tests with:
 
 ```bash
-$ python -m unittest discover -s src/nwp_consumer -p "test_*.py"
+$ python -m unittest discover -s src/satellite_consumer -p "test_*.py"
 ```
+
+> [!Note]
+> If you have created your virtual environment using `uv`, the above can be run via
+> the `Makefile`, using `make typecheck`, `make lint`, and `make test` respectively.
+
  
 ## Further reading
 
