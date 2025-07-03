@@ -4,10 +4,15 @@ Consolidates the old cli_downloader, backfill_hrv and backfill_nonhrv scripts.
 """
 
 import datetime as dt
+ 
+import os
+
 import warnings
+
 from importlib.metadata import PackageNotFoundError, version
 from typing import TYPE_CHECKING
 
+import sentry_sdk
 import eumdac.product
 import numpy as np
 from icechunk.xarray import to_icechunk
@@ -36,14 +41,72 @@ try:
 except PackageNotFoundError:
     __version__ = "v?"
 
+
+
+# Sentry initialization as per the suggestion
+sentry_sdk.init(
+    dsn=os.getenv("SENTRY_DSN"), 
+    environment=os.getenv("ENVIRONMENT", "local"), 
+    traces_sample_rate=1,
+)
+sentry_sdk.set_tag("app_name", "satellite_consumer")
+sentry_sdk.set_tag("version", __version__)
+
+def _consume_command(command_opts: ArchiveCommandOptions | ConsumeCommandOptions) -> None:
+    """Run the download and processing pipeline."""
+
+def _consume_to_store(command_opts: ArchiveCommandOptions | ConsumeCommandOptions) -> None:
+    """Logic for the consume command (and the archive command)."""
+
+    fs = get_fs(path=command_opts.zarr_path)
+
 def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
     """Logic for the consume command (and the archive command)."""
+
     window = command_opts.time_window
     product_iter = get_products_iterator(
         sat_metadata=command_opts.satellite_metadata,
         start=window[0],
         end=window[1],
     )
+
+
+    if fs.exists(command_opts.zarr_path.replace("s3://", "")):
+        log.info("Using existing zarr store", dst=command_opts.zarr_path)
+    else:
+        log.info("Creating new zarr store", dst=command_opts.zarr_path)
+        _ = create_empty_zarr(dst=command_opts.zarr_path, coords=command_opts.as_coordinates())
+
+    def _etl(product: eumdac.product.Product) -> str | None:
+        """Download, process, and save a single NAT file."""
+        nat_filepath = download_nat(product, folder=f"{command_opts.workdir}/raw")
+        if nat_filepath is None:
+            return nat_filepath
+        da = process_nat(path=nat_filepath, hrv=command_opts.hrv)
+        write_to_zarr(da=da, dst=command_opts.zarr_path)
+        return nat_filepath
+
+    nat_filepaths: list[str] = []
+
+
+    num_skipped: int = 0
+    # Iterate through all products in search
+
+    for nat_filepath in Parallel(
+        n_jobs=command_opts.num_workers, return_as="generator",
+    )(delayed(_etl)(product) for product in product_iter):
+        if nat_filepath is None:
+            num_skipped += 1
+        else:
+            nat_filepaths.append(nat_filepath)
+
+    # Might not need this as skipped files are all NaN
+    # and the validation step should catch it
+    if num_skipped / (num_skipped + len(nat_filepaths)) > 0.05:
+        raise ValidationError(
+            f"Too many files had to be skipped "
+            f"({num_skipped}/{num_skipped + len(nat_filepaths)}). "
+            "Use dataset at your own risk!",
 
     processed_filepaths: list[str] = []
     num_skipped: int = 0
@@ -112,6 +175,7 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
         log.info(
             "Finished population of icechunk store",
             dst=command_opts.zarr_path, num_skipped=num_skipped, num_written=num_written,
+
         )
 
     else:
@@ -125,7 +189,11 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
             _ = storage.create_empty_zarr(
                 dst=command_opts.zarr_path,
                 coords=command_opts.as_coordinates(),
-            )
+
+            for f in nat_filepaths:
+                f.unlink()  # type: ignore
+
+            _ = [f.unlink() for f in nat_filepaths] # type:ignore
 
         def _etl(product: eumdac.product.Product) -> list[str]:
             """Download, process, and save a single NAT file."""
@@ -173,6 +241,7 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
         if command_opts.validate:
             validate(src=command_opts.zarr_path)
 
+
 def _merge_command(command_opts: MergeCommandOptions) -> None:
     """Logic for the merge command."""
     zarr_paths = command_opts.zarr_paths
@@ -201,7 +270,6 @@ def _merge_command(command_opts: MergeCommandOptions) -> None:
     dst = storage.create_latest_zip(srcs=zarr_paths)
     log.info("Created latest.zip", dst=dst)
 
-
 def run(config: SatelliteConsumerConfig) -> None:
     """Run the download and processing pipeline."""
     prog_start = dt.datetime.now(tz=dt.UTC)
@@ -220,4 +288,3 @@ def run(config: SatelliteConsumerConfig) -> None:
 
     runtime = dt.datetime.now(tz=dt.UTC) - prog_start
     log.info(f"Completed satellite consumer run in {runtime!s}.")
-
