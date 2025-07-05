@@ -37,8 +37,8 @@ sentry_sdk.init(
     environment=os.getenv("ENVIRONMENT", "local"), 
     traces_sample_rate=1,
 )
-
 sentry_sdk.set_tag("app_name", "satellite_consumer")
+sentry_sdk.set_tag("app_version", __version__) 
 
 
 def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
