@@ -178,30 +178,36 @@ def get_icechunk_repo(path: str) -> tuple[icechunk.Repository, list[dt.datetime]
         A tuple containing the icechunk repository, and a list of times that exist in it already.
     """
     result = re.match(
-        r"^(?P<protocol>[\w]{2,6}):\/\/(?P<bucket>[\w-]+)\/(?P<prefix>[\w\/-]+)$",
+        r"^(?P<protocol>[\w]{2,6}):\/\/(?P<bucket>[\w-]+)\/(?P<prefix>[\w.\/-]+)$",
         path,
     )
     storage_config: icechunk.Storage
+    repo: icechunk.Repository
 
     # Make Icechunk storage config according to the given path
     if result:
         match (result.group("protocol"), result.group("bucket"), result.group("prefix")):
             case ("s3", bucket, prefix):
+                log.debug("Initializing S3 backend", bucket=bucket, prefix=prefix)
                 storage_config = icechunk.s3_storage(
                     bucket=bucket,
                     prefix=prefix,
-                    endpoint_url= os.getenv("AWS_ENDPOINT", None),
+                    access_key_id=os.getenv("AWS_ACCESS_KEY_ID", None),
+                    secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY", None),
                     region= os.getenv("AWS_REGION", "eu-west-1"),
+                    endpoint_url=os.getenv("AWS_ENDPOINT", None),
                 )
-            case ("gcs", _, _):
+            case ("gcs", bucket, prefix):
+                log.debug("Initializing GCS backend", bucket=bucket, prefix=prefix)
                 storage_config = icechunk.gcs_storage(
-                    bucket=result.group("bucket"),
-                    prefix=result.group("prefix"),
+                    bucket=bucket,
+                    prefix=prefix,
                 )
             case _:
                 raise OSError(f"Unsupported protocol in path: {path}")
     else:
         # Try to do a local store
+        log.debug("Initializing local filesystem backend", path=path)
         storage_config = icechunk.local_filesystem_storage(path=path)
 
     if icechunk.Repository.exists(storage=storage_config):
@@ -216,5 +222,7 @@ def get_icechunk_repo(path: str) -> tuple[icechunk.Repository, list[dt.datetime]
         ]
         return repo, times
 
-    log.debug("Creating new icechunk store", path=path)
-    return icechunk.Repository.create(storage=storage_config), []
+    repo = icechunk.Repository.create(storage=storage_config)
+    log.debug("Created new icechunk store", path=path)
+    return repo, []
+

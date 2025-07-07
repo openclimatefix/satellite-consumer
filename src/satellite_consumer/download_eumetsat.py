@@ -189,12 +189,13 @@ def download_raw(
     downloaded_files: list[str] = []
 
     if existing_times is not None:
-        rounded_time: dt.datetime = pd.Timestamp(product.sensing_start)\
+        rounded_time: dt.datetime = pd.Timestamp(product.sensing_end)\
             .round("5 min").to_pydatetime().replace(tzinfo=dt.UTC)
         if rounded_time in existing_times:
             log.debug(
                 "Skipping product that exists in store",
                 time=product.sensing_end.strftime("%Y-%m-%dT%H:%M"),
+                rounded_time=rounded_time.strftime("%Y-%m-%dT%H:%M"),
                 product=product,
             )
             return []

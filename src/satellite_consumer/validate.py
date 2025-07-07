@@ -76,7 +76,7 @@ def validate(
             f"{failed_image_percentage:.2%} of images have greater than 5% null values"
             f"({failed_image_count}/{total_image_count})",
         )
-    log.info(
+    log.debug(
         f"{failed_image_count}/{total_image_count} "
         f"({failed_image_percentage:.2%}) of images have greater than 5% null values",
     )
