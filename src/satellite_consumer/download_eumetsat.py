@@ -196,7 +196,6 @@ def download_raw(
                 "Skipping product that exists in store",
                 time=product.sensing_end.strftime("%Y-%m-%dT%H:%M"),
                 rounded_time=rounded_time.strftime("%Y-%m-%dT%H:%M"),
-                product=product,
             )
             return []
 
