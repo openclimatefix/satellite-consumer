@@ -4,6 +4,7 @@ Consolidates the old cli_downloader, backfill_hrv and backfill_nonhrv scripts.
 """
 import datetime as dt
 import os
+import warnings
 from importlib.metadata import PackageNotFoundError, version
 
 import eumdac.product
