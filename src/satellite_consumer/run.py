@@ -101,7 +101,10 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                         obj=da.to_dataset(name="data", promote_attrs=True),
                         session=session,
                         mode="w-",
-                        encoding={"time": {"units": "nanoseconds since 1970-01-01"}},
+                        encoding={
+                            "time": {"units": "nanoseconds since 1970-01-01"},
+                            "data": {"dtype": "f4"},
+                        },
                     )
                 _ = session.commit(message="initial commit")
             # Otherwise, append the data to the existing store
