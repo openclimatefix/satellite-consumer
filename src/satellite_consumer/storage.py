@@ -8,6 +8,7 @@ import tempfile
 import warnings
 
 import fsspec
+import gcsfs
 import icechunk
 import numpy as np
 import s3fs
@@ -165,6 +166,10 @@ def get_fs(path: str) -> fsspec.AbstractFileSystem:
                 "endpoint_url": os.getenv("AWS_ENDPOINT", None),
             },
         )
+    elif path.startswith("gcs://"):
+        fs = gcsfs.GCSFileSystem(
+            token=os.getenv("GOOGLE_APPLICATION_CREDENTIALS", None),
+        )
     return fs
 
 def get_icechunk_repo(path: str) -> tuple[icechunk.Repository, list[dt.datetime]]:
@@ -202,6 +207,7 @@ def get_icechunk_repo(path: str) -> tuple[icechunk.Repository, list[dt.datetime]
                 storage_config = icechunk.gcs_storage(
                     bucket=bucket,
                     prefix=prefix,
+                    application_credentials=os.getenv("GOOGLE_APPLICATION_CREDENTIALS", None),
                 )
             case _:
                 raise OSError(f"Unsupported protocol in path: {path}")
