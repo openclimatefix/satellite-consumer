@@ -6,7 +6,7 @@ Consolidates the old cli_downloader, backfill_hrv and backfill_nonhrv scripts.
 import datetime as dt
 import itertools
 import warnings
-from collections.abc import Iterable, Generator
+from collections.abc import Generator, Iterable
 from importlib.metadata import PackageNotFoundError, version
 from typing import TYPE_CHECKING
 
@@ -68,7 +68,6 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                 yield batch
 
         for product_batch in _batcher(product_iter, command_opts.num_workers):
-
             log.debug("Processing batch of products", num_products=len(product_batch))
 
             # Download the files for each product in the batch in parallel
@@ -78,12 +77,13 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                     folder=f"{command_opts.workdir}/raw",
                     filter_regex=command_opts.satellite_metadata.file_filter_regex,
                     existing_times=existing_times,
-                ) for p in product_batch
+                )
+                for p in product_batch
             )
 
             log.debug("Downloaded raw files for product batch", num_filegroups=len(raw_filegroups))
 
-            # Process each products set of files in series 
+            # Process each products set of files in series
             for i, raw_filepaths in enumerate(raw_filegroups):
                 if len(raw_filepaths) == 0:
                     num_skipped += 1
@@ -229,7 +229,7 @@ def _merge_command(command_opts: MergeCommandOptions) -> None:
                         validate=True,
                         rescale=True,  # TODO: Make this an option
                         resolution=command_opts.resolution,
-                    )
+                    ),
                 )
             else:
                 raise FileNotFoundError(f"Zarr store not found at {zarr_path}")

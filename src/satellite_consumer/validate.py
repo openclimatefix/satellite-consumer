@@ -10,12 +10,13 @@ from satellite_consumer.exceptions import ValidationError
 
 
 def validate(
-        src: str | xr.DataArray,
-        nans_in_check_region_threshold: float = 0.05,
-        images_failing_nan_check_threshold: float = 0,
-        check_region_xy_slices: tuple[slice, slice] = (
-            slice(-480_064.6, -996_133.85), slice(4_512_606.3, 5_058_679.8),
-        ),
+    src: str | xr.DataArray,
+    nans_in_check_region_threshold: float = 0.05,
+    images_failing_nan_check_threshold: float = 0,
+    check_region_xy_slices: tuple[slice, slice] = (
+        slice(-480_064.6, -996_133.85),
+        slice(4_512_606.3, 5_058_679.8),
+    ),
 ) -> tuple[int, int]:
     """Check the quality of the data in the given dataset.
 
@@ -46,8 +47,14 @@ def validate(
 
     # TODO: Remove warnings catch when Zarr makes up its mind about codecs
     with warnings.catch_warnings(action="ignore"):
-        da: xr.DataArray = src if isinstance(src, xr.DataArray) else xr.open_dataarray(
-            src, engine="zarr", consolidated=False,
+        da: xr.DataArray = (
+            src
+            if isinstance(src, xr.DataArray)
+            else xr.open_dataarray(
+                src,
+                engine="zarr",
+                consolidated=False,
+            )
         )
     if not {"x_geostationary", "y_geostationary"}.issubset(set(da.dims)):
         raise ValidationError(
@@ -81,4 +88,3 @@ def validate(
         f"({failed_image_percentage:.2%}) of images have greater than 5% null values",
     )
     return failed_image_count, total_image_count
-

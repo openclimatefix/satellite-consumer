@@ -23,7 +23,7 @@ from satellite_consumer.config import Coordinates
 def write_to_zarr(
     da: xr.DataArray,
     dst: str,
-    ) -> None:
+) -> None:
     """Write the given data array to the given zarr store.
 
     If a Zarr store already exists at the given path, the DataArray will be appended to it.
@@ -45,7 +45,10 @@ def write_to_zarr(
 
         with warnings.catch_warnings(action="ignore"):
             _ = da.to_dataset(name="data", promote_attrs=True).to_zarr(
-                store=dst, compute=True, mode="a", consolidated=False,
+                store=dst,
+                compute=True,
+                mode="a",
+                consolidated=False,
                 region={
                     "time": slice(time_idx, time_idx + 1),
                     "y_geostationary": slice(0, len(store_da.coords["y_geostationary"])),
@@ -57,6 +60,7 @@ def write_to_zarr(
         raise OSError(f"Error writing dataset to zarr store {dst}: {e}") from e
 
     return None
+
 
 def create_latest_zip(srcs: list[str]) -> str:
     """Convert zarr store(s) at the given path to a zip store."""
@@ -74,23 +78,24 @@ def create_latest_zip(srcs: list[str]) -> str:
                     _ = ds.to_zarr(
                         store=store,
                         consolidated=False,
-                        mode="w" if i==0 else "a-",
-                        append_dim=None if i==0 else "time",
+                        mode="w" if i == 0 else "a-",
+                        append_dim=None if i == 0 else "time",
                     )
                 log.debug(
                     "Written dataset to merged store",
-                    src=src, num=f"{i+1}/{len(srcs)}",
+                    src=src,
+                    num=f"{i + 1}/{len(srcs)}",
                 )
             except Exception as e:
                 raise OSError(f"Error writing dataset to merged store '{store}': {e}") from e
         shutil.make_archive(
-            base_name=tmpdir+"/merged_zipped",
+            base_name=tmpdir + "/merged_zipped",
             format="zip",
             root_dir=tmpdir,
             base_dir="merged.zarr",
         )
         log.debug("Zipped merged store")
-        fs.put(lpath=tmpdir+"/merged_zipped.zip", rpath=dst)
+        fs.put(lpath=tmpdir + "/merged_zipped.zip", rpath=dst)
 
     return zippath
 
@@ -104,24 +109,34 @@ def create_empty_zarr(dst: str, coords: Coordinates) -> xr.DataArray:
     group: zarr.Group = zarr.create_group(dst, overwrite=True)
 
     time_zarray: zarr.Array = group.create_array(
-        name="time", dimension_names=["time"],
-        shape=(len(coords.time),), dtype="int", attributes={
-            "units": "nanoseconds since 1970-01-01", "calendar": "proleptic_gregorian",
+        name="time",
+        dimension_names=["time"],
+        shape=(len(coords.time),),
+        dtype="int",
+        attributes={
+            "units": "nanoseconds since 1970-01-01",
+            "calendar": "proleptic_gregorian",
         },
     )
     time_zarray[:] = coords.time
 
     y_geo_zarray = group.create_array(
-        name="y_geostationary", dimension_names=["y_geostationary"],
-        shape=(len(coords.y_geostationary),), dtype="float", attributes={
+        name="y_geostationary",
+        dimension_names=["y_geostationary"],
+        shape=(len(coords.y_geostationary),),
+        dtype="float",
+        attributes={
             "coordinate_reference_system": "geostationary",
         },
     )
     y_geo_zarray[:] = coords.y_geostationary
 
     x_geo_zarray = group.create_array(
-        name="x_geostationary", dimension_names=["x_geostationary"],
-        shape=(len(coords.x_geostationary),), dtype="float", attributes={
+        name="x_geostationary",
+        dimension_names=["x_geostationary"],
+        shape=(len(coords.x_geostationary),),
+        dtype="float",
+        attributes={
             "coordinate_reference_system": "geostationary",
         },
     )
@@ -130,15 +145,22 @@ def create_empty_zarr(dst: str, coords: Coordinates) -> xr.DataArray:
     # TODO: Remove this when Zarr makes up its mind on string codecs
     with warnings.catch_warnings(action="ignore"):
         var_zarray = group.create_array(
-            name="variable", dimension_names=["variable"],
-            shape=(len(coords.variable),), dtype="str",
+            name="variable",
+            dimension_names=["variable"],
+            shape=(len(coords.variable),),
+            dtype="str",
         )
         var_zarray[:] = coords.variable
 
     _ = group.create_array(
-        name="data", dimension_names=coords.dims(), dtype="float",
-        shape=coords.shape(), chunks=coords.chunks(), shards=coords.shards(),
-        fill_value=np.nan, config={"write_empty_chunks": False},
+        name="data",
+        dimension_names=coords.dims(),
+        dtype="float",
+        shape=coords.shape(),
+        chunks=coords.chunks(),
+        shards=coords.shards(),
+        fill_value=np.nan,
+        config={"write_empty_chunks": False},
     )
 
     with warnings.catch_warnings(action="ignore"):
@@ -172,6 +194,7 @@ def get_fs(path: str) -> fsspec.AbstractFileSystem:
         )
     return fs
 
+
 def get_icechunk_repo(path: str) -> tuple[icechunk.Repository, list[dt.datetime]]:
     """Get an icechunk repository for the given path.
 
@@ -199,7 +222,7 @@ def get_icechunk_repo(path: str) -> tuple[icechunk.Repository, list[dt.datetime]
                     prefix=prefix,
                     access_key_id=os.getenv("AWS_ACCESS_KEY_ID", None),
                     secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY", None),
-                    region= os.getenv("AWS_REGION", "eu-west-1"),
+                    region=os.getenv("AWS_REGION", "eu-west-1"),
                     endpoint_url=os.getenv("AWS_ENDPOINT", None),
                 )
             case ("gcs", bucket, prefix):
@@ -223,7 +246,7 @@ def get_icechunk_repo(path: str) -> tuple[icechunk.Repository, list[dt.datetime]
         ro_session = repo.readonly_session(branch="main")
         ds: xr.Dataset = xr.open_zarr(ro_session.store, consolidated=False)
         times: list[dt.datetime] = [
-                dt.datetime.strptime(t, "%Y-%m-%dT%H:%M").replace(tzinfo=dt.UTC)
+            dt.datetime.strptime(t, "%Y-%m-%dT%H:%M").replace(tzinfo=dt.UTC)
             for t in np.datetime_as_string(ds.coords["time"].values, unit="m").tolist()
         ]
         return repo, times
@@ -231,4 +254,3 @@ def get_icechunk_repo(path: str) -> tuple[icechunk.Repository, list[dt.datetime]
     repo = icechunk.Repository.create(storage=storage_config)
     log.debug("Created new icechunk store", path=path)
     return repo, []
-
