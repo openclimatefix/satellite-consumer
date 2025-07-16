@@ -189,8 +189,9 @@ def download_raw(
     downloaded_files: list[str] = []
 
     if existing_times is not None:
-        rounded_time: dt.datetime = pd.Timestamp(product.sensing_end)\
-            .round("5 min").to_pydatetime().replace(tzinfo=dt.UTC)
+        rounded_time: dt.datetime = (
+            pd.Timestamp(product.sensing_end).round("5 min").to_pydatetime().replace(tzinfo=dt.UTC)
+        )
         if rounded_time in existing_times:
             log.debug(
                 "Skipping product that exists in store",
@@ -220,7 +221,9 @@ def download_raw(
                 "Ensure you have the required access permissions.",
             ) from e
 
-        log.debug("Downloading raw file", src=raw_file, dst=filepath, num=f"{i+1}/{len(raw_files)}")
+        log.debug(
+            "Downloading raw file", src=raw_file, dst=filepath, num=f"{i + 1}/{len(raw_files)}",
+        )
         for i in range(retries + 1):
             try:
                 # Copying to temp then putting seems to be quicker than copying to fs
@@ -264,4 +267,3 @@ def _gen_token() -> eumdac.token.AccessToken:
     token = eumdac.token.AccessToken(credentials=(consumer_key, consumer_secret))
 
     return token
-

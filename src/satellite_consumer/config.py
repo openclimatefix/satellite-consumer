@@ -112,6 +112,7 @@ class Coordinates:
 
     def chunks(self) -> tuple[int, ...]:
         """Get the chunk size for each dimension."""
+
         def _get_factor_near(n: int, initial_divisor: int = 8) -> int:
             for i in range(initial_divisor, n, 1):
                 if n % i == 0:
@@ -231,7 +232,6 @@ class ConsumeCommandOptions:
                 f"No channels found for resolution {self.resolution} in the provided satellite.",
             )
 
-
     @property
     def satellite_metadata(self) -> "SatelliteMetadata":
         """Get the metadata for the chosen satellite."""
@@ -342,7 +342,7 @@ class ConsumeCommandOptions:
                     sweep="y",
                 ),
             )
-            geos_bounds = transformer.transform_bounds(**crop_region_map[self.crop_region]) # type: ignore
+            geos_bounds = transformer.transform_bounds(**crop_region_map[self.crop_region])  # type: ignore
 
             # Check the produced bounds are within the satellite's spatial coordinates
             cs = self.satellite_metadata.spatial_coordinates
