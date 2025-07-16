@@ -35,8 +35,8 @@ dependencies = [
     "s3fs == 2025.2.0",
     "xarray == 2025.1.2",
     "zarr == 3.0.2",
-    "icechunk == 0.2.16",
-    "hdf5plugin>=5.1.0",
+    "icechunk == 1.0.0",
+    "hdf5plugin >= 5.1.0",
 ]
 
 [dependency-groups]
