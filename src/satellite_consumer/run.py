@@ -9,9 +9,10 @@ import itertools
 import warnings
 from collections.abc import Generator, Iterable
 from importlib.metadata import PackageNotFoundError, version
-from typing import TYPE_CHECKING, TypeVar
+from typing import TypeVar
 
 import eumdac.product
+import icechunk
 import numpy as np
 from icechunk.xarray import to_icechunk
 from joblib import Parallel, delayed
@@ -30,9 +31,6 @@ from satellite_consumer.download_eumetsat import (
 from satellite_consumer.exceptions import ValidationError
 from satellite_consumer.process import process_raw
 from satellite_consumer.validate import validate
-
-if TYPE_CHECKING:
-    import icechunk
 
 T = TypeVar("T")
 
