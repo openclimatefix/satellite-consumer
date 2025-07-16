@@ -139,11 +139,11 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                             session=session,
                             append_dim="time",
                             mode="a",
-                            rebase_with=icechunk.ConflictDetector(),
-                            rebase_tries=5,
                         )
                     _ = session.commit(
                         message=f"add {len(da.coords['time']) * len(da.coords['variable'])} images",
+                        rebase_with=icechunk.ConflictDetector(),
+                        rebase_tries=5,
                     )
                 num_written += 1
                 processed_filepaths.extend(raw_filepaths)
