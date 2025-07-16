@@ -8,7 +8,7 @@ import itertools
 import warnings
 from collections.abc import Generator, Iterable
 from importlib.metadata import PackageNotFoundError, version
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeVar
 
 import eumdac.product
 import numpy as np
@@ -32,8 +32,6 @@ from satellite_consumer.validate import validate
 
 if TYPE_CHECKING:
     import icechunk
-
-from typing import TypeVar
 
 T = TypeVar("T")
 
