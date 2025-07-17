@@ -77,7 +77,7 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                     return
                 yield batch
 
-        for product_batch in _batcher(product_iter, command_opts.num_workers):
+        for batch_num, product_batch in enumerate(_batcher(product_iter, command_opts.num_workers)):
             log.debug("Processing batch of products", num_products=len(product_batch))
 
             # Download the files for each product in the batch in parallel
@@ -115,7 +115,7 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                     dst=command_opts.zarr_path,
                     time=str(np.datetime_as_string(da.coords["time"].values[0], unit="m")),
                 )
-                if i == 0 and len(existing_times) == 0:
+                if len(existing_times) == 0 and batch_num == 0 and i == 0:
                     session: icechunk.Session = repo.writable_session(branch="main")
                     # TODO: Remove warnings catch when Zarr makes up its mind about codecs
                     with warnings.catch_warnings(action="ignore"):
