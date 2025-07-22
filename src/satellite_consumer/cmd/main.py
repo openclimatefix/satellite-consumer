@@ -26,21 +26,31 @@ def cli_entrypoint() -> None:
     parser = argparse.ArgumentParser(description="Satellite consumer")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    consume_parser = subparsers.add_parser("consume",
+    consume_parser = subparsers.add_parser(
+        "consume",
         help="Consume satellite data for a given time",
     )
     consume_parser.add_argument("satellite", choices=list(SATELLITE_METADATA.keys()))
-    consume_parser.add_argument("--time", "-t",
-            type=dt.datetime.fromisoformat, required=False,
-            help="Time to consume (YYYY-MM-DDTHH:MM:SS)",
-            default=dt.datetime.now(tz=dt.UTC),
+    consume_parser.add_argument(
+        "--time",
+        "-t",
+        type=dt.datetime.fromisoformat,
+        required=False,
+        help="Time to consume (YYYY-MM-DDTHH:MM:SS)",
+        default=dt.datetime.now(tz=dt.UTC),
     )
     window_ex_group = consume_parser.add_mutually_exclusive_group(required=False)
-    window_ex_group.add_argument("--window-mins",
-        type=int, help="Window size in minutes", default=0,
+    window_ex_group.add_argument(
+        "--window-mins",
+        type=int,
+        help="Window size in minutes",
+        default=0,
     )
-    window_ex_group.add_argument("--window-months",
-        type=int, help="Window size in months", default=0,
+    window_ex_group.add_argument(
+        "--window-months",
+        type=int,
+        help="Window size in months",
+        default=0,
     )
     consume_parser.add_argument("--validate", action="store_true")
     consume_parser.add_argument("--resolution", type=int, default=3000)
@@ -52,14 +62,20 @@ def cli_entrypoint() -> None:
     consume_parser.add_argument("--icechunk", action="store_true")
     consume_parser.add_argument("--crop-region", type=str, default="")
 
-    merge_parser = subparsers.add_parser("merge",
+    merge_parser = subparsers.add_parser(
+        "merge",
         help="Merge satellite data for a given window",
     )
     merge_parser.add_argument("satellite", choices=list(SATELLITE_METADATA.keys()))
-    merge_parser.add_argument("--window-mins",
-        type=int, help="Merge window size in minutes", default=210,
+    merge_parser.add_argument(
+        "--window-mins",
+        type=int,
+        help="Merge window size in minutes",
+        default=210,
     )
-    merge_parser.add_argument("--window-end", "-t",
+    merge_parser.add_argument(
+        "--window-end",
+        "-t",
         type=dt.datetime.fromisoformat,
         help="End of merge window (YYYY-MM-DDTHH:MM:SS)",
     )
@@ -99,7 +115,8 @@ def cli_entrypoint() -> None:
             )
 
     config: SatelliteConsumerConfig = SatelliteConsumerConfig(
-        command=command, command_options=command_opts,
+        command=command,
+        command_options=command_opts,
     )
 
     try:
@@ -109,6 +126,7 @@ def cli_entrypoint() -> None:
         tb: str = traceback.format_exc()
         log.error(f"Error: {e}", traceback=tb)
         sys.exit(1)
+
 
 def env_entrypoint() -> None:
     """Handle the program using environment variables.
@@ -165,7 +183,8 @@ def env_entrypoint() -> None:
         raise e
 
     config: SatelliteConsumerConfig = SatelliteConsumerConfig(
-        command=command, command_options=command_opts,
+        command=command,
+        command_options=command_opts,
     )
 
     try:
@@ -175,5 +194,3 @@ def env_entrypoint() -> None:
         tb: str = traceback.format_exc()
         log.error(f"Error: {e}", traceback=tb)
         sys.exit(1)
-
-

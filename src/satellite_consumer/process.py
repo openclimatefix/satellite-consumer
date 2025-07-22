@@ -70,11 +70,7 @@ def process_raw(
         try:
             da = _normalize(
                 da=da,
-                channels=[
-                    c
-                    for c in channels
-                    if resolution_meters in c.resolution_meters
-                ],
+                channels=[c for c in channels if resolution_meters in c.resolution_meters],
             )
         except Exception as e:
             raise ValueError(f"Error rescaling dataarray: {e}") from e
@@ -114,10 +110,12 @@ def _map_scene_to_dataarray(
     # Convert the Scene to a DataArray
     da: xr.DataArray = scene.to_xarray_dataset().to_array(name="data")
     if crop_region_geos is not None:
-        da = da.where(da.coords["x"] >= crop_region_geos[0], drop=True)\
-            .where(da.coords["x"] <= crop_region_geos[2], drop=True)\
-            .where(da.coords["y"] >= crop_region_geos[1], drop=True)\
+        da = (
+            da.where(da.coords["x"] >= crop_region_geos[0], drop=True)
+            .where(da.coords["x"] <= crop_region_geos[2], drop=True)
+            .where(da.coords["y"] >= crop_region_geos[1], drop=True)
             .where(da.coords["y"] <= crop_region_geos[3], drop=True)
+        )
 
     # Handle attrs, converting to serializable format
     da.attrs["variables"] = {}
@@ -139,12 +137,13 @@ def _map_scene_to_dataarray(
             elif isinstance(value, bool | np.bool_):
                 sd[key] = str(value)
             elif isinstance(value, pyresample.geometry.AreaDefinition):
-                sd[key] = yaml.load(value.dump(), Loader=yaml.SafeLoader) # type:ignore
+                sd[key] = yaml.load(value.dump(), Loader=yaml.SafeLoader)  # type:ignore
             elif isinstance(value, dict):
                 sd[key] = _serialize(value)
             else:
                 sd[key] = str(value)
         return sd
+
     da.attrs = _serialize(da.attrs)
 
     # Ensure DataArray has a time dimension
