@@ -62,42 +62,24 @@ def write_to_zarr(
     return None
 
 
-def create_latest_zip(srcs: list[str]) -> str:
-    """Convert zarr store(s) at the given path to a zip store."""
-    # Open the zarr store and write it to a zip store
-    fs = get_fs(srcs[0])
-    zippath: str = srcs[0].rsplit("/", 1)[0] + "/latest.zarr.zip"
+def create_latest_zip(src: str, time_slice: slice) -> str:
+    """Extract the latest windowed data from the store and write it to a zipped zarr."""
+    repo, _ = get_icechunk_repo(path=src)
+    session: icechunk.Session = repo.readonly_session(branch="main")
+    store_ds: xr.Dataset = xr.open_zarr(session.store, consolidated=False)
+    fs = get_fs(src)
+    dst = src.rsplit("/", 1)[0] + "/latest.zarr.zip"
 
-    dst: str = zippath.split("s3://")[-1]
-    with tempfile.TemporaryDirectory() as tmpdir:
-        for i, src in enumerate(srcs):
-            try:
-                store: str = tmpdir + "/merged.zarr"
-                with warnings.catch_warnings(action="ignore"):
-                    ds = xr.open_zarr(src, consolidated=False)
-                    _ = ds.to_zarr(
-                        store=store,
-                        consolidated=False,
-                        mode="w" if i == 0 else "a-",
-                        append_dim=None if i == 0 else "time",
-                    )
-                log.debug(
-                    "Written dataset to merged store",
-                    src=src,
-                    num=f"{i + 1}/{len(srcs)}",
-                )
-            except Exception as e:
-                raise OSError(f"Error writing dataset to merged store '{store}': {e}") from e
-        shutil.make_archive(
-            base_name=tmpdir + "/merged_zipped",
-            format="zip",
-            root_dir=tmpdir,
-            base_dir="merged.zarr",
-        )
-        log.debug("Zipped merged store")
-        fs.put(lpath=tmpdir + "/merged_zipped.zip", rpath=dst)
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".zarr.zip") as tmpzip:
+        with zarr.storage.ZipStore(mode="w", path=tmpzip.name) as store:
+            store_ds.isel({"time": time_slice}).to_zarr(
+                store=store,
+                consolidated=False,
+                mode="w",
+            )
+        fs.put(tmpzip.name, dst)
 
-    return zippath
+    return dst
 
 
 def create_empty_zarr(dst: str, coords: Coordinates) -> xr.DataArray:

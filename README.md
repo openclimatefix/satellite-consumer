@@ -71,12 +71,10 @@ options that are shared between all commands:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SATCONS_COMMAND` |  | The command to run (consume/merge). |
+| `SATCONS_COMMAND` |  | The command to run (consume/extract-latest). |
 | `SATCONS_SATELLITE` | | The satellite to consume data from. |
 | `SATCONS_WORKDIR` | `/mnt/disks/sat` | The working directory. In the container, this is set to `/work` for easy mounting. |
 | `SATCONS_RESOLUTION` | `3000` | The desired resolution of the satellite images in meters ('3000', '1000'). |
-| `EUMETSAT_CONSUMER_KEY` |  | The EUMETSAT consumer key. |
-| `EUMETSAT_CONSUMER_SECRET` |  | The EUMETSAT consumer secret. |
 
 Each command then has its own set of configuration options:
 
@@ -94,16 +92,16 @@ Each command then has its own set of configuration options:
 | `SATCONS_NUM_WORKERS` | `1` | The number of workers to use for processing. |
 | `SATCONS_ICECHUNKS` | `false` | Whether to use icechunk repositories for storage. |
 | `SATCONS_CROP_REGION` | `` | The region string to crop data to ('uk', 'india', 'west-europe') |
+| `EUMETSAT_CONSUMER_KEY` |  | The EUMETSAT consumer key. |
+| `EUMETSAT_CONSUMER_SECRET` |  | The EUMETSAT consumer secret. |
 
-**Merge:**
+**Extract Latest:**
 
-*Merges consumed stores for a given time window into a single store in the working directory.*
+*Extracts the latest available data for a given satellite's store into a zipped zarr.*
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SATCONS_SATELLITE` | | The satellite to consume data from. |
-| `SATCONS_WINDOW_MINS` | `210` | The time window to merge data for. |
-| `SATCONS_CONSUME_MISSING` | `false` | Whether to consume missing data. |
+| `SATCONS_WINDOW_MINS` | `210` | The time window to extract data for. |
 
 ## FAQ
 

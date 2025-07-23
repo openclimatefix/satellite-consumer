@@ -21,7 +21,7 @@ from loguru import logger as log
 from satellite_consumer import storage
 from satellite_consumer.config import (
     ConsumeCommandOptions,
-    MergeCommandOptions,
+    ExtractLatestCommandOptions,
     SatelliteConsumerConfig,
 )
 from satellite_consumer.download_eumetsat import (
@@ -124,7 +124,10 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                             session=session,
                             mode="w-",
                             encoding={
-                                "time": {"units": "nanoseconds since 1970-01-01"},
+                                "time": {
+                                    "units": "nanoseconds since 1970-01-01",
+                                    "calendar": "proleptic_gregorian",
+                                },
                                 "data": {"dtype": "f4"},
                             },
                         )
@@ -217,36 +220,16 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
             validate(src=command_opts.zarr_path)
 
 
-def _merge_command(command_opts: MergeCommandOptions) -> None:
+def _extract_latest_command(command_opts: ExtractLatestCommandOptions) -> None:
     """Logic for the merge command."""
-    zarr_paths = command_opts.zarr_paths
-    log.info(
-        f"Merging {len(zarr_paths)} stores",
-        num=len(zarr_paths),
-        consume_missing=command_opts.consume_missing,
+    log.info(f"Extracting latest data from {command_opts.zarr_path}")
+    desired_image_num: int = (
+        command_opts.window_mins // command_opts.satellite_metadata.cadence_mins
     )
-    fs = storage.get_fs(path=zarr_paths[0])
 
-    for zarr_path in zarr_paths:
-        if not fs.exists(zarr_path):
-            if command_opts.consume_missing:
-                _consume_to_store(
-                    command_opts=ConsumeCommandOptions(
-                        time=dt.datetime.strptime(
-                            zarr_path.split("/")[-1].split("_")[0],
-                            "%Y%m%dT%H%M",
-                        ).replace(tzinfo=dt.UTC),
-                        satellite=command_opts.satellite,
-                        workdir=command_opts.workdir,
-                        validate=True,
-                        rescale=True,  # TODO: Make this an option
-                        resolution=command_opts.resolution,
-                    ),
-                )
-            else:
-                raise FileNotFoundError(f"Zarr store not found at {zarr_path}")
-
-    dst = storage.create_latest_zip(srcs=zarr_paths)
+    dst = storage.create_latest_zip(
+        src=command_opts.zarr_path, time_slice=slice(-desired_image_num, None),
+    )
     log.info("Created latest.zip", dst=dst)
 
 
@@ -263,10 +246,11 @@ def run(config: SatelliteConsumerConfig) -> None:
 
     if isinstance(config.command_options, ConsumeCommandOptions):
         _consume_to_store(command_opts=config.command_options)
-    elif isinstance(config.command_options, MergeCommandOptions):
-        _merge_command(command_opts=config.command_options)
+    elif isinstance(config.command_options, ExtractLatestCommandOptions):
+        _extract_latest_command(command_opts=config.command_options)
     else:
         pass
 
     runtime = dt.datetime.now(tz=dt.UTC) - prog_start
     log.info(f"Completed satellite consumer run in {runtime!s}.")
+

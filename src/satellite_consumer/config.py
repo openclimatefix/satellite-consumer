@@ -83,8 +83,8 @@ class Coordinates:
     """
 
     time: list[np.datetime64]
-    y_geostationary: list[float]
-    x_geostationary: list[float]
+    y_geostationary: list[float] | list[int]
+    x_geostationary: list[float] | list[int]
     variable: list[str]
 
     def to_dict(self) -> dict[str, list[float] | list[str] | list[np.datetime64]]:
@@ -154,8 +154,8 @@ class Command(StrEnum):
     Scan stores are a single Zarr store containing data for all scana
     withing a given time window.
     """
-    MERGE = auto()
-    """Merge multiple consumed stores into a single zarr store."""
+    EXTRACTLATEST = auto()
+    """Extract the latest window of data from a scan store."""
 
 
 @dataclasses.dataclass
@@ -257,7 +257,7 @@ class ConsumeCommandOptions:
         resstr: str = f"{self.resolution}m"
         satstr: str = self.satellite
         suffix: str = ".icechunk" if self.icechunk else ".zarr"
-        # cropstr: str = f"{self.crop_region}" if self.crop_region not in ["", "uk"] else ""
+        cropstr: str = f"{self.crop_region}"
         match self.window_mins, self.window_months, self.icechunk:
             case 0, 0, False:
                 windowstr: str = self.time.strftime("_%Y%m%dT%H%M")
@@ -270,7 +270,7 @@ class ConsumeCommandOptions:
             case _, _, True:
                 windowstr = ""  # Append all times to the same icechunk store
 
-        return f"{self.workdir}/data/{satstr}_{resstr}{windowstr}{suffix}"
+        return f"{self.workdir}/data/{satstr}_{cropstr}{resstr}{windowstr}{suffix}"
 
     @property
     def raw_folder(self) -> str:
@@ -366,15 +366,13 @@ class ConsumeCommandOptions:
 
 
 @dataclasses.dataclass
-class MergeCommandOptions:
-    """Options for the merge command."""
+class ExtractLatestCommandOptions:
+    """Options for the extract latest command."""
 
     satellite: str
     """The satellite to merge data for."""
     window_mins: int = 210
     """The time window of consumed data to merge."""
-    window_end: dt.datetime | None = None
-    """The end time of the time window to merge data for."""
     workdir: str = "/mnt/disks/sat"
     """The parent folder to store downloaded and processed data in.
 
@@ -382,8 +380,8 @@ class MergeCommandOptions:
     """
     resolution: int = 3000
     """The resolution in meters to use for the data."""
-    consume_missing: bool = False
-    """Whether to consume missing data instead of erroring before merging."""
+    crop_region: str = ""
+    """The name of the region to crop to. An empty string means no cropping."""
 
     def __post_init__(self) -> None:
         """Perform some validation on the input data."""
@@ -393,29 +391,6 @@ class MergeCommandOptions:
             )
         if self.window_mins <= 0:
             raise ValueError("Window size must be positive.")
-        if self.window_end is not None:
-            if self.window_end.replace(tzinfo=dt.UTC) > dt.datetime.now(tz=dt.UTC):
-                raise ValueError("Window end must be in the past.")
-        else:
-            self.window_end = dt.datetime.now(tz=dt.UTC)
-
-        if (
-            self.window_end.minute % self.satellite_metadata.cadence_mins != 0
-            or self.window_end.second != 0
-        ):
-            newtime: dt.datetime = (
-                self.window_end
-                - dt.timedelta(
-                    minutes=self.window_end.minute % self.satellite_metadata.cadence_mins,
-                )
-            ).replace(second=0, microsecond=0)
-            log.debug(
-                "Input window end is not a multiple of the chosen satellite's image cadence. "
-                + "Adjusting to nearest image time.",
-                input_window_end=str(self.window_end),
-                adjusted_time=str(newtime),
-            )
-            self.window_end = newtime
 
         if (
             len(
@@ -444,23 +419,18 @@ class MergeCommandOptions:
         return start, end
 
     @property
-    def zarr_paths(self) -> list[str]:
-        """Get the path to the zarr stores for the given time window."""
-        resstr: str = "nonhrv_" if self.resolution == 3000 else f"{self.resolution}m_"
-        satstr: str = "" if self.satellite == "rss" else f"{self.satellite}"
-        return [
-            f"{self.workdir}/data/{ts.strftime('%Y%m%dT%H%M')}_{resstr}{satstr}.zarr"
-            for ts in pd.date_range(
-                start=self.time_window[0],
-                end=self.time_window[1],
-                freq=f"{SATELLITE_METADATA[self.satellite].cadence_mins}min",
-                inclusive="right",
-            )
-        ]
+    def zarr_path(self) -> str:
+        """Get the path to the zarr store for the given time."""
+        resstr: str = f"{self.resolution}m"
+        satstr: str = self.satellite
+        suffix: str = ".icechunk"
+        cropstr: str = f"{self.crop_region}"
+
+        return f"{self.workdir}/data/{satstr}_{cropstr}{resstr}{suffix}"
 
     @property
-    def merged_path(self) -> str:
-        """Get the path to the merged zarr store for the given time window."""
+    def latest_path(self) -> str:
+        """Get the path to the latest zarr store for the given time window."""
         return f"{self.workdir}/data/latest.zarr.zip"
 
 
@@ -470,7 +440,7 @@ class SatelliteConsumerConfig:
 
     command: Command
     """The operational mode of the consumer."""
-    command_options: ConsumeCommandOptions | MergeCommandOptions
+    command_options: ConsumeCommandOptions | ExtractLatestCommandOptions
     """Options for the chosen command."""
 
 

@@ -12,7 +12,7 @@ from satellite_consumer.config import (
     SATELLITE_METADATA,
     Command,
     ConsumeCommandOptions,
-    MergeCommandOptions,
+    ExtractLatestCommandOptions,
     SatelliteConsumerConfig,
 )
 from satellite_consumer.run import run
@@ -62,33 +62,27 @@ def cli_entrypoint() -> None:
     consume_parser.add_argument("--icechunk", action="store_true")
     consume_parser.add_argument("--crop-region", type=str, default="")
 
-    merge_parser = subparsers.add_parser(
-        "merge",
-        help="Merge satellite data for a given window",
+    extractlatest_parser = subparsers.add_parser(
+        "extractlatest",
+        help="Extract the latest windown of data from an existing scan store.",
     )
-    merge_parser.add_argument("satellite", choices=list(SATELLITE_METADATA.keys()))
-    merge_parser.add_argument(
+    extractlatest_parser.add_argument("satellite", choices=list(SATELLITE_METADATA.keys()))
+    extractlatest_parser.add_argument(
         "--window-mins",
         type=int,
         help="Merge window size in minutes",
         default=210,
     )
-    merge_parser.add_argument(
-        "--window-end",
-        "-t",
-        type=dt.datetime.fromisoformat,
-        help="End of merge window (YYYY-MM-DDTHH:MM:SS)",
-    )
-    merge_parser.add_argument("--workdir", type=str, default="/mnt/disks/sat")
-    merge_parser.add_argument("--resolution", type=int, default=3000)
-    merge_parser.add_argument("--consume-missing", action="store_true")
+    extractlatest_parser.add_argument("--workdir", type=str, default="/mnt/disks/sat")
+    extractlatest_parser.add_argument("--resolution", type=int, default=3000)
+    extractlatest_parser.add_argument("--crop-region", type=str, default="")
 
     args = parser.parse_args()
 
     os.environ["EUMETSAT_CONSUMER_KEY"] = args.eumetsat_key
     os.environ["EUMETSAT_CONSUMER_SECRET"] = args.eumetsat_secret
 
-    command_opts: ConsumeCommandOptions | MergeCommandOptions
+    command_opts: ConsumeCommandOptions | ExtractLatestCommandOptions
     command = Command(args.command.upper())
     match command:
         case Command.CONSUME:
@@ -104,14 +98,12 @@ def cli_entrypoint() -> None:
                 icechunk=args.icechunk,
                 crop_region=args.crop_region.lower(),
             )
-        case Command.MERGE:
-            command_opts = MergeCommandOptions(
+        case Command.EXTRACT_LATEST:
+            command_opts = ExtractLatestCommandOptions(
                 satellite=args.satellite,
-                window_mins=args.window_mins,
-                window_end=args.window_end,
-                resolution=args.resolution,
+                window_mins= args.window_mins,
                 workdir=args.workdir,
-                consume_missing=args.consume_missing,
+                resolution=args.resolution,
             )
 
     config: SatelliteConsumerConfig = SatelliteConsumerConfig(
@@ -135,7 +127,7 @@ def env_entrypoint() -> None:
     """
     try:
         command = Command(os.environ["SATCONS_COMMAND"])
-        command_opts: ConsumeCommandOptions | MergeCommandOptions
+        command_opts: ConsumeCommandOptions | ExtractLatestCommandOptions
         match command:
             case Command.CONSUME:
                 if os.getenv("SATCONS_TIME") is None:
@@ -157,23 +149,13 @@ def env_entrypoint() -> None:
                     crop_region=os.getenv("SATCONS_CROP_REGION", "").lower(),
                 )
 
-            case Command.MERGE:
-                # Use SATCONS_TIME if SATCONS_WINDOW_END is not set
-                if os.getenv("SATCONS_WINDOW_END") is None:
-                    if os.getenv("SATCONS_TIME") is None:
-                        window_end: dt.datetime | None = None
-                    else:
-                        window_end = dt.datetime.fromisoformat(os.environ["SATCONS_TIME"])
-                else:
-                    window_end = dt.datetime.fromisoformat(os.environ["SATCONS_TIME"])
-
-                command_opts = MergeCommandOptions(
+            case Command.EXTRACTLATEST:
+                command_opts = ExtractLatestCommandOptions(
                     satellite=os.environ["SATCONS_SATELLITE"],
                     window_mins=int(os.getenv("SATCONS_WINDOW_MINS", default="210")),
-                    window_end=window_end,
-                    resolution=int(os.getenv("SATCONS_RESOLUTION", default="3000")),
                     workdir=os.getenv("SATCONS_WORKDIR", "/mnt/disks/sat"),
-                    consume_missing=os.getenv("SATCONS_CONSUME_MISSING", "false").lower() == "true",
+                    resolution=int(os.getenv("SATCONS_RESOLUTION", default="3000")),
+                    crop_region=os.getenv("SATCONS_CROP_REGION", "").lower(),
                 )
 
     except KeyError as e:
