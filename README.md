@@ -75,6 +75,8 @@ options that are shared between all commands:
 | `SATCONS_SATELLITE` | | The satellite to consume data from. |
 | `SATCONS_WORKDIR` | `/mnt/disks/sat` | The working directory. In the container, this is set to `/work` for easy mounting. |
 | `SATCONS_RESOLUTION` | `3000` | The desired resolution of the satellite images in meters ('3000', '1000'). |
+| `SENTRY_DSN` |  | The Sentry DSN for error reporting. If set, errors will be reported to Sentry. |
+| `ENVIRONMENT` | `local` | The deployed environment, used for logging and error reporting. |
 
 Each command then has its own set of configuration options:
 

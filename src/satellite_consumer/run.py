@@ -2,10 +2,10 @@
 
 Consolidates the old cli_downloader, backfill_hrv and backfill_nonhrv scripts.
 """
-import datetime as dt
-import os
-import itertools
 
+import datetime as dt
+import itertools
+import os
 import warnings
 from collections.abc import Generator, Iterable
 from importlib.metadata import PackageNotFoundError, version
@@ -14,6 +14,7 @@ from typing import TypeVar
 import eumdac.product
 import icechunk
 import numpy as np
+import sentry_sdk
 from icechunk.xarray import to_icechunk
 from joblib import Parallel, delayed
 from loguru import logger as log
@@ -38,19 +39,6 @@ try:
     __version__ = version("satellite-consumer")
 except PackageNotFoundError:
     __version__ = "v?"
-
-
-
-import sentry_sdk
-
-sentry_sdk.init(
-    dsn=os.getenv("SENTRY_DSN"),
-    environment=os.getenv("ENVIRONMENT", "local"),
-    traces_sample_rate=1,
-)
-sentry_sdk.set_tag("app_name", "satellite_consumer")
-sentry_sdk.set_tag("app_version", __version__)
-
 
 
 def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
@@ -228,7 +216,8 @@ def _extract_latest_command(command_opts: ExtractLatestCommandOptions) -> None:
     )
 
     dst = storage.create_latest_zip(
-        src=command_opts.zarr_path, time_slice=slice(-desired_image_num, None),
+        src=command_opts.zarr_path,
+        time_slice=slice(-desired_image_num, None),
     )
     log.info("Created latest.zip", dst=dst)
 
@@ -244,6 +233,15 @@ def run(config: SatelliteConsumerConfig) -> None:
         opts=config.command_options.__str__(),
     )
 
+    if os.getenv("SENTRY_DSN", "") != "":
+        sentry_sdk.init(
+            dsn=os.environ["SENTRY_DSN"],
+            environment=os.getenv("ENVIRONMENT", "local"),
+            traces_sample_rate=1,
+        )
+        sentry_sdk.set_tag("app_name", "satellite_consumer")
+        sentry_sdk.set_tag("app_version", __version__)
+
     if isinstance(config.command_options, ConsumeCommandOptions):
         _consume_to_store(command_opts=config.command_options)
     elif isinstance(config.command_options, ExtractLatestCommandOptions):
@@ -253,4 +251,3 @@ def run(config: SatelliteConsumerConfig) -> None:
 
     runtime = dt.datetime.now(tz=dt.UTC) - prog_start
     log.info(f"Completed satellite consumer run in {runtime!s}.")
-

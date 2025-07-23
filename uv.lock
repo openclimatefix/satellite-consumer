@@ -2510,7 +2510,7 @@ wheels = [
 
 [[package]]
 name = "satellite-consumer"
-version = "0.2.6.post5+git.591777ff.dirty"
+version = "0.2.6.post7+git.ac243cb3.dirty"
 source = { editable = "." }
 dependencies = [
     { name = "cartopy" },
@@ -2527,6 +2527,7 @@ dependencies = [
     { name = "requests" },
     { name = "s3fs" },
     { name = "satpy", extra = ["seviri-l1b-native", "seviri-l1b-nc"] },
+    { name = "sentry-sdk" },
     { name = "xarray" },
     { name = "zarr" },
 ]
@@ -2551,7 +2552,7 @@ requires-dist = [
     { name = "eumdac", specifier = "==3.0.0" },
     { name = "fsspec", specifier = "==2025.2.0" },
     { name = "gcsfs", specifier = "==2025.2.0" },
-    { name = "hdf5plugin", specifier = ">=5.1.0" },
+    { name = "hdf5plugin", specifier = "==5.1.0" },
     { name = "icechunk", specifier = "==1.0.0" },
     { name = "joblib", specifier = "==1.4.2" },
     { name = "loguru", specifier = "==0.7.3" },
@@ -2561,6 +2562,7 @@ requires-dist = [
     { name = "requests", specifier = "==2.32.3" },
     { name = "s3fs", specifier = "==2025.2.0" },
     { name = "satpy", extras = ["seviri-l1b-native", "seviri-l1b-nc"], specifier = "==0.54.0" },
+    { name = "sentry-sdk", specifier = "==2.33.2" },
     { name = "xarray", specifier = "==2025.1.2" },
     { name = "zarr", specifier = "==3.0.2" },
 ]
@@ -2651,6 +2653,19 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/ce/b3/21001cff985a122ba434c33f2c9d7d1dc3b669827e94f4fc4e1fe8b9dfd8/scipy-1.16.0-cp313-cp313t-musllinux_1_2_aarch64.whl", hash = "sha256:4f720300a3024c237ace1cb11f9a84c38beb19616ba7c4cdcd771047a10a1706", size = 35570990 },
     { url = "https://files.pythonhosted.org/packages/e5/d3/7ba42647d6709251cdf97043d0c107e0317e152fa2f76873b656b509ff55/scipy-1.16.0-cp313-cp313t-musllinux_1_2_x86_64.whl", hash = "sha256:aad603e9339ddb676409b104c48a027e9916ce0d2838830691f39552b38a352e", size = 37950262 },
     { url = "https://files.pythonhosted.org/packages/eb/c4/231cac7a8385394ebbbb4f1ca662203e9d8c332825ab4f36ffc3ead09a42/scipy-1.16.0-cp313-cp313t-win_amd64.whl", hash = "sha256:f56296fefca67ba605fd74d12f7bd23636267731a72cb3947963e76b8c0a25db", size = 38515076 },
+]
+
+[[package]]
+name = "sentry-sdk"
+version = "2.33.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "certifi" },
+    { name = "urllib3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b0/82/dfe4a91fd38e048fbb55ca6c072710408e8802015aa27cde18e8684bb1e9/sentry_sdk-2.33.2.tar.gz", hash = "sha256:e85002234b7b8efac9b74c2d91dbd4f8f3970dc28da8798e39530e65cb740f94", size = 335804 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c2/dc/4d825d5eb6e924dfcc6a91c8185578a7b0a5c41fd2416a6f49c8226d6ef9/sentry_sdk-2.33.2-py2.py3-none-any.whl", hash = "sha256:8d57a3b4861b243aa9d558fda75509ad487db14f488cbdb6c78c614979d77632", size = 356692 },
 ]
 
 [[package]]
