@@ -2,9 +2,10 @@
 
 Consolidates the old cli_downloader, backfill_hrv and backfill_nonhrv scripts.
 """
-
 import datetime as dt
+import os
 import itertools
+
 import warnings
 from collections.abc import Generator, Iterable
 from importlib.metadata import PackageNotFoundError, version
@@ -39,6 +40,19 @@ try:
     __version__ = version("satellite-consumer")
 except PackageNotFoundError:
     __version__ = "v?"
+
+
+
+import sentry_sdk
+
+sentry_sdk.init(
+    dsn=os.getenv("SENTRY_DSN"),
+    environment=os.getenv("ENVIRONMENT", "local"),
+    traces_sample_rate=1,
+)
+sentry_sdk.set_tag("app_name", "satellite_consumer")
+sentry_sdk.set_tag("app_version", __version__)
+
 
 
 def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
