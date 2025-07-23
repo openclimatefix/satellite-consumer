@@ -98,7 +98,7 @@ def cli_entrypoint() -> None:
                 icechunk=args.icechunk,
                 crop_region=args.crop_region.lower(),
             )
-        case Command.EXTRACT_LATEST:
+        case Command.EXTRACTLATEST:
             command_opts = ExtractLatestCommandOptions(
                 satellite=args.satellite,
                 window_mins= args.window_mins,
