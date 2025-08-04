@@ -59,7 +59,7 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
     if command_opts.icechunk:
         repo, existing_times = storage.get_icechunk_repo(path=command_opts.zarr_path)
 
-        def _batcher(it: Iterable[T], batch_size: int = 10) -> Generator[tuple[T, ...]]:
+        def _batcher(it: Iterable[T], batch_size: int = 1000) -> Generator[tuple[T, ...]]:
             """Yield successive n-sized chunks from an iterable (excepting the last batch)."""
             while True:
                 batch = tuple(itertools.islice(it, batch_size))
