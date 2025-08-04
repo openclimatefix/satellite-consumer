@@ -77,7 +77,7 @@ def process_raw(
 
     # Reorder the coordinates, and set the data type
     del da["crs"]
-    da = da.transpose("time", "y_geostationary", "x_geostationary", "variable")
+    da = da.transpose("time", "y_geostationary", "x_geostationary")
     da = da.astype(np.float32)
 
     return da
@@ -118,16 +118,16 @@ def _map_scene_to_dataarray(
         )
 
     # Handle attrs, converting to serializable format
-    da.attrs["variables"] = {}
-    for channel in scene.wishlist:
+    #da.attrs["variables"] = {}
+    #for channel in scene.wishlist:
         # Add channel metadata dataarray variables attributes
-        da.attrs["variables"][channel["name"]] = {}
-        for attr in [
-            ca
-            for ca in scene[channel].attrs
-            if ca not in ["area", "_satpy_id", "orbital_parameters", "time_parameters"]
-        ]:
-            da.attrs["variables"][channel["name"]][attr] = scene[channel].attrs[attr]
+    #    da.attrs["variables"][channel["name"]] = {}
+    #    for attr in [
+    #        ca
+    #        for ca in scene[channel].attrs
+    #        if ca not in ["area", "_satpy_id", "orbital_parameters", "time_parameters"]
+    #    ]:
+    #        da.attrs["variables"][channel["name"]][attr] = scene[channel].attrs[attr]
 
     def _serialize(d: dict[str, Any]) -> dict[str, Any]:
         sd: dict[str, Any] = {}
@@ -145,6 +145,8 @@ def _map_scene_to_dataarray(
         return sd
 
     da.attrs = _serialize(da.attrs)
+    for var in da.data_vars:
+        da[var].attrs = _serialize(da[var].attrs)
 
     # Ensure DataArray has a time dimension
     rounded_time = pd.Timestamp(da.attrs["time_parameters"]["nominal_end_time"]).round("5 min")
@@ -180,11 +182,11 @@ def _map_scene_to_dataarray(
         }
 
     da = (
-        da.transpose("time", "y_geostationary", "x_geostationary", "variable")
+        da.transpose("time", "y_geostationary", "x_geostationary",)
         .chunk(
-            chunks={"time": 1, "y_geostationary": -1, "x_geostationary": -1, "variable": 1},
+            chunks={"time": 1, "y_geostationary": -1, "x_geostationary": -1,},
         )
-        .sortby(["variable", "y_geostationary"])
+        .sortby(["y_geostationary"])
         .sortby("x_geostationary", ascending=False)
     )
 

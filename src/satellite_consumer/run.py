@@ -10,6 +10,7 @@ import warnings
 from collections.abc import Generator, Iterable
 from importlib.metadata import PackageNotFoundError, version
 from typing import TypeVar
+import zarr
 
 import eumdac.product
 import icechunk
@@ -108,17 +109,28 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                     session: icechunk.Session = repo.writable_session(branch="main")
                     # TODO: Remove warnings catch when Zarr makes up its mind about codecs
                     with warnings.catch_warnings(action="ignore"):
-                        to_icechunk(
-                            obj=da,
-                            session=session,
-                            mode="w-",
-                            encoding={
+                        encoding = {
                                 "time": {
                                     "units": "nanoseconds since 1970-01-01",
                                     "calendar": "proleptic_gregorian",
                                 },
-                                "data": {"dtype": "f4"},
-                            },
+                            }
+                        encoding.update(
+                            {
+                                v: {
+                                    "dtype": "f4",
+                                    "compressors": zarr.codecs.BloscCodec(
+                                        cname="zstd", clevel=9, shuffle=zarr.codecs.BloscShuffle.bitshuffle
+                                    )
+                                }
+                                for v in da.data_vars
+                            }
+                        )
+                        to_icechunk(
+                            obj=da,
+                            session=session,
+                            mode="w-",
+                            encoding=encoding
                         )
                     _ = session.commit(message="initial commit")
                 # Otherwise, append the data to the existing store
@@ -133,7 +145,7 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                             mode="a",
                         )
                     _ = session.commit(
-                        message=f"add {len(da.coords['time']) * len(da.coords['variable'])} images",
+                        message=f"add {len(da.coords['time'])} images",
                         rebase_with=icechunk.ConflictDetector(),
                         rebase_tries=10,
                     )
