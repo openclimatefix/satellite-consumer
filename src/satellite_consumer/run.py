@@ -123,7 +123,7 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                                         cname="zstd", clevel=9, shuffle=zarr.codecs.BloscShuffle.bitshuffle
                                     )
                                 }
-                                for v in da.data_vars
+                                for v in da.data_vars if v not in ["start_time", "end_time", "x_geostationary_coordinates", "y_geostationary_coordinates"]
                             }
                         )
                         to_icechunk(
