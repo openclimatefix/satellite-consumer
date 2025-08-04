@@ -118,7 +118,7 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                         encoding.update(
                             {
                                 v: {
-                                    "dtype": "f4",
+                                    "dtype": "float16",
                                     "compressors": zarr.codecs.BloscCodec(
                                         cname="zstd", clevel=9, shuffle=zarr.codecs.BloscShuffle.bitshuffle
                                     )

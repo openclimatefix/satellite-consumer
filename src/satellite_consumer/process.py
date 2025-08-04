@@ -203,18 +203,18 @@ def _normalize(da: xr.DataArray, channels: list[SpectralChannelMetadata]) -> xr.
     NaNs in the original DataArray are preserved in the normalized DataArray.
     """
     known_variables = {c.name for c in channels}
-    incoming_variables = set(da.coords["variable"].values.tolist())
-    if not incoming_variables.issubset(known_variables):
-        raise ValueError(
-            "Cannot rescale DataArray as some variables present are not recognized: "
-            f"'{incoming_variables.difference(known_variables)}'",
-        )
+    #incoming_variables = set(da.coords["variable"].values.tolist())
+    #if not incoming_variables.issubset(known_variables):
+    #    raise ValueError(
+    #        "Cannot rescale DataArray as some variables present are not recognized: "
+    #        f"'{incoming_variables.difference(known_variables)}'",
+    #    )
 
     # For each channel, subtract the minimum and divide by the range
-    for variable in da.coords["variable"]:
+    for variable in da.data_vars:
         channel_metadata = next(filter(lambda c: c.name == variable, channels))
-        da.loc[{"variable": variable}] -= channel_metadata.minimum
-        da.loc[{"variable": variable}] /= channel_metadata.range
+        da.loc[variable] -= channel_metadata.minimum
+        da.loc[variable] /= channel_metadata.range
     # da -= [c.minimum for c in channels]
     # da /= [c.maximum - c.minimum for c in channels]
 
