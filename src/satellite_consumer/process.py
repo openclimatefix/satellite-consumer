@@ -108,7 +108,7 @@ def _map_scene_to_dataarray(
         scene[channel] = scene[channel].drop_vars("acq_time", errors="ignore")
 
     # Convert the Scene to a DataArray
-    da: xr.DataArray = scene.to_xarray_dataset().to_array(name="data")
+    da: xr.Dataset = scene.to_xarray_dataset()
     if crop_region_geos is not None:
         da = (
             da.where(da.coords["x"] >= crop_region_geos[0], drop=True)

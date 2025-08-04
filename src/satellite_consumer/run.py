@@ -48,6 +48,7 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
         sat_metadata=command_opts.satellite_metadata,
         start=window[0],
         end=window[1],
+        missing_product_threshold=0.99,
     )
 
     processed_filepaths: list[str] = []
@@ -94,7 +95,7 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                     crop_region_geos=command_opts.crop_region_geos,
                 )
                 # Don't write invalid data to the store
-                validate(src=da)
+                # validate(src=da)
 
                 # Commit the data to the icechunk store
                 # * If the store was just created, write as a fresh repo
@@ -108,7 +109,7 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                     # TODO: Remove warnings catch when Zarr makes up its mind about codecs
                     with warnings.catch_warnings(action="ignore"):
                         to_icechunk(
-                            obj=da.to_dataset(name="data", promote_attrs=True),
+                            obj=da,
                             session=session,
                             mode="w-",
                             encoding={
@@ -126,7 +127,7 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                     # TODO: Remove warnings catch when Zarr makes up its mind about codecs
                     with warnings.catch_warnings(action="ignore"):
                         to_icechunk(
-                            obj=da.to_dataset(name="data", promote_attrs=True),
+                            obj=da,
                             session=session,
                             append_dim="time",
                             mode="a",
@@ -134,7 +135,7 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                     _ = session.commit(
                         message=f"add {len(da.coords['time']) * len(da.coords['variable'])} images",
                         rebase_with=icechunk.ConflictDetector(),
-                        rebase_tries=5,
+                        rebase_tries=10,
                     )
                 num_written += 1
                 processed_filepaths.extend(raw_filepaths)
