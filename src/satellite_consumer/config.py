@@ -460,7 +460,7 @@ class SatelliteMetadata:
     """The longitude of the satellite."""
     height: float
     """The height of the satelite above the Earth's surface in meters."""
-    product_id: str
+    product_id: str | list[str]
     """The product ID of the satellite image set."""
     description: str
     """A description of the satellite data set."""

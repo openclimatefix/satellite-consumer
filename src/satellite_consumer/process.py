@@ -79,7 +79,11 @@ def process_raw(
     del da["crs"]
     da = da.transpose("time", "y_geostationary", "x_geostationary")
     da = da.astype(np.float32)
-
+    da = da.load()
+    for var in da.data_vars:
+        # Remove the _FillValue attribute if it exists
+        if "_FillValue" in da[var].attrs:
+            del da[var].attrs["_FillValue"]
     return da
 
 
@@ -149,7 +153,7 @@ def _map_scene_to_dataarray(
         da[var].attrs = _serialize(da[var].attrs)
 
     # Ensure DataArray has a time dimension
-    rounded_time = pd.Timestamp(da.attrs["time_parameters"]["nominal_end_time"]).round("5 min")
+    rounded_time = pd.Timestamp(da.attrs["time_parameters"]["nominal_end_time"])
     da.attrs["end_time"] = rounded_time.__str__()
     if "time" not in da.dims:
         time = pd.to_datetime(rounded_time)

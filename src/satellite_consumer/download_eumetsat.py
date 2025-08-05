@@ -8,6 +8,7 @@ import tempfile
 import time
 from collections.abc import Iterator
 from typing import TYPE_CHECKING
+from itertools import chain
 
 import eumdac
 import pandas as pd
