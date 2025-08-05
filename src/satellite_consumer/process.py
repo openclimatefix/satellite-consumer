@@ -79,7 +79,7 @@ def process_raw(
     del da["crs"]
     da = da.transpose("time", "y_geostationary", "x_geostationary", "variable")
     da = da.astype(np.float32)
-
+    da = da.load()
     return da
 
 
