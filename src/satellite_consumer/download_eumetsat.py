@@ -211,16 +211,16 @@ def download_raw(
             continue
 
         filepath: str = f"{folder}/{raw_file}"
-        try:
-            if fs.exists(filepath):
-                log.debug("Skipping already downloaded file", filename=raw_file)
-                downloaded_files.append(filepath)
-                continue
-        except Exception as e:
-            raise OSError(
-                f"Could not determine if file '{filepath}' exists: '{e}'"
-                "Ensure you have the required access permissions.",
-            ) from e
+        #try:
+        #    if fs.exists(filepath):
+        #        log.debug("Skipping already downloaded file", filename=raw_file)
+        #        downloaded_files.append(filepath)
+        #        continue
+        #except Exception as e:
+        #    raise OSError(
+        #        f"Could not determine if file '{filepath}' exists: '{e}'"
+        #        "Ensure you have the required access permissions.",
+        #    ) from e
 
         log.debug(
             "Downloading raw file", src=raw_file, dst=filepath, num=f"{i + 1}/{len(raw_files)}",
