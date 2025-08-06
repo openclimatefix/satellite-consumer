@@ -160,6 +160,16 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                     )
                 num_written += 1
                 processed_filepaths.extend(raw_filepaths)
+                # Delete raw filepaths to save space
+                for raw_filepath in raw_filepaths:
+                    try:
+                        os.remove(raw_filepath)
+                    except OSError as e:
+                        log.warning(
+                            "Failed to delete raw file",
+                            raw_filepath=raw_filepath,
+                            error=str(e),
+                        )
 
         log.info(
             "Finished population of icechunk store",
