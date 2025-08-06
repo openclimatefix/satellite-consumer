@@ -162,6 +162,8 @@ def _map_scene_to_dataarray(
     da = da.rename({"x": "x_geostationary", "y": "y_geostationary"})
     for name in ["x_geostationary", "y_geostationary"]:
         da.coords[name].attrs["coordinate_reference_system"] = "geostationary"
+    for var in da.data_vars:
+        orbital_parameters = da[var].attrs["orbital_parameters"]
     # Add geostationary coordinates to the Dataset as data vars
     da["x_geostationary_coordinates"] = xr.DataArray(np.expand_dims(da.x_geostationary.values, axis=0), dims=("time", "x_geostationary"))
     da["y_geostationary_coordinates"] = xr.DataArray(np.expand_dims(da.y_geostationary.values, axis=0), dims=("time", "y_geostationary"))
@@ -172,6 +174,10 @@ def _map_scene_to_dataarray(
     ).astype("U12")
     da["area"] = xr.DataArray(
         [str(da.attrs["area"])],
+        dims=("time",),
+    ).astype(f"U512")
+    da["orbital_parameters"] = xr.DataArray(
+        [orbital_parameters],
         dims=("time",),
     ).astype(f"U512")
     if calculate_osgb:
