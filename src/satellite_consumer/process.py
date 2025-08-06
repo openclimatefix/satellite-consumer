@@ -166,8 +166,8 @@ def _map_scene_to_dataarray(
     # Add geostationary coordinates to the Dataset as data vars
     da["x_geostationary_coordinates"] = xr.DataArray(np.expand_dims(da.x_geostationary.values, axis=0), dims=("time", "x_geostationary"))
     da["y_geostationary_coordinates"] = xr.DataArray(np.expand_dims(da.y_geostationary.values, axis=0), dims=("time", "y_geostationary"))
-    da["start_time"] = xr.DataArray([pd.Timestamp(da.attrs["time_parameters"]["nominal_start_time"])], dims=("time",))
-    da["end_time"] = xr.DataArray([pd.Timestamp(da.attrs["time_parameters"]["nominal_end_time"])], dims=("time",))
+    da["start_time"] = xr.DataArray([pd.Timestamp(da.attrs["time_parameters"]["nominal_start_time"])], dims=("time",)).astype(np.datetime64)
+    da["end_time"] = xr.DataArray([pd.Timestamp(da.attrs["time_parameters"]["nominal_end_time"])], dims=("time",)).astype(np.datetime64)
 
     if calculate_osgb:
         log.debug("Calculating OSGB coordinates")
