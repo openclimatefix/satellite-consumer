@@ -139,11 +139,9 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                             {
                                 "start_time": {
                                     "dtype": "datetime64[ns]",
-                                    "units": "nanoseconds since 1970-01-01",
                                 },
                                 "end_time": {
                                     "dtype": "datetime64[ns]",
-                                    "units": "nanoseconds since 1970-01-01",
                                 },
                             }
                         )
