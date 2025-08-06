@@ -123,6 +123,14 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                                     "units": "nanoseconds since 1970-01-01",
                                     "calendar": "proleptic_gregorian",
                                 },
+                            "start_time": {
+                                "units": "nanoseconds since 1970-01-01",
+                                "calendar": "proleptic_gregorian",
+                            },
+                            "end_time": {
+                                "units": "nanoseconds since 1970-01-01",
+                                "calendar": "proleptic_gregorian",
+                            },
                             }
                         encoding.update(
                             {
