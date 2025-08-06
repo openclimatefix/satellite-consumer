@@ -46,7 +46,7 @@ def process_raw(
     )
     try:
         loader: str = "seviri_l1b_native" if paths[0].endswith(".nat") else "fci_l1c_nc"
-        scene: satpy.Scene = satpy.Scene(filenames={loader: paths}, eader_kwargs={'fill_disk': True})  # type:ignore
+        scene: satpy.Scene = satpy.Scene(filenames={loader: paths}, reader_kwargs={'fill_disk': True})  # type:ignore
         cnames: list[str] = [c.name for c in channels if resolution_meters in c.resolution_meters]
         scene.load(
             cnames,
@@ -78,7 +78,6 @@ def process_raw(
     # Reorder the coordinates, and set the data type
     del da["crs"]
     da = da.transpose("time", "y_geostationary", "x_geostationary")
-    da = da.astype(np.float32)
     da = da.load()
     for var in da.data_vars:
         # Remove the _FillValue attribute if it exists
@@ -168,7 +167,13 @@ def _map_scene_to_dataarray(
     da["y_geostationary_coordinates"] = xr.DataArray(np.expand_dims(da.y_geostationary.values, axis=0), dims=("time", "y_geostationary"))
     da["start_time"] = xr.DataArray([pd.Timestamp(da.attrs["time_parameters"]["nominal_start_time"])], dims=("time",)).astype(np.datetime64)
     da["end_time"] = xr.DataArray([pd.Timestamp(da.attrs["time_parameters"]["nominal_end_time"])], dims=("time",)).astype(np.datetime64)
-
+    da["platform_name"] = xr.DataArray(
+        [da.attrs["platform_name"]], dims=("time",)
+    ).astype("U12")
+    da["area"] = xr.DataArray(
+        [str(da.attrs["area"])],
+        dims=("time",),
+    ).astype(f"U512")
     if calculate_osgb:
         log.debug("Calculating OSGB coordinates")
         lon, lat = scene[scene.wishlist[0]].attrs["area"].get_lonlats()

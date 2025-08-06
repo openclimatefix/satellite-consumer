@@ -88,22 +88,22 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                 if len(raw_filepaths) == 0:
                     num_skipped += 1
                     continue
-                try:
-                    da = process_raw(
-                    paths=raw_filepaths,
-                    channels=command_opts.satellite_metadata.channels,
-                    resolution_meters=command_opts.resolution,
-                    normalize=command_opts.rescale,
-                    crop_region_geos=command_opts.crop_region_geos,
-                )
-                except Exception as e:
-                    log.error(
-                        "Error processing raw files",
-                        raw_filepaths=raw_filepaths,
-                        error=str(e),
-                    )
-                    num_skipped += 1
-                    continue
+                #try:
+                da = process_raw(
+                paths=raw_filepaths,
+                channels=command_opts.satellite_metadata.channels,
+                resolution_meters=command_opts.resolution,
+                normalize=command_opts.rescale,
+                crop_region_geos=command_opts.crop_region_geos,
+            )
+                #except Exception as e:
+                #    log.error(
+                #        "Error processing raw files",
+                #        raw_filepaths=raw_filepaths,
+                #        error=str(e),
+                #    )
+                #    num_skipped += 1
+                #    continue
                 # Don't write invalid data to the store
                 # validate(src=da)
 
@@ -132,7 +132,7 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                                         cname="zstd", clevel=9, shuffle=zarr.codecs.BloscShuffle.bitshuffle
                                     )
                                 }
-                                for v in da.data_vars if v not in ["start_time", "end_time", "x_geostationary_coordinates", "y_geostationary_coordinates"]
+                                for v in da.data_vars if v not in ["start_time", "end_time", "x_geostationary_coordinates", "y_geostationary_coordinates", "orbital_parameters", "area", "platform_name"]
                             }
                         )
                         encoding.update(
@@ -143,6 +143,12 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                                 "end_time": {
                                     "dtype": "datetime64[ns]",
                                 },
+                                "platform_name": {
+                                    "dtype": "U12",
+                                },
+                                "area": {
+                                    "dtype": "U512",
+                                }
                             }
                         )
                         to_icechunk(
