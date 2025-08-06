@@ -123,14 +123,6 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                                     "units": "nanoseconds since 1970-01-01",
                                     "calendar": "proleptic_gregorian",
                                 },
-                            "start_time": {
-                                "units": "nanoseconds since 1970-01-01",
-                                "calendar": "proleptic_gregorian",
-                            },
-                            "end_time": {
-                                "units": "nanoseconds since 1970-01-01",
-                                "calendar": "proleptic_gregorian",
-                            },
                             }
                         encoding.update(
                             {
@@ -141,6 +133,18 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                                     )
                                 }
                                 for v in da.data_vars if v not in ["start_time", "end_time", "x_geostationary_coordinates", "y_geostationary_coordinates"]
+                            }
+                        )
+                        encoding.update(
+                            {
+                                "start_time": {
+                                    "dtype": "datetime64[ns]",
+                                    "units": "nanoseconds since 1970-01-01",
+                                },
+                                "end_time": {
+                                    "dtype": "datetime64[ns]",
+                                    "units": "nanoseconds since 1970-01-01",
+                                },
                             }
                         )
                         to_icechunk(
