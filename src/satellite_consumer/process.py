@@ -46,7 +46,7 @@ def process_raw(
     )
     try:
         loader: str = "seviri_l1b_native" if paths[0].endswith(".nat") else "fci_l1c_nc"
-        scene: satpy.Scene = satpy.Scene(filenames={loader: paths})  # type:ignore
+        scene: satpy.Scene = satpy.Scene(filenames={loader: paths}, eader_kwargs={'fill_disk': True})  # type:ignore
         cnames: list[str] = [c.name for c in channels if resolution_meters in c.resolution_meters]
         scene.load(
             cnames,
