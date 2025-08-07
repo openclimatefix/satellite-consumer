@@ -689,7 +689,7 @@ SATELLITE_METADATA: dict[str, SatelliteMetadata] = {
             "x_geostationary": list(np.linspace(-5567499.9985508835, 5567499.998550878, 22272)),
             "y_geostationary": list(np.linspace(-5567499.998550887, 5567499.998550878, 22272)),
         },
-        file_filter_regex=r"\S+\.nc$",
+        file_filter_regex=r"\S+\.bz2$",
     ),
 }
 """Metadata for the available satellite data sets."""

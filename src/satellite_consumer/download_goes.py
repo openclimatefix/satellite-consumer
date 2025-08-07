@@ -50,7 +50,7 @@ def get_timestamp_from_filename(filename: str) -> dt.datetime:
         raise ValueError(f"Filename '{filename}' does not contain a valid timestamp.")
 
     start_str, end_str = match.groups()
-    start_time = dt.datetime.strptime(start_str, '%Y%j%H%M%S')
+    start_time = dt.datetime.strptime(start_str[:-1], '%Y%j%H%M%S')
     return start_time
 
 def get_products_for_date_range_goes(bucket: str, product_id: str, start: dt.datetime, end: dt.datetime) -> list[str]:
@@ -70,6 +70,15 @@ def get_products_for_date_range_goes(bucket: str, product_id: str, start: dt.dat
     start_day_of_year = start.timetuple().tm_yday
     end_year = end.year
     end_day_of_year = end.timetuple().tm_yday
+    product_id = product_id
+    if "goes16" in bucket:
+        if end < dt.datetime(2025, 1, 1):
+            # Use the Reproc data
+            product_id = "ABI-L1b-RadF-Reproc"
+    if "goes17" in bucket:
+        if end < dt.datetime(2023, 1, 1):
+            # Use the Reproc data
+            product_id = "ABI-L1b-RadF-Reproc"
 
     log.debug(
         "Searching for products in S3 buckets",
@@ -225,7 +234,7 @@ def download_raw_goes(
     """
     fs = get_fs(path=folder)
     # Filter to only product files we care about
-    raw_files = [p for p in product if re.search(filter_regex, product)]
+    raw_files = [p for p in product if re.search(filter_regex, p)]
     if not raw_files:
         log.warning(
             f"No files found for product '{product}' with filter '{filter_regex}'. "

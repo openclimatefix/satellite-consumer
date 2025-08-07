@@ -207,7 +207,7 @@ def download_raw_himawari(
     """
     fs = get_fs(path=folder)
     # Filter to only product files we care about
-    raw_files = [p for p in product if re.search(filter_regex, product)]
+    raw_files = [p for p in product if re.search(filter_regex, p)]
     if not raw_files:
         log.warning(
             f"No files found for product '{product}' with filter '{filter_regex}'. "
