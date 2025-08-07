@@ -71,6 +71,7 @@ def get_products_for_date_range_goes(bucket: str, product_id: str, start: dt.dat
     end_year = end.year
     end_day_of_year = end.timetuple().tm_yday
     product_id = product_id
+    #"""
     if "goes16" in bucket:
         if end < dt.datetime(2025, 1, 1):
             # Use the Reproc data
@@ -79,6 +80,7 @@ def get_products_for_date_range_goes(bucket: str, product_id: str, start: dt.dat
         if end < dt.datetime(2023, 1, 1):
             # Use the Reproc data
             product_id = "ABI-L1b-RadF-Reproc"
+    #"""
 
     log.debug(
         "Searching for products in S3 buckets",

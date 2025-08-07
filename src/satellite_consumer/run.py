@@ -56,12 +56,15 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
     if "goes" in command_opts.satellite_metadata.region:
         get_iterator = get_products_iterator_goes
         load_raw = download_raw_goes
+        satellite = "goes"
     elif "himawari" in command_opts.satellite_metadata.region:
         get_iterator = get_products_iterator_himawari
         load_raw = download_raw_himawari
+        satellite = "himawari"
     else:
         get_iterator = get_products_iterator
         load_raw = download_raw
+        satellite = "seviri"
     product_iter = get_iterator(
         sat_metadata=command_opts.satellite_metadata,
         start=window[0],
@@ -112,6 +115,7 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                 resolution_meters=command_opts.resolution,
                 normalize=command_opts.rescale,
                 crop_region_geos=command_opts.crop_region_geos,
+                satellite=satellite,
             )
                 except Exception as e:
                     log.error(
