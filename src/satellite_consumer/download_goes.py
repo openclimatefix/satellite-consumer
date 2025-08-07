@@ -80,7 +80,7 @@ def get_products_for_date_range_goes(bucket: str, product_id: str, start: dt.dat
         end_day_of_year=end_day_of_year,
     )
     products = []
-    for date in pd.date_range(start, end, freq="H"):
+    for date in pd.date_range(start, end, freq="h"):
         results = fs.glob(
             f"s3://{bucket}/{product_id}/{date.year}/{date.timetuple().tm_yday:03d}/{date.hour:02d}/*.nc",
         )
@@ -160,7 +160,7 @@ def get_products_iterator_goes(
             # Do it by initialization time, so we can combine the individual files to a product
         else:
             assert "goes-west" in sat_metadata.region.lower(), (
-                f"Unknown region '{sat_metadata.region}' for satellite {sat_metadata.product_id}. "
+                f"Unknown region '{sat_metadata.region}' for satellite {sat_metadata.product_id}."
                 "Expected 'goes-east' or 'goes-west'."
             )
             if start < HISTORY_RANGE["goes17"][0] and end < HISTORY_RANGE["goes17"][1]:

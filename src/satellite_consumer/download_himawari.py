@@ -72,7 +72,7 @@ def get_products_for_date_range_himawari(bucket: str, product_id: str, start: dt
         end_day=end_day,
     )
     products = []
-    for date in pd.date_range(start, end, freq="H"):
+    for date in pd.date_range(start, end, freq="h"):
         results = fs.glob(
             f"s3://{bucket}/{product_id}/{date.year}/{date.month:02d}/{date.hour:02d}{date.minute:02d}/*.bz2",
         )
