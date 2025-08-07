@@ -238,6 +238,7 @@ def download_raw_goes(
         Path to the downloaded file, or None if the download failed.
     """
     fs = get_fs(path=folder)
+    s3_fs = fsspec.filesystem("s3", anon=True)
     # Filter to only product files we care about
     raw_files = [p for p in product if re.search(filter_regex, p)]
     if not raw_files:
@@ -261,6 +262,7 @@ def download_raw_goes(
     for i, raw_file in enumerate(raw_files):
         filename = raw_file.split("/")[-1]
         filepath: str = f"{folder}/{filename}"
+        raw_file = "s3://" + raw_file if not raw_file.startswith("s3://") else raw_file
         try:
             if fs.exists(filepath):
                 log.debug("Skipping already downloaded file", filename=raw_file)
@@ -278,7 +280,7 @@ def download_raw_goes(
         for i in range(retries + 1):
             try:
                 # Copying to temp then putting seems to be quicker than copying to fs
-                fs.download("s3://"+raw_file, filepath)
+                s3_fs.download(raw_file, filepath)
                 downloaded_files.append(filepath)
                 break
             except Exception as e:
