@@ -1,14 +1,9 @@
 """Functions for interfacing with EUMETSAT's API and data."""
 
 import datetime as dt
-import os
 import re
-import shutil
-import tempfile
-import time
 from collections.abc import Iterator
 from typing import TYPE_CHECKING
-from itertools import chain
 
 import pandas as pd
 from loguru import logger as log
@@ -19,8 +14,6 @@ from satellite_consumer.storage import get_fs
 import s3fs
 import fsspec
 
-if TYPE_CHECKING:
-    from eumdac.collection import Collection, SearchResults
 
 HISTORY_RANGE = {
     "goes16": (
