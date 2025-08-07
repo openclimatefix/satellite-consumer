@@ -59,7 +59,7 @@ def process_raw(
             loader: str = "ami_l1b"
         else:
             raise ValueError(
-                f"Unsupported satellite: {satellite}. Supported satellites are: 'seviri', 'goes', 'himawari', 'g2ka'."
+                f"Unsupported satellite: {satellite}. Supported satellites are: 'seviri', 'goes', 'himawari', 'gk2a'."
             )
         scene: satpy.Scene = satpy.Scene(filenames={loader: paths}, reader_kwargs=reader_kwargs)  # type:ignore
         cnames: list[str] = [c.name for c in channels if resolution_meters in c.resolution_meters]
