@@ -34,6 +34,10 @@ from satellite_consumer.download_goes import (
     download_raw_goes,
     get_products_iterator_goes,
 )
+from satellite_consumer.download_himawari import (
+    download_raw_himawari,
+    get_products_iterator_himawari,
+)
 from satellite_consumer.exceptions import ValidationError
 from satellite_consumer.process import process_raw
 from satellite_consumer.validate import validate
@@ -49,8 +53,15 @@ except PackageNotFoundError:
 def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
     """Logic for the consume command (and the archive command)."""
     window = command_opts.time_window
-    get_iterator = get_products_iterator_goes if "goes" in command_opts.satellite_metadata.region else get_products_iterator
-    load_raw = download_raw_goes if "goes" in command_opts.satellite_metadata.region else download_raw
+    if "goes" in command_opts.satellite_metadata.region:
+        get_iterator = get_products_iterator_goes
+        load_raw = download_raw_goes
+    elif "himawari" in command_opts.satellite_metadata.region:
+        get_iterator = get_products_iterator_himawari
+        load_raw = download_raw_himawari
+    else:
+        get_iterator = get_products_iterator
+        load_raw = download_raw
     product_iter = get_iterator(
         sat_metadata=command_opts.satellite_metadata,
         start=window[0],
