@@ -93,7 +93,7 @@ def get_products_for_date_range_goes(bucket: str, product_id: str, start: dt.dat
         start_times = [get_timestamp_from_filename(f.split("/")[-1]) for f in results]
         # Make it a dictionary for the product, no need it as a list, but list of lists would work
         unique_start_times = sorted(list(set(start_times)))
-        start_lists = [[] for _ in range(unique_start_times)]
+        start_lists = [[] for _ in range(len(unique_start_times))]
         for result in results:
             start_time = get_timestamp_from_filename(result.split("/")[-1])
             # Find the index of the start time in the unique list
