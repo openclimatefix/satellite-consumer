@@ -101,7 +101,7 @@ def cli_entrypoint() -> None:
         case Command.EXTRACTLATEST:
             command_opts = ExtractLatestCommandOptions(
                 satellite=args.satellite,
-                window_mins= args.window_mins,
+                window_mins=args.window_mins,
                 workdir=args.workdir,
                 resolution=args.resolution,
             )

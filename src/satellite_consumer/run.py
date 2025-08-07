@@ -110,13 +110,13 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                     continue
                 try:
                     da = process_raw(
-                paths=raw_filepaths,
-                channels=command_opts.satellite_metadata.channels,
-                resolution_meters=command_opts.resolution,
-                normalize=command_opts.rescale,
-                crop_region_geos=command_opts.crop_region_geos,
-                satellite=satellite,
-            )
+                        paths=raw_filepaths,
+                        channels=command_opts.satellite_metadata.channels,
+                        resolution_meters=command_opts.resolution,
+                        normalize=command_opts.rescale,
+                        crop_region_geos=command_opts.crop_region_geos,
+                        satellite=satellite,
+                    )
                 except Exception as e:
                     log.error(
                         "Error processing raw files",
@@ -140,20 +140,32 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                     # TODO: Remove warnings catch when Zarr makes up its mind about codecs
                     with warnings.catch_warnings(action="ignore"):
                         encoding = {
-                                "time": {
-                                    "units": "nanoseconds since 1970-01-01",
-                                    "calendar": "proleptic_gregorian",
-                                },
-                            }
+                            "time": {
+                                "units": "nanoseconds since 1970-01-01",
+                                "calendar": "proleptic_gregorian",
+                            },
+                        }
                         encoding.update(
                             {
                                 v: {
                                     "dtype": "float16",
                                     "compressors": zarr.codecs.BloscCodec(
-                                        cname="zstd", clevel=9, shuffle=zarr.codecs.BloscShuffle.bitshuffle
-                                    )
+                                        cname="zstd",
+                                        clevel=9,
+                                        shuffle=zarr.codecs.BloscShuffle.bitshuffle,
+                                    ),
                                 }
-                                for v in da.data_vars if v not in ["start_time", "end_time", "x_geostationary_coordinates", "y_geostationary_coordinates", "orbital_parameters", "area", "platform_name"]
+                                for v in da.data_vars
+                                if v
+                                not in [
+                                    "start_time",
+                                    "end_time",
+                                    "x_geostationary_coordinates",
+                                    "y_geostationary_coordinates",
+                                    "orbital_parameters",
+                                    "area",
+                                    "platform_name",
+                                ]
                             }
                         )
                         encoding.update(
@@ -169,15 +181,10 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                                 },
                                 "area": {
                                     "dtype": "U512",
-                                }
+                                },
                             }
                         )
-                        to_icechunk(
-                            obj=da,
-                            session=session,
-                            mode="w-",
-                            encoding=encoding
-                        )
+                        to_icechunk(obj=da, session=session, mode="w-", encoding=encoding)
                     _ = session.commit(message="initial commit")
                 # Otherwise, append the data to the existing store
                 else:

@@ -22,6 +22,7 @@ import fsspec
 if TYPE_CHECKING:
     from eumdac.collection import Collection, SearchResults
 
+
 def get_timestamp_from_filename(filename: str) -> dt.datetime:
     """Extract timestamp from a filename.
 
@@ -33,7 +34,7 @@ def get_timestamp_from_filename(filename: str) -> dt.datetime:
     """
     # Example filename: 'HS_H09_20221105_0020_B01_FLDK_R10_S0110.DAT.bz2'
 
-    match = re.search(r'_(\d{8})_(\d{4})_', filename)
+    match = re.search(r"_(\d{8})_(\d{4})_", filename)
     if not match:
         raise ValueError(f"Filename '{filename}' does not contain a valid timestamp.")
 
@@ -50,7 +51,10 @@ def get_timestamp_from_filename(filename: str) -> dt.datetime:
     )
     return start_time
 
-def get_products_for_date_range_himawari(bucket: str, product_id: str, start: dt.datetime, end: dt.datetime) -> list[str]:
+
+def get_products_for_date_range_himawari(
+    bucket: str, product_id: str, start: dt.datetime, end: dt.datetime
+) -> list[str]:
     """Get a list of product files for a given date range from an S3 bucket.
 
     Args:
@@ -83,7 +87,7 @@ def get_products_for_date_range_himawari(bucket: str, product_id: str, start: dt
     products = []
     for date in pd.date_range(start, end, freq="10min"):
         log.debug(
-            f"Searching for products in S3 bucket: {f"s3://{bucket}/{product_id}/{date.year}/{date.month:02d}/{date.day:02d}/{date.hour:02d}{date.minute:02d}/*.bz2",}",
+            f"Searching for products in S3 bucket: {(f's3://{bucket}/{product_id}/{date.year}/{date.month:02d}/{date.day:02d}/{date.hour:02d}{date.minute:02d}/*.bz2',)}",
             date=date.strftime("%Y-%m-%d %H:%M"),
         )
         results = fs.glob(
@@ -109,6 +113,7 @@ def get_products_for_date_range_himawari(bucket: str, product_id: str, start: dt
             f"and {end.year}-{end.month:02d}-{end.day:02d}.",
         )
     return products
+
 
 def get_products_iterator_himawari(
     sat_metadata: SatelliteMetadata,
@@ -149,17 +154,29 @@ def get_products_iterator_himawari(
             end_day_of_year=end_day_of_year,
         )
         # Search depending on the start date of the satellite
-        if start < dt.datetime(2022, 11, 4) and end < dt.datetime(2022, 11, 4): # Only Himawari8
-            search_results = get_products_for_date_range_himawari("noaa-himawari8", sat_metadata.product_id, start, end)
+        if start < dt.datetime(2022, 11, 4) and end < dt.datetime(2022, 11, 4):  # Only Himawari8
+            search_results = get_products_for_date_range_himawari(
+                "noaa-himawari8", sat_metadata.product_id, start, end
+            )
         elif start >= dt.datetime(2022, 11, 4) and end >= dt.datetime(2022, 11, 4):
             # Only Himawari9
-            search_results = get_products_for_date_range_himawari("noaa-himawari9", sat_metadata.product_id, start, end)
+            search_results = get_products_for_date_range_himawari(
+                "noaa-himawari9", sat_metadata.product_id, start, end
+            )
         else:
             # Both Himawari8 and Himawari9
             himawari8_end = dt.datetime(2022, 11, 4) if end >= dt.datetime(2022, 11, 4) else end
-            himawari9_start = dt.datetime(2022, 11, 4) if start < dt.datetime(2022, 11, 4) else start
-            search_results = get_products_for_date_range_himawari("noaa-himawari8", sat_metadata.product_id, start, himawari8_end)
-            search_results.extend(get_products_for_date_range_himawari("noaa-himawari9", sat_metadata.product_id, himawari9_start, end))
+            himawari9_start = (
+                dt.datetime(2022, 11, 4) if start < dt.datetime(2022, 11, 4) else start
+            )
+            search_results = get_products_for_date_range_himawari(
+                "noaa-himawari8", sat_metadata.product_id, start, himawari8_end
+            )
+            search_results.extend(
+                get_products_for_date_range_himawari(
+                    "noaa-himawari9", sat_metadata.product_id, himawari9_start, end
+                )
+            )
 
     except Exception as e:
         raise DownloadError(
@@ -181,6 +198,7 @@ def get_products_iterator_himawari(
         f"for {sat_metadata.product_id} ",
     )
     return search_results.__iter__()
+
 
 def download_raw_himawari(
     product: list[str],
@@ -220,7 +238,11 @@ def download_raw_himawari(
     downloaded_files: list[str] = []
 
     if existing_times is not None:
-        rounded_time = pd.Timestamp(get_timestamp_from_filename(raw_files[0])).to_pydatetime().replace(tzinfo=dt.UTC)
+        rounded_time = (
+            pd.Timestamp(get_timestamp_from_filename(raw_files[0]))
+            .to_pydatetime()
+            .replace(tzinfo=dt.UTC)
+        )
         if rounded_time in existing_times:
             log.debug(
                 "Skipping product that exists in store",
@@ -245,7 +267,10 @@ def download_raw_himawari(
             ) from e
 
         log.debug(
-            "Downloading raw file", src=raw_file, dst=filepath, num=f"{i + 1}/{len(raw_files)}",
+            "Downloading raw file",
+            src=raw_file,
+            dst=filepath,
+            num=f"{i + 1}/{len(raw_files)}",
         )
         for i in range(retries + 1):
             try:
@@ -264,4 +289,3 @@ def download_raw_himawari(
             )
 
     return downloaded_files
-

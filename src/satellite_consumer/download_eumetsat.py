@@ -223,7 +223,10 @@ def download_raw(
             ) from e
 
         log.debug(
-            "Downloading raw file", src=raw_file, dst=filepath, num=f"{i + 1}/{len(raw_files)}",
+            "Downloading raw file",
+            src=raw_file,
+            dst=filepath,
+            num=f"{i + 1}/{len(raw_files)}",
         )
         for i in range(retries + 1):
             try:

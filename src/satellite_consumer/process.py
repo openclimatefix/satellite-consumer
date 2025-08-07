@@ -50,7 +50,7 @@ def process_raw(
     try:
         if satellite == "seviri":
             loader: str = "seviri_l1b_native" if paths[0].endswith(".nat") else "fci_l1c_nc"
-            reader_kwargs['fill_disk'] = True
+            reader_kwargs["fill_disk"] = True
         elif satellite == "goes":
             loader: str = "abi_l1b"
         elif satellite == "himawari":
@@ -132,9 +132,9 @@ def _map_scene_to_dataarray(
         )
 
     # Handle attrs, converting to serializable format
-    #da.attrs["variables"] = {}
-    #for channel in scene.wishlist:
-        # Add channel metadata dataarray variables attributes
+    # da.attrs["variables"] = {}
+    # for channel in scene.wishlist:
+    # Add channel metadata dataarray variables attributes
     #    da.attrs["variables"][channel["name"]] = {}
     #    for attr in [
     #        ca
@@ -176,13 +176,19 @@ def _map_scene_to_dataarray(
     for var in da.data_vars:
         orbital_parameters = da[var].attrs["orbital_parameters"]
     # Add geostationary coordinates to the Dataset as data vars
-    da["x_geostationary_coordinates"] = xr.DataArray(np.expand_dims(da.x_geostationary.values, axis=0), dims=("time", "x_geostationary"))
-    da["y_geostationary_coordinates"] = xr.DataArray(np.expand_dims(da.y_geostationary.values, axis=0), dims=("time", "y_geostationary"))
-    da["start_time"] = xr.DataArray([pd.Timestamp(da.attrs["time_parameters"]["nominal_start_time"])], dims=("time",)).astype(np.datetime64)
-    da["end_time"] = xr.DataArray([pd.Timestamp(da.attrs["time_parameters"]["nominal_end_time"])], dims=("time",)).astype(np.datetime64)
-    da["platform_name"] = xr.DataArray(
-        [da.attrs["platform_name"]], dims=("time",)
-    ).astype("U12")
+    da["x_geostationary_coordinates"] = xr.DataArray(
+        np.expand_dims(da.x_geostationary.values, axis=0), dims=("time", "x_geostationary")
+    )
+    da["y_geostationary_coordinates"] = xr.DataArray(
+        np.expand_dims(da.y_geostationary.values, axis=0), dims=("time", "y_geostationary")
+    )
+    da["start_time"] = xr.DataArray(
+        [pd.Timestamp(da.attrs["time_parameters"]["nominal_start_time"])], dims=("time",)
+    ).astype(np.datetime64)
+    da["end_time"] = xr.DataArray(
+        [pd.Timestamp(da.attrs["time_parameters"]["nominal_end_time"])], dims=("time",)
+    ).astype(np.datetime64)
+    da["platform_name"] = xr.DataArray([da.attrs["platform_name"]], dims=("time",)).astype("U12")
     da["area"] = xr.DataArray(
         [str(da.attrs["area"])],
         dims=("time",),
@@ -213,9 +219,17 @@ def _map_scene_to_dataarray(
         }
 
     da = (
-        da.transpose("time", "y_geostationary", "x_geostationary",)
+        da.transpose(
+            "time",
+            "y_geostationary",
+            "x_geostationary",
+        )
         .chunk(
-            chunks={"time": 1, "y_geostationary": -1, "x_geostationary": -1,},
+            chunks={
+                "time": 1,
+                "y_geostationary": -1,
+                "x_geostationary": -1,
+            },
         )
         .sortby(["y_geostationary"])
         .sortby("x_geostationary", ascending=False)

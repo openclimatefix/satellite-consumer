@@ -71,7 +71,7 @@ def create_latest_zip(src: str, time_slice: slice) -> str:
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".zarr.zip") as tmpzip:
         with zarr.storage.ZipStore(mode="w", path=tmpzip.name) as store:
-            store_ds.isel({"time": time_slice}).to_zarr( #type: ignore
+            store_ds.isel({"time": time_slice}).to_zarr(  # type: ignore
                 store=store,
                 consolidated=False,
                 mode="w",
