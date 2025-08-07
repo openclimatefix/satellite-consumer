@@ -30,6 +30,10 @@ from satellite_consumer.download_eumetsat import (
     download_raw,
     get_products_iterator,
 )
+from satellite_consumer.download_goes import (
+    download_raw_goes,
+    get_products_iterator_goes,
+)
 from satellite_consumer.exceptions import ValidationError
 from satellite_consumer.process import process_raw
 from satellite_consumer.validate import validate
@@ -45,7 +49,9 @@ except PackageNotFoundError:
 def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
     """Logic for the consume command (and the archive command)."""
     window = command_opts.time_window
-    product_iter = get_products_iterator(
+    get_iterator = get_products_iterator_goes if "goes" in command_opts.satellite_metadata.region else get_products_iterator
+    load_raw = download_raw_goes if "goes" in command_opts.satellite_metadata.region else download_raw
+    product_iter = get_iterator(
         sat_metadata=command_opts.satellite_metadata,
         start=window[0],
         end=window[1],
@@ -72,7 +78,7 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
 
             # Download the files for each product in the batch in parallel
             raw_filegroups = Parallel(n_jobs=command_opts.num_workers, prefer="threads")(
-                delayed(download_raw)(
+                delayed(load_raw)(
                     product=p,
                     folder=f"{command_opts.workdir}/raw",
                     filter_regex=command_opts.satellite_metadata.file_filter_regex,
@@ -209,7 +215,7 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
 
         def _etl(product: eumdac.product.Product) -> list[str]:
             """Download, process, and save a single NAT file."""
-            raw_filepaths = download_raw(
+            raw_filepaths = download_raw_goes(
                 product,
                 folder=f"{command_opts.workdir}/raw",
                 filter_regex=command_opts.satellite_metadata.file_filter_regex,

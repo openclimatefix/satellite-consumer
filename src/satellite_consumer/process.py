@@ -26,6 +26,7 @@ def process_raw(
     resolution_meters: int,
     normalize: bool = True,
     crop_region_geos: tuple[float, float, float, float] | None = None,
+    satellite: str = "seviri",
 ) -> xr.DataArray:
     """Process a set of raw files into an xarray DataArray.
 
@@ -38,15 +39,25 @@ def process_raw(
         crop_region_geos: Optional bounds to crop the data to, in the format
             (west, south, east, north) in geostationary coordinates.
             If None, no cropping is applied.
+        satellite: The name of the satellite, used to determine the loader. 'seviri' for SEVIRI, 'goes' for GOES, 'himawari' for Himawari, etc.
     """
     log.debug(
         "Reading raw files as a satpy Scene",
         resolution=resolution_meters,
         num_files=len(paths),
     )
+    reader_kwargs = {}
     try:
-        loader: str = "seviri_l1b_native" if paths[0].endswith(".nat") else "fci_l1c_nc"
-        scene: satpy.Scene = satpy.Scene(filenames={loader: paths}, reader_kwargs={'fill_disk': True})  # type:ignore
+        if satellite == "seviri":
+            loader: str = "seviri_l1b_native" if paths[0].endswith(".nat") else "fci_l1c_nc"
+            reader_kwargs['fill_disk'] = True
+        elif satellite == "goes":
+            loader: str = "abi_l1b"
+        elif satellite == "himawari":
+            loader: str = "ahi_hsd"
+        elif satellite == "g2ka":
+            loader: str = "ami_l1b"
+        scene: satpy.Scene = satpy.Scene(filenames={loader: paths}, reader_kwargs=reader_kwargs)  # type:ignore
         cnames: list[str] = [c.name for c in channels if resolution_meters in c.resolution_meters]
         scene.load(
             cnames,
@@ -223,12 +234,12 @@ def _normalize(da: xr.DataArray, channels: list[SpectralChannelMetadata]) -> xr.
     NaNs in the original DataArray are preserved in the normalized DataArray.
     """
     known_variables = {c.name for c in channels}
-    #incoming_variables = set(da.coords["variable"].values.tolist())
-    #if not incoming_variables.issubset(known_variables):
-    #    raise ValueError(
-    #        "Cannot rescale DataArray as some variables present are not recognized: "
-    #        f"'{incoming_variables.difference(known_variables)}'",
-    #    )
+    incoming_variables = set(da.coords["variable"].values.tolist())
+    if not incoming_variables.issubset(known_variables):
+        raise ValueError(
+            "Cannot rescale DataArray as some variables present are not recognized: "
+            f"'{incoming_variables.difference(known_variables)}'",
+        )
 
     # For each channel, subtract the minimum and divide by the range
     for variable in da.data_vars:
