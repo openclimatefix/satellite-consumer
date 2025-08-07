@@ -81,6 +81,9 @@ def get_products_for_date_range_goes(bucket: str, product_id: str, start: dt.dat
     )
     products = []
     for date in pd.date_range(start, end, freq="h"):
+        log.debug(
+            f"Searching for products for date in bucket: s3://{bucket}/{product_id}/{date.year}/{date.timetuple().tm_yday:03d}/{date.hour:02d}/*.nc",
+        )
         results = fs.glob(
             f"s3://{bucket}/{product_id}/{date.year}/{date.timetuple().tm_yday:03d}/{date.hour:02d}/*.nc",
         )

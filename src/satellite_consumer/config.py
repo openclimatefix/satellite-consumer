@@ -585,7 +585,7 @@ SATELLITE_METADATA: dict[str, SatelliteMetadata] = {
         cadence_mins=10,
         longitude=-75.2,
         height=35786023,
-        product_id="OR_ABI-L1b-RadF",
+        product_id="ABI-L1b-RadF",
         channels=[
             SpectralChannelMetadata("C01", [2000, 1000]),
             SpectralChannelMetadata("C02", [2000, 500]),
@@ -622,7 +622,7 @@ SATELLITE_METADATA: dict[str, SatelliteMetadata] = {
         cadence_mins=10,
         longitude=-137.2,
         height=35786023,
-        product_id="OR_ABI-L1b-RadF",
+        product_id="ABI-L1b-RadF",
         channels=[
             SpectralChannelMetadata("C01", [1000]),
             SpectralChannelMetadata("C02", [500]),
