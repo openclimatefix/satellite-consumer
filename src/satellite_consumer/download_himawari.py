@@ -38,7 +38,16 @@ def get_timestamp_from_filename(filename: str) -> dt.datetime:
         raise ValueError(f"Filename '{filename}' does not contain a valid timestamp.")
 
     start_str, end_str = match.groups()
-    start_time = dt.datetime.strptime(start_str+end_str, '%Y%m%D%H%M')
+    # Convert to datetime object from YYYYMMDDHHMM format
+    start_dt = dt.datetime.strptime(start_str, "%Y%m%d")
+    end_dt = dt.datetime.strptime(end_str, "%H%M")
+    # Combine the date and time parts
+    start_time = start_dt.replace(
+        hour=end_dt.hour,
+        minute=end_dt.minute,
+        second=0,  # Assuming seconds are not in the filename
+        microsecond=0,  # Assuming microseconds are not in the filename
+    )
     return start_time
 
 def get_products_for_date_range_himawari(bucket: str, product_id: str, start: dt.datetime, end: dt.datetime) -> list[str]:
