@@ -77,11 +77,6 @@ def get_products_for_date_range_himawari(bucket: str, product_id: str, start: dt
             f"s3://{bucket}/{product_id}/{date.year}/{date.month:02d}/{date.hour:02d}{date.minute:02d}/*.bz2",
         )
         if not results:
-            log.warning(
-                f"No products found for {product_id} in {bucket} "
-                f"between {date.year}-{date.month:02d}-{date.day:02d} "
-                f"and {end.year}-{end.month:02d}-{end.day:02d}.",
-            )
             continue
         # Combine by start time
         start_times = [get_timestamp_from_filename(f.split("/")[-1]) for f in results]
@@ -94,7 +89,12 @@ def get_products_for_date_range_himawari(bucket: str, product_id: str, start: dt
             index = unique_start_times.index(start_time)
             start_lists[index].append(result)
         products.extend(start_lists)
-
+    if not products:
+        log.warning(
+            f"No products found for {product_id} in {bucket} "
+            f"between {date.year}-{date.month:02d}-{date.day:02d} "
+            f"and {end.year}-{end.month:02d}-{end.day:02d}.",
+        )
     return products
 
 def get_products_iterator_himawari(
@@ -135,8 +135,16 @@ def get_products_iterator_himawari(
             end_year=end_year,
             end_day_of_year=end_day_of_year,
         )
-        search_results = get_products_for_date_range_himawari("noaa-himawari9", sat_metadata.product_id, start, end)
-        search_results.extend(get_products_for_date_range_himawari("noaa-himawari8", sat_metadata.product_id, start, end))
+        # Search depending on the start date of the satellite
+        if start < dt.datetime(2022, 11, 4) and end < dt.datetime(2022, 11, 4): # Only Himawari8
+            search_results = get_products_for_date_range_himawari("noaa-himawari8", sat_metadata.product_id, start, end)
+        if start >= dt.datetime(2022, 11, 4) and end >= dt.datetime(2022, 11, 4):
+            # Only Himawari9
+            search_results = get_products_for_date_range_himawari("noaa-himawari9", sat_metadata.product_id, start, end)
+        else:
+            # Both Himawari8 and Himawari9
+            search_results = get_products_for_date_range_himawari("noaa-himawari8", sat_metadata.product_id, start, end)
+            search_results.extend(get_products_for_date_range_himawari("noaa-himawari9", sat_metadata.product_id, start, end))
 
     except Exception as e:
         raise DownloadError(

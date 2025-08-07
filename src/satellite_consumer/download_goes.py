@@ -22,6 +22,19 @@ import fsspec
 if TYPE_CHECKING:
     from eumdac.collection import Collection, SearchResults
 
+HISTORY_RANGE = {
+    "goes16": (
+        dt.datetime(2017, 12, 18),
+        dt.datetime(2025, 4, 7),
+    ),  # GOES-16 operational from Dec 18, 2017
+    "goes17": (
+        dt.datetime(2019, 2, 12),
+        dt.datetime(2023, 1, 4),
+    ),  # GOES-17 operational from Feb 12, 2019
+    "goes18": (dt.datetime(2023, 1, 4), None),  # GOES-18 operational from Jan 4, 2023
+    "goes19": (dt.datetime(2025, 4, 7), None),  # GOES-19 operational from Apr 7, 2025
+}
+
 def get_timestamp_from_filename(filename: str) -> dt.datetime:
     """Extract timestamp from a filename.
 
@@ -72,11 +85,6 @@ def get_products_for_date_range_goes(bucket: str, product_id: str, start: dt.dat
             f"s3://{bucket}/{product_id}/{date.year}/{date.timetuple().tm_yday:03d}/{date.hour:02d}/*.nc",
         )
         if not results:
-            log.warning(
-                f"No products found for {product_id} in {bucket} "
-                f"between {date.year}-{date.month:02d}-{date.day:02d} "
-                f"and {end.year}-{end.month:02d}-{end.day:02d}.",
-            )
             continue
         # Combine by start time
         start_times = [get_timestamp_from_filename(f.split("/")[-1]) for f in results]
@@ -89,6 +97,12 @@ def get_products_for_date_range_goes(bucket: str, product_id: str, start: dt.dat
             index = unique_start_times.index(start_time)
             start_lists[index].append(result)
         products.extend(start_lists)
+    if not products:
+        log.warning(
+            f"No products found for {product_id} in {bucket} "
+            f"between {date.year}-{date.month:02d}-{date.day:02d} "
+            f"and {end.year}-{end.month:02d}-{end.day:02d}.",
+        )
 
     return products
 
@@ -130,19 +144,35 @@ def get_products_iterator_goes(
             end_year=end_year,
             end_day_of_year=end_day_of_year,
         )
+
         if "goes-east" in sat_metadata.region.lower():
             # Search both GOES-East satellite buckets for the data
-            search_results = get_products_for_date_range_goes("noaa-goes16", sat_metadata.product_id, start, end)
-            search_results.extend(get_products_for_date_range_goes("noaa-goes19", sat_metadata.product_id, start, end))
+            if start < HISTORY_RANGE["goes16"][0] and end < HISTORY_RANGE["goes16"][1]:
+                # Only GOES-16
+                search_results = get_products_for_date_range_goes("noaa-goes16", sat_metadata.product_id, start, end)
+            elif start >= HISTORY_RANGE["goes16"][0] and end >= HISTORY_RANGE["goes16"][1]:
+                # Only GOES-19
+                search_results = get_products_for_date_range_goes("noaa-goes19", sat_metadata.product_id, start, end)
+            else:
+                # Both GOES-16 and GOES-19
+                search_results = get_products_for_date_range_goes("noaa-goes16", sat_metadata.product_id, start, end)
+                search_results.extend(get_products_for_date_range_goes("noaa-goes19", sat_metadata.product_id, start, end))
             # Do it by initialization time, so we can combine the individual files to a product
         else:
             assert "goes-west" in sat_metadata.region.lower(), (
                 f"Unknown region '{sat_metadata.region}' for satellite {sat_metadata.product_id}. "
                 "Expected 'goes-east' or 'goes-west'."
             )
-            # Search the single GOES-West bucket for the data
-            search_results = get_products_for_date_range_goes("noaa-goes17", sat_metadata.product_id, start, end)
-            search_results.extend(get_products_for_date_range_goes("noaa-goes18", sat_metadata.product_id, start, end))
+            if start < HISTORY_RANGE["goes17"][0] and end < HISTORY_RANGE["goes17"][1]:
+                # Only GOES-17
+                search_results = get_products_for_date_range_goes("noaa-goes17", sat_metadata.product_id, start, end)
+            elif start >= HISTORY_RANGE["goes17"][0] and end >= HISTORY_RANGE["goes17"][1]:
+                # Only GOES-18
+                search_results = get_products_for_date_range_goes("noaa-goes18", sat_metadata.product_id, start, end)
+            else:
+                # Search the single GOES-West bucket for the data
+                search_results = get_products_for_date_range_goes("noaa-goes17", sat_metadata.product_id, start, end)
+                search_results.extend(get_products_for_date_range_goes("noaa-goes18", sat_metadata.product_id, start, end))
 
     except Exception as e:
         raise DownloadError(
