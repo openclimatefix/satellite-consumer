@@ -100,7 +100,7 @@ def get_products_for_date_range_goes(bucket: str, product_id: str, start: dt.dat
     if not products:
         log.warning(
             f"No products found for {product_id} in {bucket} "
-            f"between {date.year}-{date.month:02d}-{date.day:02d} "
+            f"between {start.year}-{start.month:02d}-{start.day:02d} "
             f"and {end.year}-{end.month:02d}-{end.day:02d}.",
         )
 
