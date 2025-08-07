@@ -102,6 +102,8 @@ def get_products_for_date_range_goes(
             else:
                 # Use the Reproc data
                 product_id = "ABI-L1b-RadF-Reproc"
+        if "goes18" in bucket or "goes19" in bucket:
+            product_id = "ABI-L1b-RadF"
         log.debug(
             f"Searching for products for date in bucket: s3://{bucket}/{product_id}/{date.year}/{date.timetuple().tm_yday:03d}/{date.hour:02d}/*.nc",
         )
