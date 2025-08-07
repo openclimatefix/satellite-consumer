@@ -132,6 +132,16 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                         raw_filepaths=raw_filepaths,
                         error=str(e),
                     )
+                    # Still remove the raw filepaths to save space
+                    for raw_filepath in raw_filepaths:
+                        try:
+                            os.remove(raw_filepath)
+                        except OSError as e:
+                            log.warning(
+                                "Failed to delete raw file",
+                                raw_filepath=raw_filepath,
+                                error=str(e),
+                            )
                     num_skipped += 1
                     continue
                 # Don't write invalid data to the store
