@@ -237,12 +237,7 @@ def download_raw_himawari(
         for i in range(retries + 1):
             try:
                 # Copying to temp then putting seems to be quicker than copying to fs
-                with (
-                    fs.open(raw_file) as fsrc,
-                    tempfile.NamedTemporaryFile() as fdst,
-                ):
-                    shutil.copyfileobj(fsrc, fdst, length=1024 * 1024)
-                    fs.put(fdst.name, filepath)
+                fs.download(raw_file, filepath)
                 downloaded_files.append(filepath)
                 break
             except Exception as e:
