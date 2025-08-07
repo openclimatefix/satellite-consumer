@@ -56,7 +56,11 @@ def get_timestamp_from_filename(filename: str) -> dt.datetime:
 
 
 def get_products_for_date_range_goes(
-    bucket: str, product_id: str, start: dt.datetime, end: dt.datetime, channels: list[str] | None = None
+    bucket: str,
+    product_id: str,
+    start: dt.datetime,
+    end: dt.datetime,
+    channels: list[str] | None = None,
 ) -> list[str]:
     """Get a list of product files for a given date range from an S3 bucket.
 
@@ -106,9 +110,7 @@ def get_products_for_date_range_goes(
         )
         # Filter out non-channel files
         if channels is not None:
-            results = [
-                r for r in results if any(channel + "_" in r for channel in channels)
-            ]
+            results = [r for r in results if any(channel + "_" in r for channel in channels)]
         if not results:
             continue
         # Combine by start time
@@ -156,7 +158,9 @@ def get_products_iterator_goes(
     log.info(
         f"Searching for products between {start!s} and {end!s} for {sat_metadata.product_id}",
     )
-    cnames: list[str] = [c.name for c in sat_metadata.channels if resolution_meters in c.resolution_meters]
+    cnames: list[str] = [
+        c.name for c in sat_metadata.channels if resolution_meters in c.resolution_meters
+    ]
     expected_products_count = int((end - start) / dt.timedelta(minutes=sat_metadata.cadence_mins))
     try:
         # Search S3 bucket for the products for the time period, both for each of the two GOES satellites covered by
@@ -179,12 +183,20 @@ def get_products_iterator_goes(
             if start < HISTORY_RANGE["goes16"][1] and end < HISTORY_RANGE["goes16"][1]:
                 # Only GOES-16
                 search_results = get_products_for_date_range_goes(
-                    "noaa-goes16", sat_metadata.product_id, start, end, channels=cnames,
+                    "noaa-goes16",
+                    sat_metadata.product_id,
+                    start,
+                    end,
+                    channels=cnames,
                 )
             elif start >= HISTORY_RANGE["goes16"][1] and end >= HISTORY_RANGE["goes16"][1]:
                 # Only GOES-19
                 search_results = get_products_for_date_range_goes(
-                    "noaa-goes19", sat_metadata.product_id, start, end, channels=cnames,
+                    "noaa-goes19",
+                    sat_metadata.product_id,
+                    start,
+                    end,
+                    channels=cnames,
                 )
             else:
                 # Both GOES-16 and GOES-19
@@ -196,11 +208,19 @@ def get_products_iterator_goes(
                     HISTORY_RANGE["goes19"][0] if HISTORY_RANGE["goes19"][0] > start else start
                 )
                 search_results = get_products_for_date_range_goes(
-                    "noaa-goes16", sat_metadata.product_id, start, goes_16_end, channels=cnames,
+                    "noaa-goes16",
+                    sat_metadata.product_id,
+                    start,
+                    goes_16_end,
+                    channels=cnames,
                 )
                 search_results.extend(
                     get_products_for_date_range_goes(
-                        "noaa-goes19", sat_metadata.product_id, goes_19_start, end, channels=cnames,
+                        "noaa-goes19",
+                        sat_metadata.product_id,
+                        goes_19_start,
+                        end,
+                        channels=cnames,
                     )
                 )
             # Do it by initialization time, so we can combine the individual files to a product
@@ -212,12 +232,20 @@ def get_products_iterator_goes(
             if start < HISTORY_RANGE["goes17"][1] and end < HISTORY_RANGE["goes17"][1]:
                 # Only GOES-17
                 search_results = get_products_for_date_range_goes(
-                    "noaa-goes17", sat_metadata.product_id, start, end, channels=cnames,
+                    "noaa-goes17",
+                    sat_metadata.product_id,
+                    start,
+                    end,
+                    channels=cnames,
                 )
             elif start >= HISTORY_RANGE["goes17"][1] and end >= HISTORY_RANGE["goes17"][1]:
                 # Only GOES-18
                 search_results = get_products_for_date_range_goes(
-                    "noaa-goes18", sat_metadata.product_id, start, end, channels=cnames,
+                    "noaa-goes18",
+                    sat_metadata.product_id,
+                    start,
+                    end,
+                    channels=cnames,
                 )
             else:
                 # Search the single GOES-West bucket for the data
@@ -228,11 +256,19 @@ def get_products_iterator_goes(
                     HISTORY_RANGE["goes18"][0] if HISTORY_RANGE["goes18"][0] > start else start
                 )
                 search_results = get_products_for_date_range_goes(
-                    "noaa-goes17", sat_metadata.product_id, start, goes_17_end, channels=cnames,
+                    "noaa-goes17",
+                    sat_metadata.product_id,
+                    start,
+                    goes_17_end,
+                    channels=cnames,
                 )
                 search_results.extend(
                     get_products_for_date_range_goes(
-                        "noaa-goes18", sat_metadata.product_id, goes_18_start, end, channels=cnames,
+                        "noaa-goes18",
+                        sat_metadata.product_id,
+                        goes_18_start,
+                        end,
+                        channels=cnames,
                     )
                 )
 

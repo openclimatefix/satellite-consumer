@@ -38,6 +38,10 @@ from satellite_consumer.download_himawari import (
     download_raw_himawari,
     get_products_iterator_himawari,
 )
+from satellite_consumer.download_gk2a import (
+    download_raw_gk2a,
+    get_products_iterator_gk2a,
+)
 from satellite_consumer.exceptions import ValidationError
 from satellite_consumer.process import process_raw
 from satellite_consumer.validate import validate
@@ -61,6 +65,10 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
         get_iterator = get_products_iterator_himawari
         load_raw = download_raw_himawari
         satellite = "himawari"
+    elif "gk2a" in command_opts.satellite_metadata.region:
+        get_iterator = get_products_iterator_gk2a
+        load_raw = download_raw_gk2a
+        satellite = "gk2a"
     else:
         get_iterator = get_products_iterator
         load_raw = download_raw

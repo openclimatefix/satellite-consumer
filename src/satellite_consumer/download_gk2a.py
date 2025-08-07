@@ -19,9 +19,6 @@ from satellite_consumer.storage import get_fs
 import s3fs
 import fsspec
 
-if TYPE_CHECKING:
-    from eumdac.collection import Collection, SearchResults
-
 
 def get_timestamp_from_filename(filename: str) -> dt.datetime:
     """Extract timestamp from a filename.
@@ -32,27 +29,17 @@ def get_timestamp_from_filename(filename: str) -> dt.datetime:
     Returns:
         The timestamp extracted from the filename.
     """
-    # Example filename: 'HS_H09_20221105_0020_B01_FLDK_R10_S0110.DAT.bz2'
-
-    match = re.search(r"_(\d{8})_(\d{4})_", filename)
+    # Example filename: 'gk2a_ami_le1b_ir087_fd020ge_202303010000.nc'
+    match = re.search(r"_(\d{12}).nc", filename)
     if not match:
         raise ValueError(f"Filename '{filename}' does not contain a valid timestamp.")
 
-    start_str, end_str = match.groups()
-    # Convert to datetime object from YYYYMMDDHHMM format
-    start_dt = dt.datetime.strptime(start_str, "%Y%m%d")
-    end_dt = dt.datetime.strptime(end_str, "%H%M")
-    # Combine the date and time parts
-    start_time = start_dt.replace(
-        hour=end_dt.hour,
-        minute=end_dt.minute,
-        second=0,  # Assuming seconds are not in the filename
-        microsecond=0,  # Assuming microseconds are not in the filename
-    )
+    end_str = match.groups()[0]
+    start_time = dt.datetime.strptime(end_str, "%Y%m%d%H%M")
     return start_time
 
 
-def get_products_for_date_range_himawari(
+def get_products_for_date_range_gk2a(
     bucket: str,
     product_id: str,
     start: dt.datetime,
@@ -72,35 +59,36 @@ def get_products_for_date_range_himawari(
     """
     fs = s3fs.S3FileSystem(anon=True)
     start_year = start.year
-    start_month = start.month
-    start_day = start.day
+    start_day_of_year = start.timetuple().tm_yday
     end_year = end.year
-    end_month = end.month
-    end_day = end.day
+    end_day_of_year = end.timetuple().tm_yday
+    product_id = product_id
 
     log.debug(
         "Searching for products in S3 buckets",
         product_id=product_id,
         start_year=start_year,
-        start_month=start_month,
-        start_day=start_day,
+        start_day_of_year=start_day_of_year,
         end_year=end_year,
-        end_month=end_month,
-        end_day=end_day,
+        end_day_of_year=end_day_of_year,
     )
     products = []
-    for date in pd.date_range(start, end, freq="D"):
+    for date in pd.date_range(start, end, freq="h"):
         log.debug(
-            f"Searching for products in S3 bucket: {(f's3://{bucket}/{product_id}/{date.year}/{date.month:02d}/{date.day:02d}/{date.hour:02d}{date.minute:02d}/*.bz2',)}",
-            date=date.strftime("%Y-%m-%d %H:%M"),
+            f"Searching for products for date in bucket: s3://{bucket}/{product_id}/{date.year}{date.month:02d}/{date.day:02d}/{date.hour:02d}/*.nc",
         )
         results = fs.glob(
-            f"s3://{bucket}/{product_id}/{date.year}/{date.month:02d}/{date.day:02d}/*/*.bz2",
+            f"s3://{bucket}/{product_id}/{date.year}{date.month:02d}/{date.day:02d}/{date.hour:02d}/*.nc",
         )
+        # Filter out non-channel files
+        if channels is not None:
+            results = [
+                r for r in results if any(channel.lower() + "_" in r for channel in channels)
+            ]
         if not results:
             continue
         # Combine by start time
-        start_times = [get_timestamp_from_filename(f) for f in results]
+        start_times = [get_timestamp_from_filename(f.split("/")[-1]) for f in results]
         # Make it a dictionary for the product, no need it as a list, but list of lists would work
         unique_start_times = sorted(list(set(start_times)))
         start_lists = [[] for _ in range(len(unique_start_times))]
@@ -116,10 +104,11 @@ def get_products_for_date_range_himawari(
             f"between {start.year}-{start.month:02d}-{start.day:02d} "
             f"and {end.year}-{end.month:02d}-{end.day:02d}.",
         )
+
     return products
 
 
-def get_products_iterator_himawari(
+def get_products_iterator_gk2a(
     sat_metadata: SatelliteMetadata,
     start: dt.datetime,
     end: dt.datetime,
@@ -135,7 +124,7 @@ def get_products_iterator_himawari(
         start: Start time of the search.
         end: End time of the search.
         missing_product_threshold: Percentage of missing products allowed without error.
-        resolution_meters: Resolution of the products in meters.
+        resolution_meters: Resolution of the products to search for.
 
     Returns:
         Tuple of the iterator over the products and the total number of products found.
@@ -162,46 +151,13 @@ def get_products_iterator_himawari(
             end_year=end_year,
             end_day_of_year=end_day_of_year,
         )
-        # Search depending on the start date of the satellite
-        if start < dt.datetime(2022, 11, 4) and end < dt.datetime(2022, 11, 4):  # Only Himawari8
-            search_results = get_products_for_date_range_himawari(
-                "noaa-himawari8",
-                sat_metadata.product_id,
-                start,
-                end,
-                channels=cnames,
-            )
-        elif start >= dt.datetime(2022, 11, 4) and end >= dt.datetime(2022, 11, 4):
-            # Only Himawari9
-            search_results = get_products_for_date_range_himawari(
-                "noaa-himawari9",
-                sat_metadata.product_id,
-                start,
-                end,
-                channels=cnames,
-            )
-        else:
-            # Both Himawari8 and Himawari9
-            himawari8_end = dt.datetime(2022, 11, 4) if end >= dt.datetime(2022, 11, 4) else end
-            himawari9_start = (
-                dt.datetime(2022, 11, 4) if start < dt.datetime(2022, 11, 4) else start
-            )
-            search_results = get_products_for_date_range_himawari(
-                "noaa-himawari8",
-                sat_metadata.product_id,
-                start,
-                himawari8_end,
-                channels=cnames,
-            )
-            search_results.extend(
-                get_products_for_date_range_himawari(
-                    "noaa-himawari9",
-                    sat_metadata.product_id,
-                    himawari9_start,
-                    end,
-                    channels=cnames,
-                )
-            )
+        search_results = get_products_for_date_range_gk2a(
+            "noaa-gk2a-pds",
+            sat_metadata.product_id,
+            start,
+            end,
+            channels=cnames,
+        )
 
     except Exception as e:
         raise DownloadError(
@@ -225,7 +181,7 @@ def get_products_iterator_himawari(
     return search_results.__iter__()
 
 
-def download_raw_himawari(
+def download_raw_gk2a(
     product: list[str],
     folder: str,
     filter_regex: str,
@@ -251,7 +207,7 @@ def download_raw_himawari(
         Path to the downloaded file, or None if the download failed.
     """
     fs = get_fs(path=folder)
-    fs_s3 = fsspec.filesystem("s3", anon=True)
+    s3_fs = fsspec.filesystem("s3", anon=True)
     # Filter to only product files we care about
     raw_files = [p for p in product if re.search(filter_regex, p)]
     if not raw_files:
@@ -300,7 +256,7 @@ def download_raw_himawari(
         for i in range(retries + 1):
             try:
                 # Copying to temp then putting seems to be quicker than copying to fs
-                fs_s3.download(raw_file, filepath)
+                s3_fs.download(raw_file, filepath)
                 downloaded_files.append(filepath)
                 break
             except Exception as e:

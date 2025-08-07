@@ -581,7 +581,7 @@ SATELLITE_METADATA: dict[str, SatelliteMetadata] = {
         file_filter_regex=r"\S+\.nc$",
     ),
     "goes-east": SatelliteMetadata(
-        region="goes-east",
+        region="goes-east, Americas, Atlantic Ocean",
         cadence_mins=10,
         longitude=-75.2,
         height=35786023,
@@ -618,7 +618,7 @@ SATELLITE_METADATA: dict[str, SatelliteMetadata] = {
         file_filter_regex=r"\S+\.nc$",
     ),
     "goes-west": SatelliteMetadata(
-        region="goes-west",
+        region="goes-west, Americas, Pacific Ocean",
         cadence_mins=10,
         longitude=-137.2,
         height=35786023,
@@ -655,7 +655,7 @@ SATELLITE_METADATA: dict[str, SatelliteMetadata] = {
         file_filter_regex=r"\S+\.nc$",
     ),
     "himawari": SatelliteMetadata(
-        region="himawari",
+        region="himawari, Asia, Pacific Ocean",
         cadence_mins=10,
         longitude=140.7,
         height=35786023,
@@ -690,6 +690,43 @@ SATELLITE_METADATA: dict[str, SatelliteMetadata] = {
             "y_geostationary": list(np.linspace(-5567499.998550887, 5567499.998550878, 22272)),
         },
         file_filter_regex=r"\S+\.bz2$",
+    ),
+    "gk2a": SatelliteMetadata(
+        region="gk2a, Asia, Pacific Ocean",
+        cadence_mins=10,
+        longitude=140.7,
+        height=35786023,
+        product_id="AMI/L1B/FD",
+        channels=[
+            SpectralChannelMetadata("VI008", [1000]),
+            SpectralChannelMetadata("VI005", [1000]),
+            SpectralChannelMetadata("VI006", [500]),
+            SpectralChannelMetadata("VI004", [1000]),
+            SpectralChannelMetadata("IR087", [2000]),
+            SpectralChannelMetadata("IR096", [2000]),
+            SpectralChannelMetadata("IR105", [2000]),
+            SpectralChannelMetadata("IR112", [2000]),
+            SpectralChannelMetadata("IR123", [2000]),
+            SpectralChannelMetadata("IR133", [2000]),
+            SpectralChannelMetadata("NR013", [2000]),
+            SpectralChannelMetadata("NR016", [2000]),
+            SpectralChannelMetadata("SW038", [2000]),
+            SpectralChannelMetadata("WV063", [2000]),
+            SpectralChannelMetadata("WV069", [2000]),
+            SpectralChannelMetadata("WV073", [2000]),
+        ],
+        description="".join(
+            (
+                "GK-2A Level-1b Radiance data for Asia and Pacific Ocean.",
+                "The data is transmitted in sixteen channels, with varying resolutions.",
+                "",
+            ),
+        ),
+        spatial_coordinates={
+            "x_geostationary": list(np.linspace(-5567499.9985508835, 5567499.998550878, 22272)),
+            "y_geostationary": list(np.linspace(-5567499.998550887, 5567499.998550878, 22272)),
+        },
+        file_filter_regex=r"\S+\.nc$",
     ),
 }
 """Metadata for the available satellite data sets."""
