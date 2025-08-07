@@ -55,7 +55,7 @@ def process_raw(
             loader: str = "abi_l1b"
         elif satellite == "himawari":
             loader: str = "ahi_hsd"
-        elif satellite == "g2ka":
+        elif satellite == "gk2a":
             loader: str = "ami_l1b"
         else:
             raise ValueError(
