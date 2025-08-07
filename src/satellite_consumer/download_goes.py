@@ -159,10 +159,10 @@ def get_products_iterator_goes(
 
         if "goes-east" in sat_metadata.region.lower():
             # Search both GOES-East satellite buckets for the data
-            if start < HISTORY_RANGE["goes16"][0] and end < HISTORY_RANGE["goes16"][1]:
+            if start < HISTORY_RANGE["goes16"][1] and end < HISTORY_RANGE["goes16"][1]:
                 # Only GOES-16
                 search_results = get_products_for_date_range_goes("noaa-goes16", sat_metadata.product_id, start, end)
-            elif start >= HISTORY_RANGE["goes16"][0] and end >= HISTORY_RANGE["goes16"][1]:
+            elif start >= HISTORY_RANGE["goes16"][1] and end >= HISTORY_RANGE["goes16"][1]:
                 # Only GOES-19
                 search_results = get_products_for_date_range_goes("noaa-goes19", sat_metadata.product_id, start, end)
             else:
@@ -178,10 +178,10 @@ def get_products_iterator_goes(
                 f"Unknown region '{sat_metadata.region}' for satellite {sat_metadata.product_id}."
                 "Expected 'goes-east' or 'goes-west'."
             )
-            if start < HISTORY_RANGE["goes17"][0] and end < HISTORY_RANGE["goes17"][1]:
+            if start < HISTORY_RANGE["goes17"][1] and end < HISTORY_RANGE["goes17"][1]:
                 # Only GOES-17
                 search_results = get_products_for_date_range_goes("noaa-goes17", sat_metadata.product_id, start, end)
-            elif start >= HISTORY_RANGE["goes17"][0] and end >= HISTORY_RANGE["goes17"][1]:
+            elif start >= HISTORY_RANGE["goes17"][1] and end >= HISTORY_RANGE["goes17"][1]:
                 # Only GOES-18
                 search_results = get_products_for_date_range_goes("noaa-goes18", sat_metadata.product_id, start, end)
             else:
