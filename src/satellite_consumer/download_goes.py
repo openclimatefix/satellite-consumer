@@ -75,14 +75,6 @@ def get_products_for_date_range_goes(
     end_year = end.year
     end_day_of_year = end.timetuple().tm_yday
     product_id = product_id
-    if "goes16" in bucket:
-        if end < dt.datetime(2025, 1, 1):
-            # Use the Reproc data
-            product_id = "ABI-L1b-RadF-Reproc"
-    if "goes17" in bucket:
-        if end < dt.datetime(2023, 1, 1):
-            # Use the Reproc data
-            product_id = "ABI-L1b-RadF-Reproc"
 
     log.debug(
         "Searching for products in S3 buckets",
@@ -94,6 +86,18 @@ def get_products_for_date_range_goes(
     )
     products = []
     for date in pd.date_range(start, end, freq="h"):
+        if "goes16" in bucket:
+            if date >= dt.datetime(2025, 1, 1):
+                product_id = "ABI-L1b-RadF"
+            else:
+                # Use the Reproc data
+                product_id = "ABI-L1b-RadF-Reproc"
+        if "goes17" in bucket:
+            if date >= dt.datetime(2023, 1, 1):
+                product_id = "ABI-L1b-RadF"
+            else:
+                # Use the Reproc data
+                product_id = "ABI-L1b-RadF-Reproc"
         log.debug(
             f"Searching for products for date in bucket: s3://{bucket}/{product_id}/{date.year}/{date.timetuple().tm_yday:03d}/{date.hour:02d}/*.nc",
         )
