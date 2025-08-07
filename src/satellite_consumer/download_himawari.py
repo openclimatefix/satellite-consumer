@@ -151,7 +151,7 @@ def get_products_iterator_himawari(
         # Search depending on the start date of the satellite
         if start < dt.datetime(2022, 11, 4) and end < dt.datetime(2022, 11, 4): # Only Himawari8
             search_results = get_products_for_date_range_himawari("noaa-himawari8", sat_metadata.product_id, start, end)
-        if start >= dt.datetime(2022, 11, 4) and end >= dt.datetime(2022, 11, 4):
+        elif start >= dt.datetime(2022, 11, 4) and end >= dt.datetime(2022, 11, 4):
             # Only Himawari9
             search_results = get_products_for_date_range_himawari("noaa-himawari9", sat_metadata.product_id, start, end)
         else:
