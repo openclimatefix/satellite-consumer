@@ -57,6 +57,10 @@ def process_raw(
             loader: str = "ahi_hsd"
         elif satellite == "g2ka":
             loader: str = "ami_l1b"
+        else:
+            raise ValueError(
+                f"Unsupported satellite: {satellite}. Supported satellites are: 'seviri', 'goes', 'himawari', 'g2ka'."
+            )
         scene: satpy.Scene = satpy.Scene(filenames={loader: paths}, reader_kwargs=reader_kwargs)  # type:ignore
         cnames: list[str] = [c.name for c in channels if resolution_meters in c.resolution_meters]
         scene.load(
@@ -123,6 +127,8 @@ def _map_scene_to_dataarray(
 
     # Convert the Scene to a DataArray
     da: xr.Dataset = scene.to_xarray_dataset()
+    print(da)
+    print(da.attrs)
     if crop_region_geos is not None:
         da = (
             da.where(da.coords["x"] >= crop_region_geos[0], drop=True)
@@ -163,7 +169,10 @@ def _map_scene_to_dataarray(
         da[var].attrs = _serialize(da[var].attrs)
 
     # Ensure DataArray has a time dimension
-    rounded_time = pd.Timestamp(da.attrs["time_parameters"]["nominal_end_time"])
+    if "time_parameters" in da.attrs:
+        rounded_time = pd.Timestamp(da.attrs["time_parameters"]["nominal_end_time"])
+    elif "end_time" in da.attrs:
+        rounded_time = pd.Timestamp(da.attrs["end_time"])
     da.attrs["end_time"] = rounded_time.__str__()
     if "time" not in da.dims:
         time = pd.to_datetime(rounded_time)
@@ -182,12 +191,14 @@ def _map_scene_to_dataarray(
     da["y_geostationary_coordinates"] = xr.DataArray(
         np.expand_dims(da.y_geostationary.values, axis=0), dims=("time", "y_geostationary")
     )
-    da["start_time"] = xr.DataArray(
-        [pd.Timestamp(da.attrs["time_parameters"]["nominal_start_time"])], dims=("time",)
-    ).astype(np.datetime64)
-    da["end_time"] = xr.DataArray(
-        [pd.Timestamp(da.attrs["time_parameters"]["nominal_end_time"])], dims=("time",)
-    ).astype(np.datetime64)
+    if "time_parameters" in da.attrs:
+        start_time = pd.Timestamp(da.attrs["time_parameters"]["nominal_start_time"])
+        end_time = pd.Timestamp(da.attrs["time_parameters"]["nominal_end_time"])
+    elif "start_time" in da.attrs and "end_time" in da.attrs:
+        start_time = pd.Timestamp(da.attrs["start_time"])
+        end_time = pd.Timestamp(da.attrs["end_time"])
+    da["start_time"] = xr.DataArray([start_time], dims=("time",)).astype(np.datetime64)
+    da["end_time"] = xr.DataArray([end_time], dims=("time",)).astype(np.datetime64)
     da["platform_name"] = xr.DataArray([da.attrs["platform_name"]], dims=("time",)).astype("U12")
     da["area"] = xr.DataArray(
         [str(da.attrs["area"])],
