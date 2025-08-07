@@ -53,7 +53,7 @@ def get_timestamp_from_filename(filename: str) -> dt.datetime:
 
 
 def get_products_for_date_range_himawari(
-    bucket: str, product_id: str, start: dt.datetime, end: dt.datetime
+    bucket: str, product_id: str, start: dt.datetime, end: dt.datetime, channels: list[str] | None = None
 ) -> list[str]:
     """Get a list of product files for a given date range from an S3 bucket.
 
@@ -85,13 +85,13 @@ def get_products_for_date_range_himawari(
         end_day=end_day,
     )
     products = []
-    for date in pd.date_range(start, end, freq="10min"):
+    for date in pd.date_range(start, end, freq="D"):
         log.debug(
             f"Searching for products in S3 bucket: {(f's3://{bucket}/{product_id}/{date.year}/{date.month:02d}/{date.day:02d}/{date.hour:02d}{date.minute:02d}/*.bz2',)}",
             date=date.strftime("%Y-%m-%d %H:%M"),
         )
         results = fs.glob(
-            f"s3://{bucket}/{product_id}/{date.year}/{date.month:02d}/{date.day:02d}/{date.hour:02d}{date.minute:02d}/*.bz2",
+            f"s3://{bucket}/{product_id}/{date.year}/{date.month:02d}/{date.day:02d}/*/*.bz2",
         )
         if not results:
             continue
@@ -120,6 +120,7 @@ def get_products_iterator_himawari(
     start: dt.datetime,
     end: dt.datetime,
     missing_product_threshold: float = 0.1,
+    resolution_meters: int = 2000,
 ) -> Iterator[str]:
     """Get an iterator over the products for a given satellite in a given time range.
 
@@ -130,6 +131,7 @@ def get_products_iterator_himawari(
         start: Start time of the search.
         end: End time of the search.
         missing_product_threshold: Percentage of missing products allowed without error.
+        resolution_meters: Resolution of the products in meters.
 
     Returns:
         Tuple of the iterator over the products and the total number of products found.
@@ -137,6 +139,7 @@ def get_products_iterator_himawari(
     log.info(
         f"Searching for products between {start!s} and {end!s} for {sat_metadata.product_id}",
     )
+    cnames: list[str] = [c.name for c in sat_metadata.channels if resolution_meters in c.resolution_meters]
     expected_products_count = int((end - start) / dt.timedelta(minutes=sat_metadata.cadence_mins))
     try:
         # Search S3 bucket for the products for the time period, both for each of the two GOES satellites covered by
@@ -156,12 +159,12 @@ def get_products_iterator_himawari(
         # Search depending on the start date of the satellite
         if start < dt.datetime(2022, 11, 4) and end < dt.datetime(2022, 11, 4):  # Only Himawari8
             search_results = get_products_for_date_range_himawari(
-                "noaa-himawari8", sat_metadata.product_id, start, end
+                "noaa-himawari8", sat_metadata.product_id, start, end, channels=cnames,
             )
         elif start >= dt.datetime(2022, 11, 4) and end >= dt.datetime(2022, 11, 4):
             # Only Himawari9
             search_results = get_products_for_date_range_himawari(
-                "noaa-himawari9", sat_metadata.product_id, start, end
+                "noaa-himawari9", sat_metadata.product_id, start, end, channels=cnames,
             )
         else:
             # Both Himawari8 and Himawari9
@@ -170,11 +173,11 @@ def get_products_iterator_himawari(
                 dt.datetime(2022, 11, 4) if start < dt.datetime(2022, 11, 4) else start
             )
             search_results = get_products_for_date_range_himawari(
-                "noaa-himawari8", sat_metadata.product_id, start, himawari8_end
+                "noaa-himawari8", sat_metadata.product_id, start, himawari8_end, channels=cnames,
             )
             search_results.extend(
                 get_products_for_date_range_himawari(
-                    "noaa-himawari9", sat_metadata.product_id, himawari9_start, end
+                    "noaa-himawari9", sat_metadata.product_id, himawari9_start, end, channels=cnames,
                 )
             )
 

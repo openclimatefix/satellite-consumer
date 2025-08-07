@@ -70,6 +70,7 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
         start=window[0],
         end=window[1],
         missing_product_threshold=0.99,
+        resolution_meters=command_opts.resolution,
     )
 
     processed_filepaths: list[str] = []
