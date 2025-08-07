@@ -167,8 +167,11 @@ def get_products_iterator_goes(
                 search_results = get_products_for_date_range_goes("noaa-goes19", sat_metadata.product_id, start, end)
             else:
                 # Both GOES-16 and GOES-19
-                search_results = get_products_for_date_range_goes("noaa-goes16", sat_metadata.product_id, start, end)
-                search_results.extend(get_products_for_date_range_goes("noaa-goes19", sat_metadata.product_id, start, end))
+                # Only look before the cutoff date for GOES-16 and after for GOES-19
+                goes_16_end = HISTORY_RANGE["goes16"][1] if HISTORY_RANGE["goes16"][1] < end else end
+                goes_19_start = HISTORY_RANGE["goes19"][0] if HISTORY_RANGE["goes19"][0] > start else start
+                search_results = get_products_for_date_range_goes("noaa-goes16", sat_metadata.product_id, start, goes_16_end)
+                search_results.extend(get_products_for_date_range_goes("noaa-goes19", sat_metadata.product_id, goes_19_start, end))
             # Do it by initialization time, so we can combine the individual files to a product
         else:
             assert "goes-west" in sat_metadata.region.lower(), (
@@ -183,8 +186,10 @@ def get_products_iterator_goes(
                 search_results = get_products_for_date_range_goes("noaa-goes18", sat_metadata.product_id, start, end)
             else:
                 # Search the single GOES-West bucket for the data
-                search_results = get_products_for_date_range_goes("noaa-goes17", sat_metadata.product_id, start, end)
-                search_results.extend(get_products_for_date_range_goes("noaa-goes18", sat_metadata.product_id, start, end))
+                goes_17_end = HISTORY_RANGE["goes17"][1] if HISTORY_RANGE["goes17"][1] < end else end
+                goes_18_start = HISTORY_RANGE["goes18"][0] if HISTORY_RANGE["goes18"][0] > start else start
+                search_results = get_products_for_date_range_goes("noaa-goes17", sat_metadata.product_id, start, goes_17_end)
+                search_results.extend(get_products_for_date_range_goes("noaa-goes18", sat_metadata.product_id, goes_18_start, end))
 
     except Exception as e:
         raise DownloadError(
@@ -273,7 +278,7 @@ def download_raw_goes(
         for i in range(retries + 1):
             try:
                 # Copying to temp then putting seems to be quicker than copying to fs
-                fs.download(raw_file, filepath)
+                fs.download("s3://"+raw_file, filepath)
                 downloaded_files.append(filepath)
                 break
             except Exception as e:

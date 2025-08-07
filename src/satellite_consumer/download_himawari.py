@@ -156,8 +156,10 @@ def get_products_iterator_himawari(
             search_results = get_products_for_date_range_himawari("noaa-himawari9", sat_metadata.product_id, start, end)
         else:
             # Both Himawari8 and Himawari9
-            search_results = get_products_for_date_range_himawari("noaa-himawari8", sat_metadata.product_id, start, end)
-            search_results.extend(get_products_for_date_range_himawari("noaa-himawari9", sat_metadata.product_id, start, end))
+            himawari8_end = dt.datetime(2022, 11, 4) if end >= dt.datetime(2022, 11, 4) else end
+            himawari9_start = dt.datetime(2022, 11, 4) if start < dt.datetime(2022, 11, 4) else start
+            search_results = get_products_for_date_range_himawari("noaa-himawari8", sat_metadata.product_id, start, himawari8_end)
+            search_results.extend(get_products_for_date_range_himawari("noaa-himawari9", sat_metadata.product_id, himawari9_start, end))
 
     except Exception as e:
         raise DownloadError(
@@ -246,7 +248,7 @@ def download_raw_himawari(
         for i in range(retries + 1):
             try:
                 # Copying to temp then putting seems to be quicker than copying to fs
-                fs.download(raw_file, filepath)
+                fs.download("s3://"+raw_file, filepath)
                 downloaded_files.append(filepath)
                 break
             except Exception as e:
