@@ -127,8 +127,6 @@ def _map_scene_to_dataarray(
 
     # Convert the Scene to a DataArray
     da: xr.Dataset = scene.to_xarray_dataset()
-    print(da)
-    print(da.attrs)
     if crop_region_geos is not None:
         da = (
             da.where(da.coords["x"] >= crop_region_geos[0], drop=True)
