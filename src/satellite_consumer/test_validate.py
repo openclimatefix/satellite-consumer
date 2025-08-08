@@ -43,10 +43,10 @@ class TestValidate(unittest.TestCase):
                     )
 
                     with self.assertRaises(
-                        ValidationError, msg="Empty store should fail validation",
+                        ValidationError,
+                        msg="Empty store should fail validation",
                     ):
                         validate(
                             src=test["dst"],
                             check_region_xy_slices=(slice(None, None), slice(None, None)),
                         )
-
