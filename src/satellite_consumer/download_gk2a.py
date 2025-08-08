@@ -29,7 +29,7 @@ def get_timestamp_from_filename(filename: str) -> dt.datetime:
         raise ValueError(f"Filename '{filename}' does not contain a valid timestamp.")
 
     end_str = match.groups()[0]
-    start_time = dt.datetime.strptime(end_str, "%Y%m%d%H%M")
+    start_time = dt.datetime.strptime(end_str, "%Y%m%d%H%M").replace(tzinfo=dt.UTC)
     return start_time
 
 
@@ -54,6 +54,8 @@ def get_products_for_date_range_gk2a(
         List of product file paths.
     """
     fs = s3fs.S3FileSystem(anon=True)
+    start = start.replace(tzinfo=dt.UTC)
+    end = end.replace(tzinfo=dt.UTC)
     start_year = start.year
     start_day_of_year = start.timetuple().tm_yday
     end_year = end.year
@@ -217,7 +219,8 @@ def download_raw_gk2a(
 
     if existing_times is not None:
         rounded_time = (
-            pd.Timestamp(get_timestamp_from_filename(raw_files[0])).round("5min")
+            pd.Timestamp(get_timestamp_from_filename(raw_files[0]))
+            .round("5min")
             .to_pydatetime()
             .replace(tzinfo=dt.UTC)
         )

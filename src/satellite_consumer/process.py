@@ -187,10 +187,12 @@ def _map_scene_to_dataarray(
         orbital_parameters = da[var].attrs["orbital_parameters"]
     # Add geostationary coordinates to the Dataset as data vars
     da["x_geostationary_coordinates"] = xr.DataArray(
-        np.expand_dims(da.x_geostationary.values, axis=0), dims=("time", "x_geostationary"),
+        np.expand_dims(da.x_geostationary.values, axis=0),
+        dims=("time", "x_geostationary"),
     )
     da["y_geostationary_coordinates"] = xr.DataArray(
-        np.expand_dims(da.y_geostationary.values, axis=0), dims=("time", "y_geostationary"),
+        np.expand_dims(da.y_geostationary.values, axis=0),
+        dims=("time", "y_geostationary"),
     )
     if "time_parameters" in da.attrs:
         start_time = pd.Timestamp(da.attrs["time_parameters"]["nominal_start_time"])

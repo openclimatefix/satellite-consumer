@@ -31,8 +31,8 @@ def get_timestamp_from_filename(filename: str) -> dt.datetime:
 
     start_str, end_str = match.groups()
     # Convert to datetime object from YYYYMMDDHHMM format
-    start_dt = dt.datetime.strptime(start_str, "%Y%m%d")
-    end_dt = dt.datetime.strptime(end_str, "%H%M")
+    start_dt = dt.datetime.strptime(start_str, "%Y%m%d").replace(tzinfo=dt.UTC)
+    end_dt = dt.datetime.strptime(end_str, "%H%M").replace(tzinfo=dt.UTC)
     # Combine the date and time parts
     start_time = start_dt.replace(
         hour=end_dt.hour,
@@ -90,7 +90,7 @@ def get_products_for_date_range_himawari(
             f"s3://{bucket}/{product_id}/{date.year}/{date.month:02d}/{date.day:02d}/*/*.bz2",
         )
         if channels is not None:
-            results = [r for r in results if any("_" + channel +"_" in r for channel in channels)]
+            results = [r for r in results if any("_" + channel + "_" in r for channel in channels)]
         if not results:
             continue
         # Combine by start time
@@ -145,6 +145,8 @@ def get_products_iterator_himawari(
         # Search S3 bucket for the products for the time period, both for each of
         # the two GOES satellites covered by
         # the metadata.
+        start = start.replace(tzinfo=dt.UTC)
+        end = end.replace(tzinfo=dt.UTC)
         start_year = start.year
         start_day_of_year = start.timetuple().tm_yday
         end_year = end.year
@@ -158,7 +160,8 @@ def get_products_iterator_himawari(
             end_day_of_year=end_day_of_year,
         )
         # Search depending on the start date of the satellite
-        if start < dt.datetime(2022, 11, 4) and end < dt.datetime(2022, 11, 4):  # Only Himawari8
+        if start < dt.datetime(2022, 11, 4, tzinfo=dt.UTC) and end < dt.datetime(
+            2022, 11, 4, tzinfo=dt.UTC):  # Only Himawari8
             search_results = get_products_for_date_range_himawari(
                 "noaa-himawari8",
                 sat_metadata.product_id,
@@ -166,7 +169,8 @@ def get_products_iterator_himawari(
                 end,
                 channels=cnames,
             )
-        elif start >= dt.datetime(2022, 11, 4) and end >= dt.datetime(2022, 11, 4):
+        elif start >= dt.datetime(2022, 11, 4, tzinfo=dt.UTC) and end >= dt.datetime(
+            2022, 11, 4, tzinfo=dt.UTC):
             # Only Himawari9
             search_results = get_products_for_date_range_himawari(
                 "noaa-himawari9",
@@ -177,9 +181,15 @@ def get_products_iterator_himawari(
             )
         else:
             # Both Himawari8 and Himawari9
-            himawari8_end = dt.datetime(2022, 11, 4) if end >= dt.datetime(2022, 11, 4) else end
+            himawari8_end = (
+                dt.datetime(2022, 11, 4, tzinfo=dt.UTC)
+                if end >= dt.datetime(2022, 11, 4, tzinfo=dt.UTC)
+                else end
+            )
             himawari9_start = (
-                dt.datetime(2022, 11, 4) if start < dt.datetime(2022, 11, 4) else start
+                dt.datetime(2022, 11, 4, tzinfo=dt.UTC)
+                if start < dt.datetime(2022, 11, 4, tzinfo=dt.UTC)
+                else start
             )
             search_results = get_products_for_date_range_himawari(
                 "noaa-himawari8",
@@ -259,7 +269,8 @@ def download_raw_himawari(
 
     if existing_times is not None:
         rounded_time = (
-            pd.Timestamp(get_timestamp_from_filename(raw_files[0])).round("5min")
+            pd.Timestamp(get_timestamp_from_filename(raw_files[0]))
+            .round("5min")
             .to_pydatetime()
             .replace(tzinfo=dt.UTC)
         )

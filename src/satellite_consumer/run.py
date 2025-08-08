@@ -53,6 +53,7 @@ try:
 except PackageNotFoundError:
     __version__ = "v?"
 
+
 def _remove_raw_filepaths(raw_filepaths: list[str]) -> None:
     for raw_filepath in raw_filepaths:
         try:
@@ -63,6 +64,7 @@ def _remove_raw_filepaths(raw_filepaths: list[str]) -> None:
                 raw_filepath=raw_filepath,
                 error=str(e),
             )
+
 
 def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
     """Logic for the consume command (and the archive command)."""

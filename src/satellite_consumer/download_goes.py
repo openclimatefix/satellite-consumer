@@ -15,15 +15,21 @@ from satellite_consumer.storage import get_fs
 
 HISTORY_RANGE = {
     "goes16": (
-        dt.datetime(2017, 12, 18),
-        dt.datetime(2025, 4, 7),
+        dt.datetime(2017, 12, 18, tzinfo=dt.UTC),
+        dt.datetime(2025, 4, 7, tzinfo=dt.UTC),
     ),  # GOES-16 operational from Dec 18, 2017
     "goes17": (
-        dt.datetime(2019, 2, 12),
-        dt.datetime(2023, 1, 4),
+        dt.datetime(2019, 2, 12, tzinfo=dt.UTC),
+        dt.datetime(2023, 1, 4, tzinfo=dt.UTC),
     ),  # GOES-17 operational from Feb 12, 2019
-    "goes18": (dt.datetime(2023, 1, 4), None),  # GOES-18 operational from Jan 4, 2023
-    "goes19": (dt.datetime(2025, 4, 7), None),  # GOES-19 operational from Apr 7, 2025
+    "goes18": (
+        dt.datetime(2023, 1, 4, tzinfo=dt.UTC),
+        None,
+    ),  # GOES-18 operational from Jan 4, 2023
+    "goes19": (
+        dt.datetime(2025, 4, 7, tzinfo=dt.UTC),
+        None,
+    ),  # GOES-19 operational from Apr 7, 2025
 }
 
 
@@ -43,7 +49,7 @@ def get_timestamp_from_filename(filename: str) -> dt.datetime:
         raise ValueError(f"Filename '{filename}' does not contain a valid timestamp.")
 
     start_str, end_str = match.groups()
-    start_time = dt.datetime.strptime(start_str[:-1], "%Y%j%H%M%S")
+    start_time = dt.datetime.strptime(start_str[:-1], "%Y%j%H%M%S").replace(tzinfo=dt.UTC)
     return start_time
 
 
@@ -67,6 +73,8 @@ def get_products_for_date_range_goes(
         List of product file paths.
     """
     fs = s3fs.S3FileSystem(anon=True)
+    start = start.replace(tzinfo=dt.UTC)
+    end = end.replace(tzinfo=dt.UTC)
     start_year = start.year
     start_day_of_year = start.timetuple().tm_yday
     end_year = end.year
@@ -84,13 +92,13 @@ def get_products_for_date_range_goes(
     products = []
     for date in pd.date_range(start, end, freq="h"):
         if "goes16" in bucket:
-            if date >= dt.datetime(2025, 1, 1):
+            if date >= dt.datetime(2025, 1, 1, tzinfo=dt.UTC):
                 product_id = "ABI-L1b-RadF"
             else:
                 # Use the Reproc data
                 product_id = "ABI-L1b-RadF-Reproc"
         if "goes17" in bucket:
-            if date >= dt.datetime(2023, 1, 1):
+            if date >= dt.datetime(2023, 1, 1, tzinfo=dt.UTC):
                 product_id = "ABI-L1b-RadF"
             else:
                 # Use the Reproc data
@@ -221,9 +229,11 @@ def get_products_iterator_goes(
             # Do it by initialization time, so we can combine the individual files to a product
         else:
             if "goes-west" not in sat_metadata.region.lower():
-                raise ValueError(f"Unknown region '{sat_metadata.region}' "
-                                 f"for satellite {sat_metadata.product_id}."
-                "Expected 'goes-east' or 'goes-west'.")
+                raise ValueError(
+                    f"Unknown region '{sat_metadata.region}' "
+                    f"for satellite {sat_metadata.product_id}."
+                    "Expected 'goes-east' or 'goes-west'.",
+                )
             if start < HISTORY_RANGE["goes17"][1] and end < HISTORY_RANGE["goes17"][1]:
                 # Only GOES-17
                 search_results = get_products_for_date_range_goes(
@@ -328,7 +338,8 @@ def download_raw_goes(
 
     if existing_times is not None:
         rounded_time = (
-            pd.Timestamp(get_timestamp_from_filename(raw_files[0])).round("5min")
+            pd.Timestamp(get_timestamp_from_filename(raw_files[0]))
+            .round("5min")
             .to_pydatetime()
             .replace(tzinfo=dt.UTC)
         )

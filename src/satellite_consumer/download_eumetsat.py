@@ -26,7 +26,7 @@ def get_products_iterator(
     start: dt.datetime,
     end: dt.datetime,
     missing_product_threshold: float = 0.1,
-    resolution_meters: int = 3000, # noqa: ARG001
+    resolution_meters: int = 3000,  # noqa: ARG001
 ) -> Iterator[eumdac.product.Product]:
     """Get an iterator over the products for a given satellite in a given time range.
 
