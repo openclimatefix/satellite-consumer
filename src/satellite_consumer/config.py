@@ -607,7 +607,8 @@ SATELLITE_METADATA: dict[str, SatelliteMetadata] = {
         description="".join(
             (
                 "GOES-East ABI Level-1b Radiance data for North America and the Atlantic Ocean.",
-                "The data is transmitted in two files: one for the full disk and one for the CONUS region.",
+                "The data is transmitted in two files: one for the full disk and one for the"
+                " CONUS region.",
                 "See https://www.ncei.noaa.gov/products/goes/abi-l1b-rad",
             ),
         ),
@@ -644,7 +645,8 @@ SATELLITE_METADATA: dict[str, SatelliteMetadata] = {
         description="".join(
             (
                 "GOES-West ABI Level-1b Radiance data for North America and the Pacific Ocean.",
-                "The data is transmitted in two files: one for the full disk and one for the CONUS region.",
+                "The data is transmitted in two files: one for the full disk and "
+                "one for the CONUS region.",
                 "See https://www.ncei.noaa.gov/products/goes/abi-l1b-rad",
             ),
         ),

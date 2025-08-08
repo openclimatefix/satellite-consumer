@@ -39,7 +39,8 @@ def process_raw(
         crop_region_geos: Optional bounds to crop the data to, in the format
             (west, south, east, north) in geostationary coordinates.
             If None, no cropping is applied.
-        satellite: The name of the satellite, used to determine the loader. 'seviri' for SEVIRI, 'goes' for GOES, 'himawari' for Himawari, etc.
+        satellite: The name of the satellite, used to determine the loader.
+            'seviri' for SEVIRI, 'goes' for GOES, 'himawari' for Himawari, etc.
     """
     log.debug(
         "Reading raw files as a satpy Scene",
@@ -59,7 +60,8 @@ def process_raw(
             loader: str = "ami_l1b"
         else:
             raise ValueError(
-                f"Unsupported satellite: {satellite}. Supported satellites are: 'seviri', 'goes', 'himawari', 'gk2a'."
+                f"Unsupported satellite: {satellite}. Supported satellites are:"
+                f" 'seviri', 'goes', 'himawari', 'gk2a'.",
             )
         scene: satpy.Scene = satpy.Scene(filenames={loader: paths}, reader_kwargs=reader_kwargs)  # type:ignore
         cnames: list[str] = [c.name for c in channels if resolution_meters in c.resolution_meters]
@@ -185,10 +187,10 @@ def _map_scene_to_dataarray(
         orbital_parameters = da[var].attrs["orbital_parameters"]
     # Add geostationary coordinates to the Dataset as data vars
     da["x_geostationary_coordinates"] = xr.DataArray(
-        np.expand_dims(da.x_geostationary.values, axis=0), dims=("time", "x_geostationary")
+        np.expand_dims(da.x_geostationary.values, axis=0), dims=("time", "x_geostationary"),
     )
     da["y_geostationary_coordinates"] = xr.DataArray(
-        np.expand_dims(da.y_geostationary.values, axis=0), dims=("time", "y_geostationary")
+        np.expand_dims(da.y_geostationary.values, axis=0), dims=("time", "y_geostationary"),
     )
     if "time_parameters" in da.attrs:
         start_time = pd.Timestamp(da.attrs["time_parameters"]["nominal_start_time"])
@@ -202,11 +204,11 @@ def _map_scene_to_dataarray(
     da["area"] = xr.DataArray(
         [str(da.attrs["area"])],
         dims=("time",),
-    ).astype(f"U512")
+    ).astype("U512")
     da["orbital_parameters"] = xr.DataArray(
         [orbital_parameters],
         dims=("time",),
-    ).astype(f"U512")
+    ).astype("U512")
     if calculate_osgb:
         log.debug("Calculating OSGB coordinates")
         lon, lat = scene[scene.wishlist[0]].attrs["area"].get_lonlats()

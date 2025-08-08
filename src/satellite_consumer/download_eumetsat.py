@@ -8,7 +8,6 @@ import tempfile
 import time
 from collections.abc import Iterator
 from typing import TYPE_CHECKING
-from itertools import chain
 
 import eumdac
 import pandas as pd
@@ -27,7 +26,7 @@ def get_products_iterator(
     start: dt.datetime,
     end: dt.datetime,
     missing_product_threshold: float = 0.1,
-    resolution_meters: int = 3000,
+    resolution_meters: int = 3000, # noqa: ARG001
 ) -> Iterator[eumdac.product.Product]:
     """Get an iterator over the products for a given satellite in a given time range.
 
@@ -38,8 +37,8 @@ def get_products_iterator(
         start: Start time of the search.
         end: End time of the search.
         missing_product_threshold: Percentage of missing products allowed without error.
-        resolution_meters: Resolution of the products to search for, in meters, not used in this one as
-            all EUMETSAT files are in a single file.
+        resolution_meters: Resolution of the products to search for, in meters,
+         not used in this one as all EUMETSAT files are in a single file.
 
     Returns:
         Tuple of the iterator over the products and the total number of products found.

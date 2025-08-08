@@ -4,14 +4,14 @@ import datetime as dt
 import re
 from collections.abc import Iterator
 
+import fsspec
 import pandas as pd
+import s3fs
 from loguru import logger as log
 
 from satellite_consumer.config import SatelliteMetadata
 from satellite_consumer.exceptions import DownloadError
 from satellite_consumer.storage import get_fs
-import s3fs
-import fsspec
 
 
 def get_timestamp_from_filename(filename: str) -> dt.datetime:
@@ -57,6 +57,7 @@ def get_products_for_date_range_himawari(
         product_id: The product ID to search for.
         start: Start time of the search.
         end: End time of the search.
+        channels: List of channels to filter the products by.
 
     Returns:
         List of product file paths.
@@ -88,12 +89,14 @@ def get_products_for_date_range_himawari(
         results = fs.glob(
             f"s3://{bucket}/{product_id}/{date.year}/{date.month:02d}/{date.day:02d}/*/*.bz2",
         )
+        if channels is not None:
+            results = [r for r in results if any("_" + channel +"_" in r for channel in channels)]
         if not results:
             continue
         # Combine by start time
         start_times = [get_timestamp_from_filename(f) for f in results]
         # Make it a dictionary for the product, no need it as a list, but list of lists would work
-        unique_start_times = sorted(list(set(start_times)))
+        unique_start_times = sorted(set(start_times))
         start_lists = [[] for _ in range(len(unique_start_times))]
         for result in results:
             start_time = get_timestamp_from_filename(result.split("/")[-1])
@@ -139,7 +142,8 @@ def get_products_iterator_himawari(
     ]
     expected_products_count = int((end - start) / dt.timedelta(minutes=sat_metadata.cadence_mins))
     try:
-        # Search S3 bucket for the products for the time period, both for each of the two GOES satellites covered by
+        # Search S3 bucket for the products for the time period, both for each of
+        # the two GOES satellites covered by
         # the metadata.
         start_year = start.year
         start_day_of_year = start.timetuple().tm_yday
@@ -191,7 +195,7 @@ def get_products_iterator_himawari(
                     himawari9_start,
                     end,
                     channels=cnames,
-                )
+                ),
             )
 
     except Exception as e:

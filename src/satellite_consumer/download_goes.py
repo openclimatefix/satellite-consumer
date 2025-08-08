@@ -3,17 +3,15 @@
 import datetime as dt
 import re
 from collections.abc import Iterator
-from typing import TYPE_CHECKING
 
+import fsspec
 import pandas as pd
+import s3fs
 from loguru import logger as log
 
 from satellite_consumer.config import SatelliteMetadata
 from satellite_consumer.exceptions import DownloadError
 from satellite_consumer.storage import get_fs
-import s3fs
-import fsspec
-
 
 HISTORY_RANGE = {
     "goes16": (
@@ -38,7 +36,8 @@ def get_timestamp_from_filename(filename: str) -> dt.datetime:
     Returns:
         The timestamp extracted from the filename.
     """
-    # Example filename: 'goes16_ABI-L2-MCMIPC-M6_G16_s20233010000123_e20233010000456_c20233010000456.nc'
+    # Example filename:
+    # 'goes16_ABI-L2-MCMIPC-M6_G16_s20233010000123_e20233010000456_c20233010000456.nc'
     match = re.search(r"s(\d{14})_e(\d{14})", filename)
     if not match:
         raise ValueError(f"Filename '{filename}' does not contain a valid timestamp.")
@@ -62,6 +61,7 @@ def get_products_for_date_range_goes(
         product_id: The product ID to search for.
         start: Start time of the search.
         end: End time of the search.
+        channels: The channels to search for.
 
     Returns:
         List of product file paths.
@@ -111,7 +111,7 @@ def get_products_for_date_range_goes(
         # Combine by start time
         start_times = [get_timestamp_from_filename(f.split("/")[-1]) for f in results]
         # Make it a dictionary for the product, no need it as a list, but list of lists would work
-        unique_start_times = sorted(list(set(start_times)))
+        unique_start_times = sorted(set(start_times))
         start_lists = [[] for _ in range(len(unique_start_times))]
         for result in results:
             start_time = get_timestamp_from_filename(result.split("/")[-1])
@@ -158,8 +158,8 @@ def get_products_iterator_goes(
     ]
     expected_products_count = int((end - start) / dt.timedelta(minutes=sat_metadata.cadence_mins))
     try:
-        # Search S3 bucket for the products for the time period, both for each of the two GOES satellites covered by
-        # the metadata.
+        # Search S3 bucket for the products for the time period, both for each of the
+        # two GOES satellites covered by the metadata.
         start_year = start.year
         start_day_of_year = start.timetuple().tm_yday
         end_year = end.year
@@ -216,14 +216,14 @@ def get_products_iterator_goes(
                         goes_19_start,
                         end,
                         channels=cnames,
-                    )
+                    ),
                 )
             # Do it by initialization time, so we can combine the individual files to a product
         else:
-            assert "goes-west" in sat_metadata.region.lower(), (
-                f"Unknown region '{sat_metadata.region}' for satellite {sat_metadata.product_id}."
-                "Expected 'goes-east' or 'goes-west'."
-            )
+            if "goes-west" not in sat_metadata.region.lower():
+                raise ValueError(f"Unknown region '{sat_metadata.region}' "
+                                 f"for satellite {sat_metadata.product_id}."
+                "Expected 'goes-east' or 'goes-west'.")
             if start < HISTORY_RANGE["goes17"][1] and end < HISTORY_RANGE["goes17"][1]:
                 # Only GOES-17
                 search_results = get_products_for_date_range_goes(
@@ -264,7 +264,7 @@ def get_products_iterator_goes(
                         goes_18_start,
                         end,
                         channels=cnames,
-                    )
+                    ),
                 )
 
     except Exception as e:

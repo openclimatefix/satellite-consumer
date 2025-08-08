@@ -10,12 +10,12 @@ import warnings
 from collections.abc import Generator, Iterable
 from importlib.metadata import PackageNotFoundError, version
 from typing import TypeVar
-import zarr
 
 import eumdac.product
 import icechunk
 import numpy as np
 import sentry_sdk
+import zarr
 from icechunk.xarray import to_icechunk
 from joblib import Parallel, delayed
 from loguru import logger as log
@@ -30,6 +30,10 @@ from satellite_consumer.download_eumetsat import (
     download_raw,
     get_products_iterator,
 )
+from satellite_consumer.download_gk2a import (
+    download_raw_gk2a,
+    get_products_iterator_gk2a,
+)
 from satellite_consumer.download_goes import (
     download_raw_goes,
     get_products_iterator_goes,
@@ -37,10 +41,6 @@ from satellite_consumer.download_goes import (
 from satellite_consumer.download_himawari import (
     download_raw_himawari,
     get_products_iterator_himawari,
-)
-from satellite_consumer.download_gk2a import (
-    download_raw_gk2a,
-    get_products_iterator_gk2a,
 )
 from satellite_consumer.exceptions import ValidationError
 from satellite_consumer.process import process_raw
@@ -195,7 +195,7 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                                     "area",
                                     "platform_name",
                                 ]
-                            }
+                            },
                         )
                         encoding.update(
                             {
@@ -211,7 +211,7 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                                 "area": {
                                     "dtype": "U512",
                                 },
-                            }
+                            },
                         )
                         to_icechunk(obj=da, session=session, mode="w-", encoding=encoding)
                     _ = session.commit(message="initial commit")
