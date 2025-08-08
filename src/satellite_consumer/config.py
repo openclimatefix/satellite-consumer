@@ -460,7 +460,7 @@ class SatelliteMetadata:
     """The longitude of the satellite."""
     height: float
     """The height of the satelite above the Earth's surface in meters."""
-    product_id: str
+    product_id: str | list[str]
     """The product ID of the satellite image set."""
     description: str
     """A description of the satellite data set."""
@@ -557,8 +557,178 @@ SATELLITE_METADATA: dict[str, SatelliteMetadata] = {
             "x_geostationary": list(np.linspace(-5567499.9985508835, 5567499.998550878, 11136)),
             "y_geostationary": list(np.linspace(-5567499.998550887, 5567499.998550878, 11136)),
         },
-        # Matches the files that cover only the top of the disk (UK)
-        file_filter_regex=r"\S+BODY\S+00(?:[3][2-9]|40).nc$",
+        file_filter_regex=r"\S+\.nc$",
+    ),
+    "odegree-12-highres": SatelliteMetadata(
+        region="europe, africa",
+        cadence_mins=10,
+        longitude=0.0,
+        height=35786400,
+        product_id="EO:EUM:DAT:0665",
+        channels=MTG_1KM_CHANNELS,
+        description="".join(
+            (
+                "Rectified (level 1c) Meteosat-12 image data for Europe and Africa. ",
+                "The data is transmitted as High Rate transmissions in 16 spectral channels ",
+                "(12 low and 4 high resolution). ",
+                "See https://user.eumetsat.int/catalogue/EO:EUM:DAT:0662",
+            ),
+        ),
+        spatial_coordinates={
+            "x_geostationary": list(np.linspace(-5567499.9985508835, 5567499.998550878, 22272)),
+            "y_geostationary": list(np.linspace(-5567499.998550887, 5567499.998550878, 22272)),
+        },
+        file_filter_regex=r"\S+\.nc$",
+    ),
+    "goes-east": SatelliteMetadata(
+        region="goes-east, Americas, Atlantic Ocean",
+        cadence_mins=10,
+        longitude=-75.2,
+        height=35786023,
+        product_id="ABI-L1b-RadF",
+        channels=[
+            SpectralChannelMetadata("C01", [1000]),
+            SpectralChannelMetadata("C02", [500]),
+            SpectralChannelMetadata("C03", [1000]),
+            SpectralChannelMetadata("C04", [2000]),
+            SpectralChannelMetadata("C05", [1000]),
+            SpectralChannelMetadata("C06", [2000]),
+            SpectralChannelMetadata("C07", [2000]),
+            SpectralChannelMetadata("C08", [2000]),
+            SpectralChannelMetadata("C09", [2000]),
+            SpectralChannelMetadata("C10", [2000]),
+            SpectralChannelMetadata("C11", [2000]),
+            SpectralChannelMetadata("C12", [2000]),
+            SpectralChannelMetadata("C13", [2000]),
+            SpectralChannelMetadata("C14", [2000]),
+            SpectralChannelMetadata("C15", [2000]),
+            SpectralChannelMetadata("C16", [2000]),
+        ],
+        description="".join(
+            (
+                "GOES-East ABI Level-1b Radiance data for North America and the Atlantic Ocean.",
+                "The data is transmitted in two files: one for the full disk and one for the"
+                " CONUS region.",
+                "See https://www.ncei.noaa.gov/products/goes/abi-l1b-rad",
+            ),
+        ),
+        spatial_coordinates={
+            "x_geostationary": list(np.linspace(-5567499.9985508835, 5567499.998550878, 22272)),
+            "y_geostationary": list(np.linspace(-5567499.998550887, 5567499.998550878, 22272)),
+        },
+        file_filter_regex=r"\S+\.nc$",
+    ),
+    "goes-west": SatelliteMetadata(
+        region="goes-west, Americas, Pacific Ocean",
+        cadence_mins=10,
+        longitude=-137.2,
+        height=35786023,
+        product_id="ABI-L1b-RadF",
+        channels=[
+            SpectralChannelMetadata("C01", [1000]),
+            SpectralChannelMetadata("C02", [500]),
+            SpectralChannelMetadata("C03", [1000]),
+            SpectralChannelMetadata("C04", [2000]),
+            SpectralChannelMetadata("C05", [1000]),
+            SpectralChannelMetadata("C06", [2000]),
+            SpectralChannelMetadata("C07", [2000]),
+            SpectralChannelMetadata("C08", [2000]),
+            SpectralChannelMetadata("C09", [2000]),
+            SpectralChannelMetadata("C10", [2000]),
+            SpectralChannelMetadata("C11", [2000]),
+            SpectralChannelMetadata("C12", [2000]),
+            SpectralChannelMetadata("C13", [2000]),
+            SpectralChannelMetadata("C14", [2000]),
+            SpectralChannelMetadata("C15", [2000]),
+            SpectralChannelMetadata("C16", [2000]),
+        ],
+        description="".join(
+            (
+                "GOES-West ABI Level-1b Radiance data for North America and the Pacific Ocean.",
+                "The data is transmitted in two files: one for the full disk and "
+                "one for the CONUS region.",
+                "See https://www.ncei.noaa.gov/products/goes/abi-l1b-rad",
+            ),
+        ),
+        spatial_coordinates={
+            "x_geostationary": list(np.linspace(-5567499.9985508835, 5567499.998550878, 22272)),
+            "y_geostationary": list(np.linspace(-5567499.998550887, 5567499.998550878, 22272)),
+        },
+        file_filter_regex=r"\S+\.nc$",
+    ),
+    "himawari": SatelliteMetadata(
+        region="himawari, Asia, Pacific Ocean",
+        cadence_mins=10,
+        longitude=140.7,
+        height=35786023,
+        product_id="AHI-L1b-FLDK",
+        channels=[
+            SpectralChannelMetadata("B01", [1000]),
+            SpectralChannelMetadata("B02", [1000]),
+            SpectralChannelMetadata("B03", [500]),
+            SpectralChannelMetadata("B04", [1000]),
+            SpectralChannelMetadata("B05", [2000]),
+            SpectralChannelMetadata("B06", [2000]),
+            SpectralChannelMetadata("B07", [2000]),
+            SpectralChannelMetadata("B08", [2000]),
+            SpectralChannelMetadata("B09", [2000]),
+            SpectralChannelMetadata("B10", [2000]),
+            SpectralChannelMetadata("B11", [2000]),
+            SpectralChannelMetadata("B12", [2000]),
+            SpectralChannelMetadata("B13", [2000]),
+            SpectralChannelMetadata("B14", [2000]),
+            SpectralChannelMetadata("B15", [2000]),
+            SpectralChannelMetadata("B16", [2000]),
+        ],
+        description="".join(
+            (
+                "Himawari ABI Level-1b Radiance data for Asia and Pacific Ocean.",
+                "The data is transmitted in sixteen channels, with varying resolutions.",
+                "",
+            ),
+        ),
+        spatial_coordinates={
+            "x_geostationary": list(np.linspace(-5567499.9985508835, 5567499.998550878, 22272)),
+            "y_geostationary": list(np.linspace(-5567499.998550887, 5567499.998550878, 22272)),
+        },
+        file_filter_regex=r"\S+\.bz2$",
+    ),
+    "gk2a": SatelliteMetadata(
+        region="gk2a, Asia, Pacific Ocean",
+        cadence_mins=10,
+        longitude=140.7,
+        height=35786023,
+        product_id="AMI/L1B/FD",
+        channels=[
+            SpectralChannelMetadata("VI008", [1000]),
+            SpectralChannelMetadata("VI005", [1000]),
+            SpectralChannelMetadata("VI006", [500]),
+            SpectralChannelMetadata("VI004", [1000]),
+            SpectralChannelMetadata("IR087", [2000]),
+            SpectralChannelMetadata("IR096", [2000]),
+            SpectralChannelMetadata("IR105", [2000]),
+            SpectralChannelMetadata("IR112", [2000]),
+            SpectralChannelMetadata("IR123", [2000]),
+            SpectralChannelMetadata("IR133", [2000]),
+            SpectralChannelMetadata("NR013", [2000]),
+            SpectralChannelMetadata("NR016", [2000]),
+            SpectralChannelMetadata("SW038", [2000]),
+            SpectralChannelMetadata("WV063", [2000]),
+            SpectralChannelMetadata("WV069", [2000]),
+            SpectralChannelMetadata("WV073", [2000]),
+        ],
+        description="".join(
+            (
+                "GK-2A Level-1b Radiance data for Asia and Pacific Ocean.",
+                "The data is transmitted in sixteen channels, with varying resolutions.",
+                "",
+            ),
+        ),
+        spatial_coordinates={
+            "x_geostationary": list(np.linspace(-5567499.9985508835, 5567499.998550878, 22272)),
+            "y_geostationary": list(np.linspace(-5567499.998550887, 5567499.998550878, 22272)),
+        },
+        file_filter_regex=r"\S+\.nc$",
     ),
 }
 """Metadata for the available satellite data sets."""

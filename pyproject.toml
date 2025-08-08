@@ -23,20 +23,9 @@ classifiers = [
 dependencies = [
     "Cartopy==0.24.1",
     "eumdac==3.0.0",
-    "fsspec==2025.2.0",
-    "gcsfs==2025.2.0",
     "joblib==1.4.2",
     "loguru==0.7.3",
-    "pyproj==3.7.0",
-    "pyresample==1.32.0",
-    "pyyaml==6.0.2",
-    "requests==2.32.3",
-    "satpy[seviri_l1b_native,seviri_l1b_nc] == 0.54.0",
-    "s3fs==2025.2.0",
-    "xarray==2025.1.2",
-    "zarr==3.0.2",
-    "icechunk==1.0.0",
-    "hdf5plugin==5.1.0",
+    "satpy[seviri_l1b_native,seviri_l1b_nc] == 0.57.0",
     "sentry-sdk==2.33.2",
 ]
 
@@ -160,3 +149,33 @@ theme = "classic"
 privacy = [
     "HIDDEN:**.test_*",
 ]
+
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["osx-arm64", "linux-64"]
+
+[tool.pixi.pypi-dependencies]
+satellite-consumer = { path = ".", editable = true }
+
+[tool.pixi.environments]
+default = { solve-group = "default" }
+dev = { features = ["dev"], solve-group = "default" }
+
+[tool.pixi.tasks]
+
+[tool.pixi.dependencies]
+python = "3.12.*"
+netcdf4 = "*"
+h5netcdf = "*"
+pyproj = "*"
+zarr = "*"
+icechunk = "*"
+xarray = "*"
+pyresample = "*"
+hdf5plugin = "*"
+fsspec = "*"
+s3fs = "*"
+gcsfs = "*"
+requests = "*"
+ruff = ">=0.12.7,<0.13"
+pyspectral = ">=0.13.6,<0.14"

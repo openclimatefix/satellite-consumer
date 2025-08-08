@@ -83,7 +83,7 @@ def cli_entrypoint() -> None:
     os.environ["EUMETSAT_CONSUMER_SECRET"] = args.eumetsat_secret
 
     command_opts: ConsumeCommandOptions | ExtractLatestCommandOptions
-    command = Command(args.command.upper())
+    command = Command(args.command.lower())
     match command:
         case Command.CONSUME:
             command_opts = ConsumeCommandOptions(
@@ -101,7 +101,7 @@ def cli_entrypoint() -> None:
         case Command.EXTRACTLATEST:
             command_opts = ExtractLatestCommandOptions(
                 satellite=args.satellite,
-                window_mins= args.window_mins,
+                window_mins=args.window_mins,
                 workdir=args.workdir,
                 resolution=args.resolution,
             )

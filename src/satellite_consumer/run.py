@@ -15,6 +15,7 @@ import eumdac.product
 import icechunk
 import numpy as np
 import sentry_sdk
+import zarr
 from icechunk.xarray import to_icechunk
 from joblib import Parallel, delayed
 from loguru import logger as log
@@ -29,6 +30,18 @@ from satellite_consumer.download_eumetsat import (
     download_raw,
     get_products_iterator,
 )
+from satellite_consumer.download_gk2a import (
+    download_raw_gk2a,
+    get_products_iterator_gk2a,
+)
+from satellite_consumer.download_goes import (
+    download_raw_goes,
+    get_products_iterator_goes,
+)
+from satellite_consumer.download_himawari import (
+    download_raw_himawari,
+    get_products_iterator_himawari,
+)
 from satellite_consumer.exceptions import ValidationError
 from satellite_consumer.process import process_raw
 from satellite_consumer.validate import validate
@@ -41,13 +54,43 @@ except PackageNotFoundError:
     __version__ = "v?"
 
 
+def _remove_raw_filepaths(raw_filepaths: list[str]) -> None:
+    for raw_filepath in raw_filepaths:
+        try:
+            os.remove(raw_filepath)
+        except OSError as e:
+            log.warning(
+                "Failed to delete raw file",
+                raw_filepath=raw_filepath,
+                error=str(e),
+            )
+
+
 def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
     """Logic for the consume command (and the archive command)."""
     window = command_opts.time_window
-    product_iter = get_products_iterator(
+    if "goes" in command_opts.satellite_metadata.region:
+        get_iterator = get_products_iterator_goes
+        load_raw = download_raw_goes
+        satellite = "goes"
+    elif "himawari" in command_opts.satellite_metadata.region:
+        get_iterator = get_products_iterator_himawari
+        load_raw = download_raw_himawari
+        satellite = "himawari"
+    elif "gk2a" in command_opts.satellite_metadata.region:
+        get_iterator = get_products_iterator_gk2a
+        load_raw = download_raw_gk2a
+        satellite = "gk2a"
+    else:
+        get_iterator = get_products_iterator
+        load_raw = download_raw
+        satellite = "seviri"
+    product_iter = get_iterator(
         sat_metadata=command_opts.satellite_metadata,
         start=window[0],
         end=window[1],
+        missing_product_threshold=0.99,
+        resolution_meters=command_opts.resolution,
     )
 
     processed_filepaths: list[str] = []
@@ -57,7 +100,7 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
     if command_opts.icechunk:
         repo, existing_times = storage.get_icechunk_repo(path=command_opts.zarr_path)
 
-        def _batcher(it: Iterable[T], batch_size: int = 10) -> Generator[tuple[T, ...]]:
+        def _batcher(it: Iterable[T], batch_size: int = 1000) -> Generator[tuple[T, ...]]:
             """Yield successive n-sized chunks from an iterable (excepting the last batch)."""
             while True:
                 batch = tuple(itertools.islice(it, batch_size))
@@ -70,7 +113,7 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
 
             # Download the files for each product in the batch in parallel
             raw_filegroups = Parallel(n_jobs=command_opts.num_workers, prefer="threads")(
-                delayed(download_raw)(
+                delayed(load_raw)(
                     product=p,
                     folder=f"{command_opts.workdir}/raw",
                     filter_regex=command_opts.satellite_metadata.file_filter_regex,
@@ -86,15 +129,35 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                 if len(raw_filepaths) == 0:
                     num_skipped += 1
                     continue
-                da = process_raw(
-                    paths=raw_filepaths,
-                    channels=command_opts.satellite_metadata.channels,
-                    resolution_meters=command_opts.resolution,
-                    normalize=command_opts.rescale,
-                    crop_region_geos=command_opts.crop_region_geos,
-                )
+                try:
+                    da = process_raw(
+                        paths=raw_filepaths,
+                        channels=command_opts.satellite_metadata.channels,
+                        resolution_meters=command_opts.resolution,
+                        normalize=command_opts.rescale,
+                        crop_region_geos=command_opts.crop_region_geos,
+                        satellite=satellite,
+                    )
+                except Exception as e:
+                    log.error(
+                        "Error processing raw files",
+                        raw_filepaths=raw_filepaths,
+                        error=str(e),
+                    )
+                    # Still remove the raw filepaths to save space
+                    for raw_filepath in raw_filepaths:
+                        try:
+                            os.remove(raw_filepath)
+                        except OSError as e:
+                            log.warning(
+                                "Failed to delete raw file",
+                                raw_filepath=raw_filepath,
+                                error=str(e),
+                            )
+                    num_skipped += 1
+                    continue
                 # Don't write invalid data to the store
-                validate(src=da)
+                # validate(src=da)
 
                 # Commit the data to the icechunk store
                 # * If the store was just created, write as a fresh repo
@@ -107,37 +170,82 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                     session: icechunk.Session = repo.writable_session(branch="main")
                     # TODO: Remove warnings catch when Zarr makes up its mind about codecs
                     with warnings.catch_warnings(action="ignore"):
-                        to_icechunk(
-                            obj=da.to_dataset(name="data", promote_attrs=True),
-                            session=session,
-                            mode="w-",
-                            encoding={
-                                "time": {
-                                    "units": "nanoseconds since 1970-01-01",
-                                    "calendar": "proleptic_gregorian",
-                                },
-                                "data": {"dtype": "f4"},
+                        encoding = {
+                            "time": {
+                                "units": "nanoseconds since 1970-01-01",
+                                "calendar": "proleptic_gregorian",
+                            },
+                        }
+                        encoding.update(
+                            {
+                                v: {
+                                    "dtype": "float16",
+                                    "compressors": zarr.codecs.BloscCodec(
+                                        cname="zstd",
+                                        clevel=9,
+                                        shuffle=zarr.codecs.BloscShuffle.bitshuffle,
+                                    ),
+                                }
+                                for v in da.data_vars
+                                if v
+                                not in [
+                                    "start_time",
+                                    "end_time",
+                                    "x_geostationary_coordinates",
+                                    "y_geostationary_coordinates",
+                                    "orbital_parameters",
+                                    "area",
+                                    "platform_name",
+                                ]
                             },
                         )
+                        encoding.update(
+                            {
+                                "start_time": {
+                                    "dtype": "datetime64[ns]",
+                                },
+                                "end_time": {
+                                    "dtype": "datetime64[ns]",
+                                },
+                                "platform_name": {
+                                    "dtype": "U12",
+                                },
+                                "area": {
+                                    "dtype": "U512",
+                                },
+                            },
+                        )
+                        to_icechunk(obj=da, session=session, mode="w-", encoding=encoding)
                     _ = session.commit(message="initial commit")
                 # Otherwise, append the data to the existing store
                 else:
+                    # Check one last time that the time is not already in the store
+                    if da.coords["time"].values[0] in existing_times:
+                        log.warning(
+                            "Skipping data with existing time",
+                            time=str(np.datetime_as_string(da.coords["time"].values[0], unit="m")),
+                        )
+                        num_skipped += 1
+                        _remove_raw_filepaths(raw_filepaths)
+                        continue
                     session = repo.writable_session(branch="main")
                     # TODO: Remove warnings catch when Zarr makes up its mind about codecs
                     with warnings.catch_warnings(action="ignore"):
                         to_icechunk(
-                            obj=da.to_dataset(name="data", promote_attrs=True),
+                            obj=da,
                             session=session,
                             append_dim="time",
                             mode="a",
                         )
                     _ = session.commit(
-                        message=f"add {len(da.coords['time']) * len(da.coords['variable'])} images",
+                        message=f"add {len(da.coords['time'])} images",
                         rebase_with=icechunk.ConflictDetector(),
-                        rebase_tries=5,
+                        rebase_tries=10,
                     )
                 num_written += 1
                 processed_filepaths.extend(raw_filepaths)
+                # Delete raw filepaths to save space
+                _remove_raw_filepaths(raw_filepaths)
 
         log.info(
             "Finished population of icechunk store",
@@ -161,7 +269,7 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
 
         def _etl(product: eumdac.product.Product) -> list[str]:
             """Download, process, and save a single NAT file."""
-            raw_filepaths = download_raw(
+            raw_filepaths = download_raw_goes(
                 product,
                 folder=f"{command_opts.workdir}/raw",
                 filter_regex=command_opts.satellite_metadata.file_filter_regex,

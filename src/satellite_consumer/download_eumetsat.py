@@ -26,6 +26,7 @@ def get_products_iterator(
     start: dt.datetime,
     end: dt.datetime,
     missing_product_threshold: float = 0.1,
+    resolution_meters: int = 3000,  # noqa: ARG001
 ) -> Iterator[eumdac.product.Product]:
     """Get an iterator over the products for a given satellite in a given time range.
 
@@ -36,6 +37,8 @@ def get_products_iterator(
         start: Start time of the search.
         end: End time of the search.
         missing_product_threshold: Percentage of missing products allowed without error.
+        resolution_meters: Resolution of the products to search for, in meters,
+         not used in this one as all EUMETSAT files are in a single file.
 
     Returns:
         Tuple of the iterator over the products and the total number of products found.
@@ -222,7 +225,10 @@ def download_raw(
             ) from e
 
         log.debug(
-            "Downloading raw file", src=raw_file, dst=filepath, num=f"{i + 1}/{len(raw_files)}",
+            "Downloading raw file",
+            src=raw_file,
+            dst=filepath,
+            num=f"{i + 1}/{len(raw_files)}",
         )
         for i in range(retries + 1):
             try:
