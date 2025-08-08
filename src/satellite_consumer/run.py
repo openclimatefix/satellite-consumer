@@ -53,6 +53,16 @@ try:
 except PackageNotFoundError:
     __version__ = "v?"
 
+def _remove_raw_filepaths(raw_filepaths: list[str]) -> None:
+    for raw_filepath in raw_filepaths:
+        try:
+            os.remove(raw_filepath)
+        except OSError as e:
+            log.warning(
+                "Failed to delete raw file",
+                raw_filepath=raw_filepath,
+                error=str(e),
+            )
 
 def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
     """Logic for the consume command (and the archive command)."""
@@ -214,6 +224,7 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                             time=str(np.datetime_as_string(da.coords["time"].values[0], unit="m")),
                         )
                         num_skipped += 1
+                        _remove_raw_filepaths(raw_filepaths)
                         continue
                     session = repo.writable_session(branch="main")
                     # TODO: Remove warnings catch when Zarr makes up its mind about codecs
@@ -232,15 +243,7 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                 num_written += 1
                 processed_filepaths.extend(raw_filepaths)
                 # Delete raw filepaths to save space
-                for raw_filepath in raw_filepaths:
-                    try:
-                        os.remove(raw_filepath)
-                    except OSError as e:
-                        log.warning(
-                            "Failed to delete raw file",
-                            raw_filepath=raw_filepath,
-                            error=str(e),
-                        )
+                _remove_raw_filepaths(raw_filepaths)
 
         log.info(
             "Finished population of icechunk store",
