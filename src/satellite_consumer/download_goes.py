@@ -168,6 +168,8 @@ def get_products_iterator_goes(
     try:
         # Search S3 bucket for the products for the time period, both for each of the
         # two GOES satellites covered by the metadata.
+        start = start.replace(tzinfo=dt.UTC)
+        end = end.replace(tzinfo=dt.UTC)
         start_year = start.year
         start_day_of_year = start.timetuple().tm_yday
         end_year = end.year
