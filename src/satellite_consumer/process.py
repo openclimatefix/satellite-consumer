@@ -168,10 +168,11 @@ def _map_scene_to_dataarray(
 
     # Ensure DataArray has a time dimension
     if "time_parameters" in da.attrs:
-        rounded_time = pd.Timestamp(da.attrs["time_parameters"]["nominal_end_time"])
+        rounded_time = pd.Timestamp(da.attrs["time_parameters"]["nominal_end_time"]).round("5min")
     elif "end_time" in da.attrs:
-        rounded_time = pd.Timestamp(da.attrs["end_time"])
-    da.attrs["end_time"] = rounded_time.__str__()
+        rounded_time = pd.Timestamp(da.attrs["end_time"]).round("5min")
+    if "end_time" not in da.attrs:
+        da.attrs["end_time"] = rounded_time.__str__()
     if "time" not in da.dims:
         time = pd.to_datetime(rounded_time)
         da = da.assign_coords({"time": time}).expand_dims("time")

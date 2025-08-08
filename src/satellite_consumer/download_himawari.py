@@ -255,7 +255,7 @@ def download_raw_himawari(
 
     if existing_times is not None:
         rounded_time = (
-            pd.Timestamp(get_timestamp_from_filename(raw_files[0]))
+            pd.Timestamp(get_timestamp_from_filename(raw_files[0])).round("5min")
             .to_pydatetime()
             .replace(tzinfo=dt.UTC)
         )
