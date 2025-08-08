@@ -315,8 +315,9 @@ def download_raw_himawari(
                 )
 
         if i == retries:
-            raise DownloadError(
+            log.error(
                 f"Failed to download output '{raw_file}' after {retries} attempts.",
             )
+            return []
 
     return downloaded_files
