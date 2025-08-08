@@ -207,6 +207,14 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                     _ = session.commit(message="initial commit")
                 # Otherwise, append the data to the existing store
                 else:
+                    # Check one last time that the time is not already in the store
+                    if da.coords["time"].values[0] in existing_times:
+                        log.warning(
+                            "Skipping data with existing time",
+                            time=str(np.datetime_as_string(da.coords["time"].values[0], unit="m")),
+                        )
+                        num_skipped += 1
+                        continue
                     session = repo.writable_session(branch="main")
                     # TODO: Remove warnings catch when Zarr makes up its mind about codecs
                     with warnings.catch_warnings(action="ignore"):
