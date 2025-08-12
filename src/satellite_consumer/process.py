@@ -137,18 +137,6 @@ def _map_scene_to_dataarray(
             .where(da.coords["y"] <= crop_region_geos[3], drop=True)
         )
 
-    # Handle attrs, converting to serializable format
-    # da.attrs["variables"] = {}
-    # for channel in scene.wishlist:
-    # Add channel metadata dataarray variables attributes
-    #    da.attrs["variables"][channel["name"]] = {}
-    #    for attr in [
-    #        ca
-    #        for ca in scene[channel].attrs
-    #        if ca not in ["area", "_satpy_id", "orbital_parameters", "time_parameters"]
-    #    ]:
-    #        da.attrs["variables"][channel["name"]][attr] = scene[channel].attrs[attr]
-
     def _serialize(d: dict[str, Any]) -> dict[str, Any]:
         sd: dict[str, Any] = {}
         for key, value in d.items():

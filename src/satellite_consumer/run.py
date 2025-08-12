@@ -215,7 +215,7 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                                 },
                             },
                         )
-                        to_icechunk(obj=da, session=session, mode="w-", encoding=encoding)
+                        to_icechunk(obj=da.chunk({"time": 1, "x_geostationary": -1, "y_geostationary": -1}), session=session, mode="w-", encoding=encoding)
                     _ = session.commit(message="initial commit")
                 # Otherwise, append the data to the existing store
                 else:
@@ -232,7 +232,7 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                     # TODO: Remove warnings catch when Zarr makes up its mind about codecs
                     with warnings.catch_warnings(action="ignore"):
                         to_icechunk(
-                            obj=da,
+                            obj=da.chunk({"time": 1, "x_geostationary": -1, "y_geostationary": -1}),
                             session=session,
                             append_dim="time",
                             mode="a",
