@@ -58,9 +58,9 @@ def validate(
         )
     if not {"x_geostationary", "y_geostationary"}.issubset(set(da.dims)):
         raise ValidationError(
-            "Cannot validate dataset at path {src}. "
-            "Expected dimensions ['x_geostationary', 'y_geostationary'] not present. "
-            "Got: {list(ds.data_vars['data'].dims)}",
+            f"Cannot validate dataset at path {src}. "
+            f"Expected dimensions ['x_geostationary', 'y_geostationary'] not present. "
+            f"Got: {list(da.dims)}"
         )
 
     result = xr.apply_ufunc(
