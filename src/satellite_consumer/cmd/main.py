@@ -83,7 +83,7 @@ def cli_entrypoint() -> None:
     os.environ["EUMETSAT_CONSUMER_SECRET"] = args.eumetsat_secret
 
     command_opts: ConsumeCommandOptions | ExtractLatestCommandOptions
-    command = Command(args.command.upper())
+    command = Command(args.command.lower())
     match command:
         case Command.CONSUME:
             command_opts = ConsumeCommandOptions(
