@@ -115,7 +115,7 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
             raw_filegroups = Parallel(n_jobs=command_opts.num_workers, prefer="threads")(
                 delayed(load_raw)(
                     product=p,
-                    folder=f"/scratch/{command_opts.workdir.split('/')[-1]}",
+                    folder=f"/scratch/{command_opts.workdir.split('/')[-1]}_{np.random.randint(1e6)}",
                     filter_regex=command_opts.satellite_metadata.file_filter_regex,
                     existing_times=existing_times,
                 )
