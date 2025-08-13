@@ -270,7 +270,7 @@ class ConsumeCommandOptions:
             case _, _, True:
                 windowstr = ""  # Append all times to the same icechunk store
 
-        return f"{self.workdir}/data/{satstr}_{cropstr}{resstr}{windowstr}{suffix}"
+        return f"{self.workdir}/{satstr}_{cropstr}{resstr}{windowstr}{suffix}"
 
     @property
     def raw_folder(self) -> str:
