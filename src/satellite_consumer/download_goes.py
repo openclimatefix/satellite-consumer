@@ -348,7 +348,6 @@ def download_raw_goes(
         if rounded_time in existing_times:
             log.debug(
                 "Skipping product that exists in store",
-                time=product.sensing_end.strftime("%Y-%m-%dT%H:%M"),
                 rounded_time=rounded_time.strftime("%Y-%m-%dT%H:%M"),
             )
             return []
