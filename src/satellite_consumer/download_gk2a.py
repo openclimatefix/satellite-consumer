@@ -227,6 +227,7 @@ def download_raw_gk2a(
             .replace(tzinfo=dt.UTC)
         )
         if rounded_time in existing_times:
+            print(f"Skipping product that exists in store: {rounded_time}")
             log.debug(
                 "Skipping product that exists in store",
                 rounded_time=rounded_time.strftime("%Y-%m-%dT%H:%M"),
