@@ -230,6 +230,9 @@ def get_icechunk_repo(path: str) -> tuple[icechunk.Repository, list[dt.datetime]
             dt.datetime.strptime(t, "%Y-%m-%dT%H:%M").replace(tzinfo=dt.UTC)
             for t in np.datetime_as_string(ds.coords["time"].values, unit="m").tolist()
         ]
+        log.debug(
+            "Retrieving icechunk store times",
+            path=path,times=times)
         return repo, times
 
     repo = icechunk.Repository.create(storage=storage_config)
