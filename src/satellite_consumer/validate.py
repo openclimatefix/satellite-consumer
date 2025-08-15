@@ -62,13 +62,18 @@ def validate(
             "Expected dimensions ['x_geostationary', 'y_geostationary'] not present. "
             "Got: {list(ds.data_vars['data'].dims)}",
         )
+    
+    if check_region_xy_slices is not None:
+        da = da.sel(
+            y_geostationary=check_region_xy_slices[1],
+            x_geostationary=check_region_xy_slices[0],
+        )
+        log.info(f"Validating dataset at path {src} using check region {check_region_xy_slices}")
+        log.info(da)
 
     result = xr.apply_ufunc(
         _calc_null_percentage,
-        da.sel(
-            y_geostationary=check_region_xy_slices[1],
-            x_geostationary=check_region_xy_slices[0],
-        ) if check_region_xy_slices is not None else da,
+        da,
         input_core_dims=[["y_geostationary", "x_geostationary"]],
         vectorize=True,
         dask="parallelized",
