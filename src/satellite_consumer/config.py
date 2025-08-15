@@ -549,13 +549,35 @@ SATELLITE_METADATA: dict[str, SatelliteMetadata] = {
             (
                 "Rectified (level 1c) Meteosat-12 image data for Europe and Africa. ",
                 "The data is transmitted as High Rate transmissions in 16 spectral channels ",
-                "(12 low and 4 high resolution). ",
+                "(12 low and 4 high resolution). This is the low resolution subset.",
                 "See https://user.eumetsat.int/catalogue/EO:EUM:DAT:0662",
             ),
         ),
         spatial_coordinates={
             "x_geostationary": list(np.linspace(-5567499.9985508835, 5567499.998550878, 11136)),
             "y_geostationary": list(np.linspace(-5567499.998550887, 5567499.998550878, 11136)),
+        },
+        # Matches the files that cover only the top of the disk (UK)
+        file_filter_regex=r"\S+BODY\S+00(?:[3][2-9]|40).nc$",
+    ),
+    "odegree-12-highres": SatelliteMetadata(
+        region="europe, africa",
+        cadence_mins=10,
+        longitude=0.0,
+        height=35786400,
+        product_id="EO:EUM:DAT:0665",
+        channels=MTG_1KM_CHANNELS,
+        description="".join(
+            (
+                "Rectified (level 1c) Meteosat-12 image data for Europe and Africa. ",
+                "The data is transmitted as High Rate transmissions in 16 spectral channels ",
+                "(12 low and 4 high resolution). This is the high resolution subset.",
+                "See https://user.eumetsat.int/catalogue/EO:EUM:DAT:0665",
+            ),
+        ),
+        spatial_coordinates={
+            "x_geostationary": list(np.linspace(-5567499.9985508835, 5567499.998550878, 22272)),
+            "y_geostationary": list(np.linspace(-5567499.998550887, 5567499.998550878, 22272)),
         },
         # Matches the files that cover only the top of the disk (UK)
         file_filter_regex=r"\S+BODY\S+00(?:[3][2-9]|40).nc$",
