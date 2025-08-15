@@ -13,7 +13,7 @@ def validate(
     src: str | xr.DataArray,
     nans_in_check_region_threshold: float = 0.05,
     images_failing_nan_check_threshold: float = 0,
-    check_region_xy_slices: tuple[slice, slice] = (
+    check_region_xy_slices: tuple[slice, slice] | None = (
         slice(-480_064.6, -996_133.85),
         slice(4_512_606.3, 5_058_679.8),
     ),
@@ -68,7 +68,7 @@ def validate(
         da.sel(
             y_geostationary=check_region_xy_slices[1],
             x_geostationary=check_region_xy_slices[0],
-        ),
+        ) if check_region_xy_slices is not None else da,
         input_core_dims=[["y_geostationary", "x_geostationary"]],
         vectorize=True,
         dask="parallelized",
