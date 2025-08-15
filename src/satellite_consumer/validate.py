@@ -14,8 +14,8 @@ def validate(
     nans_in_check_region_threshold: float = 0.05,
     images_failing_nan_check_threshold: float = 0,
     check_region_xy_slices: tuple[slice, slice] | None = (
-        slice(-480_064.6, -996_133.85),
-        slice(4_512_606.3, 5_058_679.8),
+        slice(1_300_000, 4_300_000),
+        slice(700_000, 3_200_000),
     ),
 ) -> tuple[int, int]:
     """Check the quality of the data in the given dataset.

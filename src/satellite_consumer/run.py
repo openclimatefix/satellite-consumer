@@ -95,7 +95,7 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                 )
                 # Don't write invalid data to the store
                 # TODO make dynamic for uk and india
-                validate(src=da, check_region_xy_slices=None)
+                validate(src=da)
 
                 # Commit the data to the icechunk store
                 # * If the store was just created, write as a fresh repo
