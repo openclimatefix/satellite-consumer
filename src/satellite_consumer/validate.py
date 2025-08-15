@@ -62,7 +62,6 @@ def validate(
             "Expected dimensions ['x_geostationary', 'y_geostationary'] not present. "
             "Got: {list(ds.data_vars['data'].dims)}",
         )
-    
     if check_region_xy_slices is not None:
         da = da.sel(
             y_geostationary=check_region_xy_slices[1],
