@@ -94,9 +94,8 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                     crop_region_geos=command_opts.crop_region_geos,
                 )
                 # Don't write invalid data to the store
-                # TODO make dynamic for uk and india
                 if command_opts.validate:
-                    validate(src=da, check_region_xy_slices=command_opts.crop_region_geos)
+                    validate(src=da)
 
                 # Commit the data to the icechunk store
                 # * If the store was just created, write as a fresh repo
