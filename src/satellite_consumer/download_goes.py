@@ -114,7 +114,7 @@ def get_products_for_date_range_goes(
         # Filter out non-channel files
         if channels is not None:
             results = [r for r in results if any(channel + "_" in r for channel in channels)]
-        if not results:
+        if not results or len(results) < len(channels): # One file per channel
             continue
         # Combine by start time
         start_times = [get_timestamp_from_filename(f.split("/")[-1]) for f in results]
