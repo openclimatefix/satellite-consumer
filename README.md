@@ -1,4 +1,7 @@
 # Satellite Consumer
+<!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
+[![All Contributors](https://img.shields.io/badge/all_contributors-4-orange.svg?style=flat-square)](#contributors-)
+<!-- ALL-CONTRIBUTORS-BADGE:END -->
 
 **Download and convert satellite data for use in ML pipelines**
  
@@ -71,12 +74,12 @@ options that are shared between all commands:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SATCONS_COMMAND` |  | The command to run (consume/merge). |
+| `SATCONS_COMMAND` |  | The command to run (consume/extract-latest). |
 | `SATCONS_SATELLITE` | | The satellite to consume data from. |
 | `SATCONS_WORKDIR` | `/mnt/disks/sat` | The working directory. In the container, this is set to `/work` for easy mounting. |
-| `SATCONS_HRV` | `false` | Whether to download the HRV channel. |
-| `EUMETSAT_CONSUMER_KEY` |  | The EUMETSAT consumer key. |
-| `EUMETSAT_CONSUMER_SECRET` |  | The EUMETSAT consumer secret. |
+| `SATCONS_RESOLUTION` | `3000` | The desired resolution of the satellite images in meters ('3000', '1000'). |
+| `SENTRY_DSN` |  | The Sentry DSN for error reporting. If set, errors will be reported to Sentry. |
+| `ENVIRONMENT` | `local` | The deployed environment, used for logging and error reporting. |
 
 Each command then has its own set of configuration options:
 
@@ -92,16 +95,18 @@ Each command then has its own set of configuration options:
 | `SATCONS_VALIDATE` | `false` | Whether to validate the downloaded data. |
 | `SATCONS_RESCALE` | `false` | Whether to rescale the downloaded data to the unit interval. |
 | `SATCONS_NUM_WORKERS` | `1` | The number of workers to use for processing. |
+| `SATCONS_ICECHUNKS` | `false` | Whether to use icechunk repositories for storage. |
+| `SATCONS_CROP_REGION` | `` | The region string to crop data to ('uk', 'india', 'west-europe') |
+| `EUMETSAT_CONSUMER_KEY` |  | The EUMETSAT consumer key. |
+| `EUMETSAT_CONSUMER_SECRET` |  | The EUMETSAT consumer secret. |
 
-**Merge:**
+**Extract Latest:**
 
-*Merges consumed stores for a given time window into a single store in the working directory.*
+*Extracts the latest available data for a given satellite's store into a zipped zarr.*
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SATCONS_SATELLITE` | | The satellite to consume data from. |
-| `SATCONS_WINDOW_MINS` | `210` | The time window to merge data for. |
-| `SATCONS_CONSUME_MISSING` | `false` | Whether to consume missing data. |
+| `SATCONS_WINDOW_MINS` | `210` | The time window to extract data for. |
 
 ## FAQ
 
@@ -184,6 +189,23 @@ On the directory structure:
 ## Contributors
 
 <!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
+<!-- prettier-ignore-start -->
+<!-- markdownlint-disable -->
+<table>
+  <tbody>
+    <tr>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/devsjc"><img src="https://avatars.githubusercontent.com/u/47188100?v=4?s=100" width="100px;" alt="devsjc"/><br /><sub><b>devsjc</b></sub></a><br /><a href="https://github.com/openclimatefix/satellite-consumer/commits?author=devsjc" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://www.jacobbieker.com"><img src="https://avatars.githubusercontent.com/u/7170359?v=4?s=100" width="100px;" alt="Jacob Prince-Bieker"/><br /><sub><b>Jacob Prince-Bieker</b></sub></a><br /><a href="https://github.com/openclimatefix/satellite-consumer/commits?author=jacobbieker" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/peterdudfield"><img src="https://avatars.githubusercontent.com/u/34686298?v=4?s=100" width="100px;" alt="Peter Dudfield"/><br /><sub><b>Peter Dudfield</b></sub></a><br /><a href="https://github.com/openclimatefix/satellite-consumer/issues?q=author%3Apeterdudfield" title="Bug reports">🐛</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="http://www.linkedin.com/in/ram-from-tvl"><img src="https://avatars.githubusercontent.com/u/114728749?v=4?s=100" width="100px;" alt="Ramkumar R"/><br /><sub><b>Ramkumar R</b></sub></a><br /><a href="https://github.com/openclimatefix/satellite-consumer/commits?author=ram-from-tvl" title="Code">💻</a></td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- markdownlint-restore -->
+<!-- prettier-ignore-end -->
+
+<!-- ALL-CONTRIBUTORS-LIST:END -->
 <!-- prettier-ignore-start -->
 <!-- markdownlint-disable -->
 

@@ -21,20 +21,24 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
 ]
 dependencies = [
-    "Cartopy == 0.24.1",
-    "eumdac == 3.0.0",
-    "fsspec == 2025.2.0",
-    "joblib == 1.4.2",
+    "Cartopy==0.24.1",
+    "eumdac==3.0.0",
+    "fsspec==2025.2.0",
+    "gcsfs==2025.2.0",
+    "hdf5plugin==5.1.0",
+    "icechunk==1.0.0",
+    "joblib==1.4.2",
+    "loguru==0.7.3",
     "obstore >= 0.2.0",
-    "loguru == 0.7.3",
-    "pyproj == 3.7.0",
-    "pyresample == 1.32.0",
-    "pyyaml == 6.0.2",
-    "requests == 2.32.3",
-    "satpy[seviri-l1b-native] == 0.54.0",
-    "s3fs == 2025.2.0",
-    "xarray == 2025.1.2",
-    "zarr == 3.0.2",
+    "pyproj==3.7.0",
+    "pyresample==1.32.0",
+    "pyyaml==6.0.2",
+    "requests==2.32.3",
+    "s3fs==2025.2.0",
+    "satpy[seviri_l1b_native,seviri_l1b_nc] == 0.54.0",
+    "sentry-sdk==2.33.2",
+    "xarray==2025.1.2",
+    "zarr==3.0.2",
 ]
 
 [dependency-groups]
@@ -51,6 +55,7 @@ dev = [
     "python-lsp-server",
     "pylsp-mypy",
     "python-lsp-ruff",
+    "ty>=0.0.1a8",
 ]
 
 [project.scripts]
@@ -80,9 +85,6 @@ strict = true
 warn_unreachable = true
 warn_return_any = true
 disallow_untyped_defs = true
-plugins = [
-    "numpy.typing.mypy_plugin",
-]
 
 [[tool.mypy.overrides]]
 # Ignore missing imports for libraries that don't have them.
@@ -94,6 +96,7 @@ module = [
     "fsspec.implementations",
     "fsspec.implementations.local",
     "fsspec.implementations.asyn_wrapper",
+    "gcsfs",
     "joblib",
     "s3fs",
     "zarr",

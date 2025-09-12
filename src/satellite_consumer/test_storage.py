@@ -50,7 +50,8 @@ class TestStorage(unittest.TestCase):
                         msg="All values in empty store should be NaN",
                     )
                     self.assertDictEqual(
-                        dict(store_da.sizes), {k: len(v) for k, v in coords.to_dict().items()},
+                        dict(store_da.sizes),
+                        {k: len(v) for k, v in coords.to_dict().items()},
                     )
                     self.assertListEqual(
                         list(store_da.dims),
@@ -59,7 +60,8 @@ class TestStorage(unittest.TestCase):
                     )
                     for coord in list(coords.to_dict().keys()):
                         self.assertListEqual(
-                            list(store_da.coords[coord].values), coords.to_dict()[coord],
+                            list(store_da.coords[coord].values),
+                            coords.to_dict()[coord],
                             msg="Coordinate values in empty store are incorrect",
                         )
 
@@ -71,7 +73,6 @@ class TestStorage(unittest.TestCase):
             dst: str
 
         with mocks3() as s3dir, tempfile.TemporaryDirectory(suffix="zarr") as tmpdir:
-
             coords = Coordinates(
                 time=[np.datetime64(f"2021-01-01T0{h}:00", "ns") for h in range(0, 3)],
                 y_geostationary=list(range(1392)),
@@ -87,7 +88,8 @@ class TestStorage(unittest.TestCase):
             da: xr.DataArray = xr.DataArray(
                 name="data",
                 coords=dataclasses.replace(
-                   coords, time=[np.datetime64("2021-01-01T00:00", "ns")],
+                    coords,
+                    time=[np.datetime64("2021-01-01T00:00", "ns")],
                 ).to_dict(),
                 data=np.ones(shape=(1, 1392, 3712, 2)),
             )
@@ -106,4 +108,3 @@ class TestStorage(unittest.TestCase):
                     write_to_zarr(da=da, dst=test["dst"])
                     store_da = xr.open_dataarray(test["dst"], engine="zarr", consolidated=False)
                     self.assertTrue((store_da.isel(time=0).values == 1.0).all())
-
