@@ -7,15 +7,13 @@ import shutil
 import tempfile
 import warnings
 
-import fsspec
 import numpy as np
 import pyresample
-import s3fs
 import xarray as xr
 import yaml
 import zarr
-from fsspec.implementations.local import LocalFileSystem
 from loguru import logger as log
+from obstore.fsspec import FsspecStore
 
 from satellite_consumer.config import Coordinates
 
@@ -162,23 +160,27 @@ def create_empty_zarr(dst: str, coords: Coordinates) -> xr.DataArray:
     return da
 
 
-def get_fs(path: str) -> fsspec.AbstractFileSystem:
+def get_fs(path: str) -> FsspecStore:
     """Get relevant filesystem for the given path.
 
     Args:
-        path: The path to get the filesystem for. Use a protocol compatible with fsspec
+        path: The path to get the filesystem for. Use a protocol compatible with obstore
             e.g. `s3://bucket-name/path/to/file` for remote access.
     """
-    fs: fsspec.AbstractFileSystem = LocalFileSystem(auto_mkdir=True)
     if path.startswith("s3://"):
-        fs = s3fs.S3FileSystem(
-            anon=False,
-            key=os.getenv("AWS_ACCESS_KEY_ID", None),
-            secret=os.getenv("AWS_SECRET_ACCESS_KEY", None),
-            client_kwargs={
-                "region_name": os.getenv("AWS_REGION", "eu-west-1"),
-                "endpoint_url": os.getenv("AWS_ENDPOINT", None),
-            },
+        # Build S3 filesystem with obstore
+        region = os.getenv("AWS_DEFAULT_REGION", os.getenv("AWS_REGION", "eu-west-1"))
+        endpoint_url = os.getenv("AWS_ENDPOINT_URL") or os.getenv("AWS_ENDPOINT")
+        access_key_id = os.getenv("AWS_ACCESS_KEY_ID")
+        secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+
+        return FsspecStore(  # type: ignore[call-overload,no-any-return]
+            "s3",
+            region=region,
+            endpoint=endpoint_url,
+            access_key_id=access_key_id,
+            secret_access_key=secret_access_key,
         )
-    return fs
+    else:
+        return FsspecStore("file")
 

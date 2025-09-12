@@ -25,6 +25,7 @@ dependencies = [
     "eumdac == 3.0.0",
     "fsspec == 2025.2.0",
     "joblib == 1.4.2",
+    "obstore >= 0.2.0",
     "loguru == 0.7.3",
     "pyproj == 3.7.0",
     "pyresample == 1.32.0",
