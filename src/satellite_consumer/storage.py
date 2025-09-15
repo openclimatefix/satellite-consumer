@@ -6,7 +6,6 @@ import re
 import tempfile
 import warnings
 
-import gcsfs
 import icechunk
 import numpy as np
 import xarray as xr
@@ -171,9 +170,11 @@ def get_fs(path: str) -> FsspecStore:
             secret_access_key=secret_access_key,
         )
     elif path.startswith("gcs://"):
-        # Use gcsfs for GCS (obstore GCS support via FsspecStore not fully compatible yet)
-        return gcsfs.GCSFileSystem(
-            token=os.getenv("GOOGLE_APPLICATION_CREDENTIALS", None),
+        # Build GCS filesystem with obstore
+        service_account = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+        return FsspecStore(  # type: ignore[call-overload,no-any-return]
+            "gs",
+            service_account=service_account,
         )
     else:
         return FsspecStore("file")
