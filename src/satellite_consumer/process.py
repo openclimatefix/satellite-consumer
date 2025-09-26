@@ -100,6 +100,12 @@ def process_raw(
         # Remove the _FillValue attribute if it exists
         if "_FillValue" in da[var].attrs:
             del da[var].attrs["_FillValue"]
+    # Assert all channel names are present, otherwise raise error
+    expected_variables = {c.name for c in channels if resolution_meters in c.resolution_meters}
+    actual_variables = set(da.data_vars)
+    for var in expected_variables:
+        if var not in actual_variables:
+            raise ValueError(f"Expected variable {var} not found in dataarray")
     return da
 
 
