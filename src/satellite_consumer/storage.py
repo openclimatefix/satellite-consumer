@@ -219,6 +219,21 @@ def get_icechunk_repo(path: str) -> tuple[icechunk.Repository, list[dt.datetime]
         # Try to do a local store
         log.debug("Initializing local filesystem backend", path=path)
         storage_config = icechunk.local_filesystem_storage(path=path)
+        if "s3://" in path and result is None:
+            # regex failed but path looks like s3, try to salvage
+            bucket = path.split("s3://")[1].split("/")[0]
+            prefix = "/".join(path.split("s3://")[1].split("/")[1:])
+            log.debug("Initializing S3 backend", bucket=bucket, prefix=prefix)
+            storage_config = icechunk.s3_storage(
+                bucket=bucket,
+                prefix=prefix,
+                region=os.getenv("AWS_REGION", "us-west-2"),
+                endpoint_url=os.getenv("AWS_ENDPOINT", None),
+            )
+        else:
+            # Try to do a local store
+            log.debug("Initializing local filesystem backend", path=path)
+            storage_config = icechunk.local_filesystem_storage(path=path)
 
     if icechunk.Repository.exists(storage=storage_config):
         # Return existing store and the times in it

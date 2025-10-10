@@ -249,6 +249,15 @@ class ConsumeCommandOptions:
             end = self.time + pd.DateOffset(
                 minutes=self.window_mins + self.satellite_metadata.cadence_mins,
             )
+        # Cut the time window with the current date if it goes into the future
+        if end.replace(tzinfo=dt.UTC) > dt.datetime.now(tz=dt.UTC):
+            end = dt.datetime.now(tz=dt.UTC)
+            # Remove TZ info for consistency with other times
+            end = end.replace(tzinfo=None)
+            log.debug(
+                "Time window end is in the future. Adjusting to current time.",
+                adjusted_end=str(end),
+            )
         return start, end
 
     @property
