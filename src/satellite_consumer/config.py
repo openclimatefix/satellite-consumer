@@ -52,20 +52,27 @@ https://user.eumetsat.int/s3/eup-strapi-media/pdf_ten_05105_msg_img_data_e7c8b31
 MTG_1KM_CHANNELS: list[SpectralChannelMetadata] = [
     SpectralChannelMetadata("vis_04", [1000]),
     SpectralChannelMetadata("vis_05", [1000]),
-    SpectralChannelMetadata("vis_06", [1000, 500]),
+    SpectralChannelMetadata("vis_06", [1000]),
     SpectralChannelMetadata("vis_08", [1000]),
     SpectralChannelMetadata("vis_09", [1000]),
     SpectralChannelMetadata("nir_13", [1000]),
     SpectralChannelMetadata("nir_16", [1000]),
-    SpectralChannelMetadata("nir_22", [1000, 500]),
+    SpectralChannelMetadata("nir_22", [1000]),
     SpectralChannelMetadata("wv_63", [2000]),
     SpectralChannelMetadata("wv_73", [2000]),
-    SpectralChannelMetadata("ir_38", [2000, 1000]),
+    SpectralChannelMetadata("ir_38", [2000]),
     SpectralChannelMetadata("ir_87", [2000]),
     SpectralChannelMetadata("ir_97", [2000]),
-    SpectralChannelMetadata("ir_105", [2000, 1000]),
+    SpectralChannelMetadata("ir_105", [2000]),
     SpectralChannelMetadata("ir_123", [2000]),
     SpectralChannelMetadata("ir_133", [2000]),
+]
+
+MTG_HIGHRES_CHANNELS: list[SpectralChannelMetadata] = [
+    SpectralChannelMetadata("vis_06", [500]),
+    SpectralChannelMetadata("nir_22", [500]),
+    SpectralChannelMetadata("ir_38", [1000]),
+    SpectralChannelMetadata("ir_105", [1000]),
 ]
 """Metadata for the available spectral channels from MTG-1 satellites.
 
@@ -574,7 +581,7 @@ SATELLITE_METADATA: dict[str, SatelliteMetadata] = {
         longitude=0.0,
         height=35786400,
         product_id="EO:EUM:DAT:0665",
-        channels=MTG_1KM_CHANNELS,
+        channels=MTG_HIGHRES_CHANNELS,
         description="".join(
             (
                 "Rectified (level 1c) Meteosat-12 image data for Europe and Africa. ",
