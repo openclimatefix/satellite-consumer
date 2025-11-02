@@ -166,6 +166,7 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                     dst=command_opts.zarr_path,
                     time=str(np.datetime_as_string(da.coords["time"].values[0], unit="m")),
                 )
+                repo, existing_times = storage.get_icechunk_repo(path=command_opts.zarr_path)
                 if len(existing_times) == 0 and batch_num == 0 and i == 0:
                     session: icechunk.Session = repo.writable_session(branch="main")
                     # TODO: Remove warnings catch when Zarr makes up its mind about codecs
