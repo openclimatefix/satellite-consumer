@@ -216,9 +216,6 @@ def get_icechunk_repo(path: str) -> tuple[icechunk.Repository, list[dt.datetime]
             case _:
                 raise OSError(f"Unsupported protocol in path: {path}")
     else:
-        # Try to do a local store
-        log.debug("Initializing local filesystem backend", path=path)
-        storage_config = icechunk.local_filesystem_storage(path=path)
         if "s3://" in path and result is None:
             # regex failed but path looks like s3, try to salvage
             bucket = path.split("s3://")[1].split("/")[0]
@@ -245,9 +242,9 @@ def get_icechunk_repo(path: str) -> tuple[icechunk.Repository, list[dt.datetime]
             dt.datetime.strptime(t, "%Y-%m-%dT%H:%M").replace(tzinfo=dt.UTC)
             for t in np.datetime_as_string(ds.coords["time"].values, unit="m").tolist()
         ]
-        log.debug(
-            "Retrieving icechunk store times",
-            path=path,times=times)
+        #log.debug(
+        #    "Retrieving icechunk store times",
+        #    path=path,times=times)
         return repo, times
 
     repo = icechunk.Repository.create(storage=storage_config)
