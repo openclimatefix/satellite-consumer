@@ -15,4 +15,5 @@ jobs:
       enable_typechecking: true
       tests_folder: "src/satellite_consumer"
       tests_runner: "unittest"
+      test_python_versions: '["3.12"]'
 
