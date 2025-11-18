@@ -6,7 +6,6 @@ from typing import Any
 import hdf5plugin  # type: ignore # noqa: F401
 import numpy as np
 import pandas as pd
-import pyproj
 import pyresample.geometry
 import satpy
 import xarray as xr
@@ -14,10 +13,6 @@ import yaml
 from loguru import logger as log
 
 from satellite_consumer.config import SpectralChannelMetadata
-
-OSGB, WGS84 = (27700, 4326)
-transformer: pyproj.Transformer = pyproj.Transformer.from_crs(crs_from=WGS84, crs_to=OSGB)
-"""Transformer for converting between WGS84 and OSGB coordinates."""
 
 
 def process_raw(
@@ -57,11 +52,7 @@ def process_raw(
 
     try:
         log.debug("Converting Scene to dataarray", normalize=normalize)
-        da: xr.DataArray = _map_scene_to_dataarray(
-            scene=scene,
-            calculate_osgb=False,
-            crop_region_geos=crop_region_geos,
-        )
+        da: xr.DataArray = _map_scene_to_dataarray(scene=scene, crop_region_geos=crop_region_geos)
     except Exception as e:
         raise ValueError(f"Error converting paths to DataArray: {e}") from e
 
@@ -85,7 +76,6 @@ def process_raw(
 
 def _map_scene_to_dataarray(
     scene: satpy.Scene,  # type:ignore # Don't know why it dislikes this
-    calculate_osgb: bool = True,
     crop_region_geos: tuple[float, float, float, float] | None = None,
 ) -> xr.DataArray:
     """Converts a Scene with satellite data into a data array.
@@ -100,7 +90,6 @@ def _map_scene_to_dataarray(
 
     Args:
         scene: The satpy.Scene containing the satellite data.
-        calculate_osgb: Whether to calculate OSGB coordinates.
         crop_region_geos: Optional bounds to crop the data to, in the format
     """
     for channel in scene.wishlist:
@@ -158,27 +147,6 @@ def _map_scene_to_dataarray(
     for name in ["x_geostationary", "y_geostationary"]:
         da.coords[name].attrs["coordinate_reference_system"] = "geostationary"
 
-    if calculate_osgb:
-        log.debug("Calculating OSGB coordinates")
-        lon, lat = scene[scene.wishlist[0]].attrs["area"].get_lonlats()
-        osgb_x, osgb_y = transformer.transform(lat, lon)
-        da = da.assign_coords(
-            coords={
-                "x_osgb": (("y_geostationary", "x_geostationary"), np.float32(osgb_x)),
-                "y_osgb": (("y_geostationary", "x_geostationary"), np.float32(osgb_y)),
-            },
-        )
-        da.coords["x_osgb"].attrs = {
-            "units": "meter",
-            "coordinate_reference_system": "OSGB",
-            "name": "Easting",
-        }
-        da.coords["y_osgb"].attrs = {
-            "units": "meter",
-            "coordinate_reference_system": "OSGB",
-            "name": "Northing",
-        }
-
     da = (
         da.transpose("time", "y_geostationary", "x_geostationary", "variable")
         .chunk(
@@ -213,8 +181,6 @@ def _normalize(da: xr.DataArray, channels: list[SpectralChannelMetadata]) -> xr.
         channel_metadata = next(filter(lambda c: c.name == variable, channels))
         da.loc[{"variable": variable}] -= channel_metadata.minimum
         da.loc[{"variable": variable}] /= channel_metadata.range
-    # da -= [c.minimum for c in channels]
-    # da /= [c.maximum - c.minimum for c in channels]
 
     # Since the mins and maxes are approximations, clip the values to [0, 1]
     da = da.clip(min=0, max=1).astype(np.float32)
