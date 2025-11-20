@@ -141,7 +141,7 @@ def _map_scene_to_dataarray(
     if "time" not in da.dims:
         time = pd.to_datetime(rounded_time)
         da = da.assign_coords({"time": time}).expand_dims("time")
-
+    da.attrs.pop("_FillValue", None)
     # Increase clarity of coordinates, including coordinate dimension names and attributes
     da = da.rename({"x": "x_geostationary", "y": "y_geostationary"})
     for name in ["x_geostationary", "y_geostationary"]:
