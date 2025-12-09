@@ -21,26 +21,30 @@ class SpectralChannelMetadata:
     """The approximate minimum pixel value for the channel."""
     maximum: float = 0.0
     """The approximate maximum pixel value for the channel."""
+    representation: str = ""
+    """The desired output representation of the raw data."""
+    satpy_index: int = 0
+    """The index of the channel according to Satpy's internal ordering."""
+    
 
     @property
     def range(self) -> float:
         """The approximate range of pixel values for the channel."""
         return self.maximum - self.minimum
 
-
 SEVIRI_CHANNELS: list[SpectralChannelMetadata] = [
-    SpectralChannelMetadata("IR_016", [3000], -2.5118103, 69.60857),
-    SpectralChannelMetadata("IR_039", [3000], -64.83977, 339.15588),
-    SpectralChannelMetadata("IR_087", [3000], 63.404694, 340.26526),
-    SpectralChannelMetadata("IR_097", [3000], 2.844452, 317.86752),
-    SpectralChannelMetadata("IR_108", [3000], 199.10002, 313.2767),
-    SpectralChannelMetadata("IR_120", [3000], -17.254883, 315.99194),
-    SpectralChannelMetadata("IR_134", [3000], -26.29155, 274.82297),
-    SpectralChannelMetadata("VIS006", [3000], -1.1009827, 93.786545),
-    SpectralChannelMetadata("VIS008", [3000], -2.4184198, 101.34922),
-    SpectralChannelMetadata("WV_062", [3000], 199.57048, 249.91806),
-    SpectralChannelMetadata("WV_073", [3000], 198.95093, 286.96323),
-    SpectralChannelMetadata("HRV", [1000], -1.2278595, 103.90016),
+    SpectralChannelMetadata("IR_016", [3000], -2.5118103, 69.60857, "reflectance", 2),
+    SpectralChannelMetadata("IR_039", [3000], -64.83977, 339.15588, "brightness_temperature", 3),
+    SpectralChannelMetadata("IR_087", [3000], 63.404694, 340.26526, "brightness_temperature", 6),
+    SpectralChannelMetadata("IR_097", [3000], 2.844452, 317.86752, "brightness_temperature", 7),
+    SpectralChannelMetadata("IR_108", [3000], 199.10002, 313.2767, "brightness_temperature", 8),
+    SpectralChannelMetadata("IR_120", [3000], -17.254883, 315.99194, "brightness_temperature", 9),
+    SpectralChannelMetadata("IR_134", [3000], -26.29155, 274.82297, "brightness_temperature", 10),
+    SpectralChannelMetadata("VIS006", [3000], -1.1009827, 93.786545, "reflectance", 0),
+    SpectralChannelMetadata("VIS008", [3000], -2.4184198, 101.34922, "reflectance", 1),
+    SpectralChannelMetadata("WV_062", [3000], 199.57048, 249.91806, "brightness_temperature", 4),
+    SpectralChannelMetadata("WV_073", [3000], 198.95093, 286.96323, "brightness_temperature", 5),
+    SpectralChannelMetadata("HRV", [1000], -1.2278595, 103.90016, "reflectance", 11),
 ]
 """Metadata for the available spectral channels from SEVIRI satellites.
 
@@ -85,7 +89,7 @@ class Coordinates:
     time: list[np.datetime64]
     y_geostationary: list[float] | list[int]
     x_geostationary: list[float] | list[int]
-    variable: list[str]
+    channel: list[str]
 
     def to_dict(self) -> dict[str, list[float] | list[str] | list[np.datetime64]]:
         """Convert the coordinates to a dictionary."""
@@ -104,10 +108,10 @@ class Coordinates:
 
         In order for the validate function to work, the shard size must be
         1 along the dimensions that are not core input dimensions;
-        'time' and 'variable'.
+        'time' and 'channel'.
         """
         return tuple(
-            [1 if k in ["time", "variable"] else len(v) for k, v in self.to_dict().items()],
+            [1 if k in ["time", "channel"] else len(v) for k, v in self.to_dict().items()],
         )
 
     def chunks(self) -> tuple[int, ...]:
@@ -122,7 +126,7 @@ class Coordinates:
         return tuple(
             [
                 1
-                if k in ["time", "variable"]
+                if k in ["time", "channel"]
                 else len(v) // _get_factor_near(len(v), initial_divisor=8)
                 if k in ["x_geostationary", "y_geostationary"]
                 else len(v)
@@ -138,11 +142,11 @@ class Coordinates:
             raise ValueError("X coordinate must have at least one value.")
         if len(self.y_geostationary) == 0:
             raise ValueError("Y coordinate must have at least one value.")
-        if len(self.variable) == 0:
-            raise ValueError("Variable coordinate must have at least one value.")
+        if len(self.channel) == 0:
+            raise ValueError("Channel coordinate must have at least one value.")
         self.x_geostationary = sorted(self.x_geostationary, reverse=True)
         self.y_geostationary = sorted(self.y_geostationary)
-        self.variable = sorted(self.variable)
+        self.channel = sorted(self.channel)
 
 
 class Command(StrEnum):
@@ -311,7 +315,7 @@ class ConsumeCommandOptions:
             ]
             if bounds is not None
             else self.satellite_metadata.spatial_coordinates["x_geostationary"],
-            variable=[
+            channel=[
                 ch.name
                 for ch in self.satellite_metadata.channels
                 if self.resolution in ch.resolution_meters

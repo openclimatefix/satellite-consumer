@@ -26,7 +26,7 @@ class TestValidate(unittest.TestCase):
                 time=[np.datetime64(f"2021-01-01T0{h}:00", "ns") for h in range(0, 3)],
                 y_geostationary=list(range(1392)),
                 x_geostationary=list(range(3712)),
-                variable=["VIS006", "IR_016"],
+                channel=["VIS006", "IR_016"],
             )
 
             tests: list[TestContainer] = [

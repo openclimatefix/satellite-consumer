@@ -86,7 +86,7 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                 if len(raw_filepaths) == 0:
                     num_skipped += 1
                     continue
-                da = process_raw(
+                ds = process_raw(
                     paths=raw_filepaths,
                     channels=command_opts.satellite_metadata.channels,
                     resolution_meters=command_opts.resolution,
@@ -95,21 +95,21 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                 )
                 # Don't write invalid data to the store
                 if command_opts.validate:
-                    validate(src=da)
+                    validate(src=ds.data_vars["data"])
 
                 # Commit the data to the icechunk store
                 # * If the store was just created, write as a fresh repo
                 log.debug(
                     "Writing data to icechunk store",
                     dst=command_opts.zarr_path,
-                    time=str(np.datetime_as_string(da.coords["time"].values[0], unit="m")),
+                    time=str(np.datetime_as_string(ds.coords["time"].values[0], unit="m")),
                 )
                 if len(existing_times) == 0 and batch_num == 0 and i == 0:
                     session: icechunk.Session = repo.writable_session(branch="main")
                     # TODO: Remove warnings catch when Zarr makes up its mind about codecs
                     with warnings.catch_warnings(action="ignore"):
                         to_icechunk(
-                            obj=da.to_dataset(name="data", promote_attrs=True),
+                            obj=ds,
                             session=session,
                             mode="w-",
                             encoding={
@@ -127,13 +127,13 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                     # TODO: Remove warnings catch when Zarr makes up its mind about codecs
                     with warnings.catch_warnings(action="ignore"):
                         to_icechunk(
-                            obj=da.to_dataset(name="data", promote_attrs=True),
+                            obj=ds,
                             session=session,
                             append_dim="time",
                             mode="a",
                         )
                     _ = session.commit(
-                        message=f"add {len(da.coords['time']) * len(da.coords['variable'])} images",
+                        message=f"add {len(ds.coords['time']) * len(ds.coords['channel'])} images",
                         rebase_with=icechunk.ConflictDetector(),
                         rebase_tries=5,
                     )
@@ -169,14 +169,14 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
             )
             if len(raw_filepaths) == 0:
                 return []
-            da = process_raw(
+            ds = process_raw(
                 paths=raw_filepaths,
                 channels=command_opts.satellite_metadata.channels,
                 resolution_meters=command_opts.resolution,
                 normalize=command_opts.rescale,
                 crop_region_geos=command_opts.crop_region_geos,
             )
-            storage.write_to_zarr(da=da, dst=command_opts.zarr_path)
+            storage.write_to_zarr(ds=ds, dst=command_opts.zarr_path)
             return raw_filepaths
 
         # Iterate through all products in search

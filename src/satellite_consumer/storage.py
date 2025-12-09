@@ -20,7 +20,7 @@ from satellite_consumer.config import Coordinates
 
 
 def write_to_zarr(
-    da: xr.DataArray,
+    ds: xr.Dataset,
     dst: str,
 ) -> None:
     """Write the given data array to the given zarr store.
@@ -33,26 +33,26 @@ def write_to_zarr(
         da: The data array to write as a Zarr store.
         dst: The path to the Zarr store to write to. Can be a local filepath or S3 URL.
     """
-    log.debug("Writing to store", coords=da.coords.sizes, dst=dst)
+    log.debug("Writing to store", coords=ds.coords.sizes, dst=dst)
     try:
         # TODO: Remove warnings catch when Zarr makes up its mind on time objects
         with warnings.catch_warnings(action="ignore"):
-            store_da: xr.DataArray = xr.open_dataarray(dst, engine="zarr", consolidated=False)
+            store_ds: xr.Dataset = xr.open_zarr(dst, consolidated=False)
 
-        time_idx: int = list(store_da.coords["time"].values).index(da.coords["time"].values[0])
-        log.debug("Writing dataarray to zarr store", dst=dst, time_idx=time_idx)
+        time_idx: int = list(store_ds.coords["time"].values).index(ds.coords["time"].values[0])
+        log.debug("Writing dataset to zarr store", dst=dst, time_idx=time_idx)
 
         with warnings.catch_warnings(action="ignore"):
-            _ = da.to_dataset(name="data", promote_attrs=True).to_zarr(
+            _ = ds.to_zarr(
                 store=dst,
                 compute=True,
                 mode="a",
                 consolidated=False,
                 region={
                     "time": slice(time_idx, time_idx + 1),
-                    "y_geostationary": slice(0, len(store_da.coords["y_geostationary"])),
-                    "x_geostationary": slice(0, len(store_da.coords["x_geostationary"])),
-                    "variable": "auto",
+                    "y_geostationary": slice(0, len(store_ds.coords["y_geostationary"])),
+                    "x_geostationary": slice(0, len(store_ds.coords["x_geostationary"])),
+                    "channel": "auto",
                 },
             )
     except Exception as e:
@@ -97,6 +97,7 @@ def create_empty_zarr(dst: str, coords: Coordinates) -> xr.DataArray:
         attributes={
             "units": "nanoseconds since 1970-01-01",
             "calendar": "proleptic_gregorian",
+            "description": "The nominal end time of the image scan"
         },
     )
     time_zarray[:] = coords.time
@@ -105,7 +106,7 @@ def create_empty_zarr(dst: str, coords: Coordinates) -> xr.DataArray:
         name="y_geostationary",
         dimension_names=["y_geostationary"],
         shape=(len(coords.y_geostationary),),
-        dtype="float",
+        dtype="float32",
         attributes={
             "coordinate_reference_system": "geostationary",
         },
@@ -116,7 +117,7 @@ def create_empty_zarr(dst: str, coords: Coordinates) -> xr.DataArray:
         name="x_geostationary",
         dimension_names=["x_geostationary"],
         shape=(len(coords.x_geostationary),),
-        dtype="float",
+        dtype="float32",
         attributes={
             "coordinate_reference_system": "geostationary",
         },
@@ -125,18 +126,44 @@ def create_empty_zarr(dst: str, coords: Coordinates) -> xr.DataArray:
 
     # TODO: Remove this when Zarr makes up its mind on string codecs
     with warnings.catch_warnings(action="ignore"):
-        var_zarray = group.create_array(
-            name="variable",
-            dimension_names=["variable"],
-            shape=(len(coords.variable),),
+        channel_zarray = group.create_array(
+            name="channel",
+            dimension_names=["channel"],
+            shape=(len(coords.channel),),
             dtype="str",
         )
-        var_zarray[:] = coords.variable
+        channel_zarray[:] = coords.channel
+
+        _ = group.create_array(
+            name="instrument",
+            dimension_names=["time"],
+            shape=(len(coords.time),),
+            dtype="str",
+            attributes={"description": "Name of the satellite used"},
+        )
+
+    for coord in ["satellite_actual_longitude", "satellite_actual_latitude", "satellite_actual_altitude"]:
+        _ = group.create_array(
+            name=coord,
+            dimension_names=["time"],
+            shape=(len(coords.time),),
+            dtype="float32",
+            attributes={"description": "Actual as opposed to nominal postion of the satellite"},
+        )
+
+    for coord in ["cal_slope", "cal_offset"]:
+        _ = group.create_array(
+            name=coord,
+            dimension_names=["time", "channel"],
+            shape=(len(coords.time),len(coords.channel)),
+            dtype="float32",
+            attributes={"description": "Calibration paramaters for conversion from counts to radiance"},
+        )
 
     _ = group.create_array(
         name="data",
         dimension_names=coords.dims(),
-        dtype="float",
+        dtype="float32",
         shape=coords.shape(),
         chunks=coords.chunks(),
         shards=coords.shards(),
@@ -145,10 +172,10 @@ def create_empty_zarr(dst: str, coords: Coordinates) -> xr.DataArray:
     )
 
     with warnings.catch_warnings(action="ignore"):
-        da = xr.open_dataarray(dst, engine="zarr", consolidated=False)
+        ds: xr.Dataset = xr.open_dataset(dst, engine="zarr", consolidated=False)
 
-    log.debug("Created empty zarr store", dst=dst, coords=da.coords.sizes)
-    return da
+    log.debug("Created empty zarr store", dst=dst, coords=ds.coords.sizes)
+    return ds.data_vars["data"]
 
 
 def get_fs(path: str) -> fsspec.AbstractFileSystem:
