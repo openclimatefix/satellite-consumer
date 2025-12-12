@@ -1,9 +1,10 @@
 """Functions for processing satellite data."""
 
 import datetime as dt
+import warnings
 from typing import Any
 
-import hdf5plugin  # type: ignore # noqa: F401
+import hdf5plugin  # noqa: F401
 import importlib_metadata
 import numpy as np
 import pandas as pd
@@ -88,12 +89,13 @@ def _map_scene_to_dataset(
     for channel in scene.wishlist:
         scene[channel] = scene[channel].drop_vars("acq_time", errors="ignore")
 
-    ds: xr.Dataset = (
-        scene.to_xarray_dataset() # type: ignore
-        .drop_vars("acq_time", errors="ignore")[[c.name for c in channels]]
-        .to_dataarray(name="data", dim="channel")
-        .to_dataset(promote_attrs=False)
-    )
+    with warnings.catch_warnings(action="ignore"):
+        ds: xr.Dataset = (
+            scene.to_xarray_dataset() # type: ignore
+            .drop_vars("acq_time", errors="ignore")[[c.name for c in channels]]
+            .to_dataarray(name="data", dim="channel")
+            .to_dataset(promote_attrs=False)
+        )
 
     # Satpy returns a latlon ndarray that is infinite off-earth-disk
     # Use this as a mask to check there are not too many NaNs on-earth-disk
@@ -117,7 +119,7 @@ def _map_scene_to_dataset(
         instrument=("time", [first_satpy_channel.attrs["platform_name"]]),
         cal_slope=(["time", "channel"], [cal_slope]),
         cal_offset=(["time", "channel"], [cal_offset]),
-        **{
+        **{ # type: ignore
             k: ("time", [float(first_satpy_channel.attrs["orbital_parameters"][k])])
             for k in [
                 "satellite_actual_longitude",

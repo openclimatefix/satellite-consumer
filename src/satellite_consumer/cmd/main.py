@@ -3,6 +3,7 @@
 import datetime as dt
 import importlib.resources
 import logging
+import sys
 import time
 
 import importlib_metadata
@@ -14,6 +15,7 @@ from satellite_consumer import consume, models
 log = logging.getLogger(__name__)
 
 
+
 def main() -> None:
     """Entrypoint to the consumer.
 
@@ -21,6 +23,11 @@ def main() -> None:
     """
     conf_file = importlib.resources.files("satellite_consumer.cmd").joinpath("application.conf")
     conf: pyhocon.ConfigTree = pyhocon.ConfigFactory.parse_string(conf_file.read_text())
+
+    logging.basicConfig(
+        stream=sys.stdout,
+        level=logging.getLevelName(conf.get_string("consumer.loglevel").upper()),
+    )
 
     if conf.get_string("sentry.dsn") != "":
         sentry_sdk.init(
@@ -65,6 +72,7 @@ def main() -> None:
 
     prog_start = time.time()
 
+
     consume.consume_to_store(
         dt_range=dt_range,
         cadence_mins=conf.get_int(f"satellites.{sat}.cadence_mins"),
@@ -77,10 +85,18 @@ def main() -> None:
         channels=channels,
         resolution_meters=resolution,
         crop_region_geos=crop_region_geos,
-        credentials=(
+        eumetsat_credentials=(
             conf.get_string("credentials.eumetsat.key"),
             conf.get_string("credentials.eumetsat.secret"),
         ),
+        icechunk=conf.get_bool("consumer.use_icechunk"),
+        aws_credentials=(
+            conf.get_string("credentials.aws.access_key_id", None),
+            conf.get_string("credentials.aws.secret_access_key", None),
+            conf.get_string("credentials.aws.endpoint_url", None),
+            conf.get_string("credentials.aws.region", None),
+        ),
+        gcs_credentials=conf.get_string("credentials.gcs.application_credentials", None),
     )
 
     log.info(f"satellite consumer finished in {time.time() - prog_start!s}.")

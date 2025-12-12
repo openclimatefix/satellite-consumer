@@ -25,7 +25,12 @@ def consume_to_store(
         channels: list[models.SpectralChannel],
         resolution_meters: int,
         crop_region_geos: tuple[float, float, float, float] | None,
-        credentials: tuple[str, str],
+        eumetsat_credentials: tuple[str, str],
+        icechunk: bool = False,
+        aws_credentials: tuple[
+            str | None, str | None, str | None, str | None,
+        ] = (None, None, None, None),
+        gcs_credentials: str | None = None,
     ) -> None:
     """Consume satellite data into a zarr store."""
     product_iter = get_products_iterator(
@@ -33,8 +38,18 @@ def consume_to_store(
         cadence_mins=cadence_mins,
         start=dt_range[0],
         end=dt_range[1],
-        credentials=credentials,
+        credentials=eumetsat_credentials,
     )
+
+    if icechunk:
+        repo = storage.get_icechunk_repo(
+            raw_zarr_paths[1],
+            aws_access_key_id=aws_credentials[0],
+            aws_secret_access_key=aws_credentials[1],
+            aws_region_name=aws_credentials[2],
+            aws_endpoint_url=aws_credentials[3],
+            gcs_token=gcs_credentials,
+        )
 
     num_skipped: int = 0
     # Iterate through all products in search
@@ -53,7 +68,10 @@ def consume_to_store(
             resolution_meters=resolution_meters,
             crop_region_geos=crop_region_geos,
         )
-        storage.write_to_zarr(ds=ds, dst=raw_zarr_paths[1])
+        if icechunk:
+            storage.write_to_icechunk(ds=ds, repo=repo)
+        else:
+            storage.write_to_zarr(ds=ds, dst=raw_zarr_paths[1])
 
     log.debug("skips=%d, path=%s, finished writes", num_skipped, raw_zarr_paths[1])
 

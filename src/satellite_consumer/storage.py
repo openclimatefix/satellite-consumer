@@ -12,6 +12,7 @@ import s3fs
 import xarray as xr
 import zarr
 import zarr.codecs
+import zarr.errors
 import zarr.storage
 from fsspec.implementations.local import LocalFileSystem
 from icechunk.xarray import to_icechunk
@@ -59,7 +60,7 @@ def write_to_zarr(
         if np.isin(ds.coords[append_dim].values, store_ds.coords[append_dim].values).all():
             return None
 
-    except FileNotFoundError:
+    except (FileNotFoundError, zarr.errors.GroupNotFoundError):
         # Write new store, specifying encodings
         _ = ds.to_zarr(
             dst,
@@ -72,8 +73,7 @@ def write_to_zarr(
         )
         return None
 
-    # Write the data to the existing store safely, failing if the non-appending dimensions differ
-    # * Check the non-appending dimensions match via a non-computed write
+    # Check the non-appending dimensions match
     if not ds[[d for d in ds.dims if d != append_dim]].equals(
         store_ds[[d for d in store_ds.dims if d != append_dim]],
     ):
@@ -102,23 +102,13 @@ def write_to_icechunk(
     If a Zarr store already exists at the given path, the dataset will be appended to it.
     """
     session = repo.writable_session(branch=branch)
-    if repo.exists(repo.storage):
+    try:
         store_ds: xr.Dataset = xr.open_zarr(session.store, consolidated=False)
         # If the time to be added is already in the store, don't do anything
         if np.isin(ds.coords[append_dim].values, store_ds.coords[append_dim].values).all():
             return None
-        to_icechunk(
-            obj=ds,
-            session=session,
-            append_dim=append_dim,
-            mode="a",
-        )
-        _ = session.commit(
-            message=f"add data for {ds.coords[append_dim].values}",
-            rebase_with=icechunk.ConflictDetector(),
-            rebase_tries=5,
-        )
-    else:
+
+    except (FileNotFoundError, zarr.errors.GroupNotFoundError):
         to_icechunk(
             obj=ds,
             session=session,
@@ -126,6 +116,27 @@ def write_to_icechunk(
             encoding=encoding(ds),
         )
         _ = session.commit(message="initial commit")
+        return None
+
+    # Check the non-appending dimensions match
+    if not ds[[d for d in ds.dims if d != append_dim]].equals(
+        store_ds[[d for d in store_ds.dims if d != append_dim]],
+    ):
+        raise ValueError("Non-appending dimensions do not match existing store")
+
+    to_icechunk(
+        obj=ds,
+        session=session,
+        append_dim=append_dim,
+        mode="a",
+    )
+    _ = session.commit(
+        message=f"add data for {ds.coords[append_dim].values}",
+        rebase_with=icechunk.ConflictDetector(),
+        rebase_tries=5,
+    )
+
+    return None
 
 def get_fs(
     path: str,

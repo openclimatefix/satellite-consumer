@@ -32,20 +32,27 @@ class TestStorage(unittest.TestCase):
                 {"name": "test_s3", "dst": s3dir + "test.zarr"},
             ]
 
-            da: xr.DataArray = xr.DataArray(
-                name="data",
+            ds: xr.Dataset = xr.Dataset(
                 coords={
                     "time": [np.datetime64("2021-01-01T00:00", "ns")],
                     "y_geostationary": np.linspace(-6980250.0, 6980250.0, 1392),
                     "x_geostationary": np.linspace(-18500000.0, 18500000.0, 3712),
                     "channel": ["VIS", "IR"],
                 },
-                data=np.ones(shape=(1, 1392, 3712, 2)),
+                data_vars={
+                    "data": (
+                        ["time", "y_geostationary", "x_geostationary", "channel"],
+                        np.ones(shape=(1, 1392, 3712, 2)),
+                    ),
+                    "instrument": (["time"], ["FAKE"]),
+                    "satellite_actual_longitude": (["time"], [0.0]),
+                    "satellite_actual_latitude": (["time"], [0.0]),
+                    "satellite_actual_altitude": (["time"], [35786023.0]),
+                },
             )
-            ds: xr.Dataset = da.to_dataset()
 
             for test in tests:
                 with self.subTest(name=test["name"]):
                     write_to_zarr(ds=ds, dst=test["dst"])
-                    store_da = xr.open_dataarray(test["dst"], engine="zarr", consolidated=False)
-                    self.assertTrue((store_da.isel(time=0).values == 1.0).all())
+                    store_ds = xr.open_zarr(test["dst"], consolidated=False)
+                    self.assertTrue((store_ds.data_vars["data"].isel(time=0).values == 1.0).all())
