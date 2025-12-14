@@ -53,6 +53,13 @@ class TestStorage(unittest.TestCase):
 
             for test in tests:
                 with self.subTest(name=test["name"]):
-                    write_to_zarr(ds=ds, dst=test["dst"])
+                    write_to_zarr(
+                        ds=ds,
+                        dst=test["dst"],
+                        append_dim="time",
+                        dims=["time", "y_geostationary", "x_geostationary", "channel"],
+                        chunks=[1, 696, 1856, 2],
+                        shards=[1, 1392, 3712, 2],
+                    )
                     store_ds = xr.open_zarr(test["dst"], consolidated=False)
                     self.assertTrue((store_ds.data_vars["data"].isel(time=0).values == 1.0).all())

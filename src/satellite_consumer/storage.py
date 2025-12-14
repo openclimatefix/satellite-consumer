@@ -19,8 +19,24 @@ from icechunk.xarray import to_icechunk
 
 log = logging.getLogger(__name__)
 
-def encoding(ds: xr.Dataset) -> dict[str, Any]:
+
+def encoding(
+    ds: xr.Dataset,
+    dims: list[str],
+    chunks: list[int],
+    shards: list[int],
+) -> dict[str, Any]:
     """Get the encoding dictionary for writing the dataset to Zarr."""
+    # Replace -1's with full dimension sizes
+    chunks = [
+        cd[0] if cd[0] > 0 else len(ds.coords[cd[1]].values)
+        for cd in zip(chunks, dims, strict=True)
+    ]
+    shards = [
+        sd[0] if sd[0] > 0 else len(ds.coords[sd[1]].values)
+        for sd in zip(shards, dims, strict=True)
+    ]
+
     return {
         "data": {
             "compressors": zarr.codecs.BloscCodec(
@@ -29,7 +45,8 @@ def encoding(ds: xr.Dataset) -> dict[str, Any]:
                 shuffle=zarr.codecs.BloscShuffle.bitshuffle,
             ),
             "fill_value": np.float32(np.nan),
-            "chunks": (1, 400, 400, len(ds.coords["channel"].values)),
+            "chunks": chunks,
+            "shards": shards,
         },
         "instrument": {"dtype": "str"},
         "satellite_actual_longitude": {"dtype": "float32"},
@@ -48,12 +65,26 @@ def encoding(ds: xr.Dataset) -> dict[str, Any]:
 def write_to_zarr(
     ds: xr.Dataset,
     dst: str,
-    append_dim: str = "time",
+    append_dim: str,
+    chunks: list[int],
+    shards: list[int],
+    dims: list[str],
 ) -> None:
     """Write the given dataset to the destination.
 
     If a Zarr store already exists at the given path, the dataset will be appended to it.
     """
+    if dims != list(ds.dims):
+        raise ValueError(
+            "Provided dimensions do not match dataset dimensions."
+            f" Provided: {dims}, Dataset: {list(ds.dims)}. "
+            "Ensure process step outputs dimensions in the order specified here.",
+        )
+
+    # Set the dask chunksizes to be the shard sizes for efficient writing
+    # * The min is needed in case the shard size is larger than the length in that dimension
+    ds = ds.chunk({dim: min(shard, ds.sizes[dim]) for dim, shard in zip(dims, shards, strict=True)})
+
     try:
         store_ds = xr.open_zarr(dst, consolidated=False)
         # If the time to be added is already in the store, don't do anything
@@ -69,7 +100,7 @@ def write_to_zarr(
             write_empty_chunks=False,
             zarr_format=3,
             compute=True,
-            encoding=encoding(ds),
+            encoding=encoding(ds=ds, dims=dims, chunks=chunks, shards=shards),
         )
         return None
 
@@ -91,16 +122,31 @@ def write_to_zarr(
 
     return None
 
+
 def write_to_icechunk(
     ds: xr.Dataset,
     repo: icechunk.repository.Repository,
-    branch: str = "main",
-    append_dim: str = "time",
+    branch: str,
+    append_dim: str,
+    chunks: list[int],
+    shards: list[int],
+    dims: list[str],
 ) -> None:
     """Write the given dataset to the icechunk repository.
 
     If a Zarr store already exists at the given path, the dataset will be appended to it.
     """
+    if dims != list(ds.dims):
+        raise ValueError(
+            "Provided dimensions do not match dataset dimensions."
+            f" Provided: {dims}, Dataset: {list(ds.dims)}. "
+            "Ensure process step outputs dimensions in the order specified here.",
+        )
+
+    # Set the dask chunksizes to be the shard sizes for efficient writing
+    # * The min is needed in case the shard size is larger than the length in that dimension
+    ds = ds.chunk({dim: min(shard, ds.sizes[dim]) for dim, shard in zip(dims, shards, strict=True)})
+
     session = repo.writable_session(branch=branch)
     try:
         store_ds: xr.Dataset = xr.open_zarr(session.store, consolidated=False)
@@ -113,7 +159,7 @@ def write_to_icechunk(
             obj=ds,
             session=session,
             mode="w-",
-            encoding=encoding(ds),
+            encoding=encoding(ds=ds, dims=dims, chunks=chunks, shards=shards),
         )
         _ = session.commit(message="initial commit")
         return None
@@ -137,6 +183,7 @@ def write_to_icechunk(
     )
 
     return None
+
 
 def get_fs(
     path: str,

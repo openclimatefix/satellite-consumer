@@ -3,7 +3,6 @@
 import datetime as dt
 import importlib.resources
 import logging
-import sys
 import time
 
 import importlib_metadata
@@ -15,7 +14,6 @@ from satellite_consumer import consume, models
 log = logging.getLogger(__name__)
 
 
-
 def main() -> None:
     """Entrypoint to the consumer.
 
@@ -23,11 +21,6 @@ def main() -> None:
     """
     conf_file = importlib.resources.files("satellite_consumer.cmd").joinpath("application.conf")
     conf: pyhocon.ConfigTree = pyhocon.ConfigFactory.parse_string(conf_file.read_text())
-
-    logging.basicConfig(
-        stream=sys.stdout,
-        level=logging.getLevelName(conf.get_string("consumer.loglevel").upper()),
-    )
 
     if conf.get_string("sentry.dsn") != "":
         sentry_sdk.init(
@@ -56,6 +49,10 @@ def main() -> None:
         for ch in conf.get_config(f"sensors.{sensor}.channels")
         if resolution in conf.get_list(f"sensors.{sensor}.channels.{ch}.res")
     ]
+    if len(channels) == 0:
+        raise ValueError(
+            f"No channels found for satellite {sat} at resolution {resolution!s} meters",
+        )
 
     # Get the geostationary crop bounds from the region string
     crop_region_geos: tuple[float, float, float, float] | None = None
@@ -72,6 +69,7 @@ def main() -> None:
 
     prog_start = time.time()
 
+    log.info(f"sat consumer run starting for {sat} from {dt_range[0]} to {dt_range[1]}")
 
     consume.consume_to_store(
         dt_range=dt_range,
@@ -97,9 +95,14 @@ def main() -> None:
             conf.get_string("credentials.aws.region", None),
         ),
         gcs_credentials=conf.get_string("credentials.gcs.application_credentials", None),
+        dims_chunks_shards=(
+            conf.get_list(f"satellites.{sat}.dimensions"),
+            conf.get_list(f"satellites.{sat}.chunks"),
+            conf.get_list(f"satellites.{sat}.shards"),
+        ),
     )
 
-    log.info(f"satellite consumer finished in {time.time() - prog_start!s}.")
+    log.info(f"sat consumer finished in {time.time() - prog_start!s}")
 
 
 def _transform_crop_region(

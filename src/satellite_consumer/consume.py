@@ -17,21 +17,25 @@ log = logging.getLogger(__name__)
 
 
 def consume_to_store(
-        dt_range: tuple[dt.datetime, dt.datetime],
-        cadence_mins: int,
-        product_id: str,
-        filter_regex: str,
-        raw_zarr_paths: tuple[str, str],
-        channels: list[models.SpectralChannel],
-        resolution_meters: int,
-        crop_region_geos: tuple[float, float, float, float] | None,
-        eumetsat_credentials: tuple[str, str],
-        icechunk: bool = False,
-        aws_credentials: tuple[
-            str | None, str | None, str | None, str | None,
-        ] = (None, None, None, None),
-        gcs_credentials: str | None = None,
-    ) -> None:
+    dt_range: tuple[dt.datetime, dt.datetime],
+    cadence_mins: int,
+    product_id: str,
+    filter_regex: str,
+    raw_zarr_paths: tuple[str, str],
+    channels: list[models.SpectralChannel],
+    resolution_meters: int,
+    crop_region_geos: tuple[float, float, float, float] | None,
+    eumetsat_credentials: tuple[str, str],
+    dims_chunks_shards: tuple[list[str], list[int], list[int]],
+    icechunk: bool = False,
+    aws_credentials: tuple[
+        str | None,
+        str | None,
+        str | None,
+        str | None,
+    ] = (None, None, None, None),
+    gcs_credentials: str | None = None,
+) -> None:
     """Consume satellite data into a zarr store."""
     product_iter = get_products_iterator(
         product_id=product_id,
@@ -51,17 +55,15 @@ def consume_to_store(
             gcs_token=gcs_credentials,
         )
 
-    num_skipped: int = 0
     # Iterate through all products in search
-    for p in product_iter:
+    for i, p in enumerate(product_iter):
+        log.info("processing product %d: %s", i+1, p.sensing_end)
+
         raw_filepaths = download_raw(
             product=p,
             folder=raw_zarr_paths[0],
             filter_regex=filter_regex,
         )
-        if len(raw_filepaths) == 0:
-            num_skipped += 1
-            continue
         ds = process_raw(
             paths=raw_filepaths,
             channels=channels,
@@ -69,9 +71,23 @@ def consume_to_store(
             crop_region_geos=crop_region_geos,
         )
         if icechunk:
-            storage.write_to_icechunk(ds=ds, repo=repo)
+            storage.write_to_icechunk(
+                ds=ds,
+                repo=repo,
+                branch="main",
+                append_dim="time",
+                dims=dims_chunks_shards[0],
+                chunks=dims_chunks_shards[1],
+                shards=dims_chunks_shards[2],
+            )
         else:
-            storage.write_to_zarr(ds=ds, dst=raw_zarr_paths[1])
+            storage.write_to_zarr(
+                ds=ds,
+                dst=raw_zarr_paths[1],
+                append_dim="time",
+                dims=dims_chunks_shards[0],
+                chunks=dims_chunks_shards[1],
+                shards=dims_chunks_shards[2],
+            )
 
-    log.debug("skips=%d, path=%s, finished writes", num_skipped, raw_zarr_paths[1])
-
+    log.info("path=%s, finished %d writes", raw_zarr_paths[1], i+1)
