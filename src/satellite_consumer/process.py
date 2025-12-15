@@ -124,7 +124,7 @@ def _map_scene_to_dataset(
         instrument=("time", [platform_name]),
         cal_slope=(["time", "channel"], [cal_slope]),
         cal_offset=(["time", "channel"], [cal_offset]),
-        **{k: ("time", [v]) for k, v in orbital_params.items()} # type: ignore
+        **{k: ("time", [v]) for k, v in orbital_params.items()}, # type: ignore
     )
 
     # Increase clarity of coordinates, including coordinate dimension names and attributes
@@ -168,7 +168,6 @@ def _serialize_dict(d: dict[str, Any]) -> dict[str, Any]:
 
 def stack_channels_to_dim(ds: xr.Dataset, channels: list[models.SpectralChannel]) -> xr.Dataset:
     """Stack the channels into a new dimension and filter and compile metadata."""
-
     top_level_attrs = ["reader", "area", "georef_offset_corrected", "sensor"]
     attrs = {k: v for k, v in ds.attrs.items() if k in top_level_attrs}
     attrs["satellite_consumer_version"] = importlib.metadata.version("satellite_consumer")
@@ -180,7 +179,7 @@ def stack_channels_to_dim(ds: xr.Dataset, channels: list[models.SpectralChannel]
         attrs["channels"][channel.name] = {
             k:v for k, v in ds[channel.name].attrs.items() if k in channel_attrs
         }
-    
+
     ds = (
         ds.to_dataarray(name="data", dim="channel")
         .to_dataset(promote_attrs=False)
