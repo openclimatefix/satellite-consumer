@@ -77,29 +77,28 @@ def download_raw(
     fs = get_fs(path=folder)
     # Filter to only product files we care about
     raw_files: list[str] = [p for p in product.entries if re.search(filter_regex, p)]
+    rounded_time: dt.datetime = (
+        pd.Timestamp(product.sensing_end)
+            .round(f"{cadence_mins} min")
+            .to_pydatetime()
+            .astimezone(tz=dt.UTC)
+    )
 
     downloaded_files: list[str] = []
-
-    if existing_times is not None:
-        rounded_time: dt.datetime = (
-            pd.Timestamp(product.sensing_end)
-                .round(f"{cadence_mins} min")
-                .to_pydatetime()
-                .astimezone(tz=dt.UTC)
+    if existing_times is not None and rounded_time in existing_times:
+        log.debug(
+            "time %s exists in store, skipping",
+            rounded_time.strftime("%Y-%m-%dT%H:%M"),
         )
-        if rounded_time in existing_times:
-            log.debug(
-                "time %s exists in store, skipping",
-                rounded_time.strftime("%Y-%m-%dT%H:%M"),
-            )
-            return []
+        return []
 
     for i, raw_file in enumerate(raw_files):
         if product.qualityStatus != "NOMINAL":
             log.warning("%s not nominal, skipping", product)
             continue
 
-        filepath: str = f"{folder}/{raw_file}"
+        date_folder: str = rounded_time.strftime("%Y/%m/%d")
+        filepath: str = f"{folder}/{date_folder}/{raw_file}"
         try:
             if fs.exists(filepath):
                 log.debug("file %s exists, skipping", raw_file)
