@@ -92,7 +92,7 @@ def download_raw(
         )
         return []
 
-    for i, raw_file in enumerate(raw_files):
+    for raw_file in raw_files:
         if product.qualityStatus != "NOMINAL":
             log.warning("%s not nominal, skipping", product)
             continue
@@ -110,7 +110,7 @@ def download_raw(
                 "Ensure you have the required access permissions.",
             ) from e
 
-        for i in range(retries + 1):
+        for i in range(retries):
             try:
                 # Copying to temp then putting seems to be quicker than copying to fs
                 with (
