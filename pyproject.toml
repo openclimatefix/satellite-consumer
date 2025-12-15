@@ -67,7 +67,7 @@ where = ["src"]
 exclude = ["test*"]
 
 [tool.setuptools.package-data]
-"*" = ["py.typed"]
+"*" = ["py.typed", "*.conf"]
 
 [tool.setuptools-git-versioning]
 enabled = true

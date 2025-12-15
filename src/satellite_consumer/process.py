@@ -1,11 +1,11 @@
 """Functions for processing satellite data."""
 
 import datetime as dt
+import importlib.metadata
 import warnings
 from typing import Any
 
 import hdf5plugin  # noqa: F401
-import importlib_metadata
 import numpy as np
 import pandas as pd
 import pyresample.geometry
@@ -162,7 +162,7 @@ def _filter_attrs(scene: Scene) -> dict[str, Any]:
         for k, v in scene[next(iter(scene.wishlist))].attrs.items()
         if k in ["reader", "area", "georef_offset_corrected", "sensor"]
     }
-    attrs["satellite_consumer_version"] = importlib_metadata.version("satellite_consumer")
+    attrs["satellite_consumer_version"] = importlib.metadata.version("satellite_consumer")
 
     # For each channel, add their attributes to the top-level dataset attributes
     attrs["channels"] = {}

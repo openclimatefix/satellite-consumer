@@ -2625,7 +2625,7 @@ wheels = [
 
 [[package]]
 name = "satellite-consumer"
-version = "0.3.4.post4+git.c165da3e.dirty"
+version = "0.3.4.post4+git.5102edda.dirty"
 source = { editable = "." }
 dependencies = [
     { name = "cartopy" },

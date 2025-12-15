@@ -1,11 +1,11 @@
 """Entrypoint to the satellite consumer."""
 
 import datetime as dt
+import importlib.metadata
 import importlib.resources
 import logging
 import time
 
-import importlib_metadata
 import pyhocon
 import sentry_sdk
 
@@ -29,8 +29,7 @@ def main() -> None:
             traces_sample_rate=1,
         )
         sentry_sdk.set_tag("app_name", "satellite_consumer")
-        sentry_sdk.set_tag("app_version", importlib_metadata.version("satellite_consumer"))
-
+        sentry_sdk.set_tag("app_version", importlib.metadata.version("satellite_consumer"))
 
     sat: str = conf.get_string("consumer.satellite")
     dt_range: tuple[dt.datetime, dt.datetime] = (
@@ -69,7 +68,13 @@ def main() -> None:
 
     prog_start = time.time()
 
-    log.info(f"sat consumer run starting for {sat} from {dt_range[0]} to {dt_range[1]}")
+    log.info(
+        "sat consumer %s starting for %s from %s to %s",
+        importlib.metadata.version("satellite_consumer"),
+        sat,
+        dt_range[0].isoformat(),
+        dt_range[1].isoformat(),
+    )
 
     consume.consume_to_store(
         dt_range=dt_range,
@@ -115,6 +120,7 @@ def _transform_crop_region(
 ) -> tuple[float | int, float | int, float | int, float | int]:
     """Transform lat/lon crop region to geostationary format."""
     import pyproj
+
     transformer = pyproj.Transformer.from_proj(
         pyproj.Proj(proj="latlong", datum="WGS84"),
         pyproj.Proj(
@@ -132,6 +138,6 @@ def _transform_crop_region(
     )
     return geos_bounds
 
+
 if __name__ == "__main__":
     main()
-
