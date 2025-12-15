@@ -64,7 +64,6 @@ def download_raw(
     folder: str,
     filter_regex: str,
     retries: int = 6,
-    existing_times: list[dt.datetime] | None = None,
     cadence_mins: int = 5,
 ) -> list[str]:
     """Download a product to filesystem.
@@ -72,7 +71,7 @@ def download_raw(
     EUMDAC products are collections of files, with a `.nat` file containing the data,
     and with `.xml` files containing metadata.
     This function only downloads the `.nat` files, skipping any files that are already present in
-    the folder or that correspond to already existing times.
+    the folder.
     """
     fs = get_fs(path=folder)
     # Filter to only product files we care about
@@ -85,13 +84,6 @@ def download_raw(
     )
 
     downloaded_files: list[str] = []
-    if existing_times is not None and rounded_time in existing_times:
-        log.debug(
-            "time %s exists in store, skipping",
-            rounded_time.strftime("%Y-%m-%dT%H:%M"),
-        )
-        return []
-
     for raw_file in raw_files:
         if product.qualityStatus != "NOMINAL":
             log.warning("%s not nominal, skipping", product)

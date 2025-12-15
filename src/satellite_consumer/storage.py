@@ -1,5 +1,6 @@
 """Storage module for reading and writing data to disk."""
 
+import datetime as dt
 import logging
 import re
 from typing import Any
@@ -8,6 +9,7 @@ import fsspec
 import gcsfs
 import icechunk
 import numpy as np
+import pandas as pd
 import s3fs
 import xarray as xr
 import zarr
@@ -62,9 +64,9 @@ def encoding(
     }
 
 
-def write_to_zarr(
+def write_to_store(
     ds: xr.Dataset,
-    dst: str,
+    dst: str | icechunk.repository.Repository,
     append_dim: str,
     chunks: list[int],
     shards: list[int],
@@ -72,7 +74,7 @@ def write_to_zarr(
 ) -> None:
     """Write the given dataset to the destination.
 
-    If a Zarr store already exists at the given path, the dataset will be appended to it.
+    If a store already exists at the given path, the dataset will be appended to it.
     """
     if dims != list(ds.dims):
         raise ValueError(
@@ -83,25 +85,40 @@ def write_to_zarr(
 
     # Set the dask chunksizes to be the shard sizes for efficient writing
     # * The min is needed in case the shard size is larger than the length in that dimension
-    ds = ds.chunk({dim: min(shard, ds.sizes[dim]) for dim, shard in zip(dims, shards, strict=True)})
+    ds = ds.chunk(
+        chunks={dim: min(shard, ds.sizes[dim]) for dim, shard in zip(dims, shards, strict=True)},
+    )
 
     try:
-        store_ds = xr.open_zarr(dst, consolidated=False)
-        # If the time to be added is already in the store, don't do anything
-        if np.isin(ds.coords[append_dim].values, store_ds.coords[append_dim].values).all():
-            return None
-
+        if isinstance(dst, icechunk.repository.Repository):
+            session = dst.writable_session(branch="main")
+            store_ds: xr.Dataset = xr.open_zarr(session.store, consolidated=False)
+        elif isinstance(dst, str):
+            store_ds = xr.open_zarr(dst, consolidated=False)
     except (FileNotFoundError, zarr.errors.GroupNotFoundError):
         # Write new store, specifying encodings
-        _ = ds.to_zarr(
-            dst,
-            mode="w-",
-            consolidated=False,
-            write_empty_chunks=False,
-            zarr_format=3,
-            compute=True,
-            encoding=encoding(ds=ds, dims=dims, chunks=chunks, shards=shards),
-        )
+        if isinstance(dst, icechunk.repository.Repository):
+            to_icechunk(
+                obj=ds,
+                session=session,
+                mode="w-",
+                encoding=encoding(ds=ds, dims=dims, chunks=chunks, shards=shards),
+            )
+            _ = session.commit(message="initial commit")
+        elif isinstance(dst, str):
+            _ = ds.to_zarr(
+                dst,
+                mode="w-",
+                consolidated=False,
+                write_empty_chunks=False,
+                zarr_format=3,
+                compute=True,
+                encoding=encoding(ds=ds, dims=dims, chunks=chunks, shards=shards),
+            )
+        return None
+
+    # If the time to be added is already in the store, don't do anything
+    if np.isin(ds.coords[append_dim].values, store_ds.coords[append_dim].values).all():
         return None
 
     # Check the non-appending dimensions match
@@ -109,80 +126,52 @@ def write_to_zarr(
         store_ds[[d for d in store_ds.dims if d != append_dim]],
     ):
         raise ValueError("Non-appending dimensions do not match existing store")
+
     # * Append the new time dimension coordinate
-    _ = ds.to_zarr(
-        store=dst,
-        mode="a",
-        append_dim=append_dim,
-        compute=True,
-        write_empty_chunks=False,
-        zarr_format=3,
-        consolidated=False,
-    )
-
-    return None
-
-
-def write_to_icechunk(
-    ds: xr.Dataset,
-    repo: icechunk.repository.Repository,
-    branch: str,
-    append_dim: str,
-    chunks: list[int],
-    shards: list[int],
-    dims: list[str],
-) -> None:
-    """Write the given dataset to the icechunk repository.
-
-    If a Zarr store already exists at the given path, the dataset will be appended to it.
-    """
-    if dims != list(ds.dims):
-        raise ValueError(
-            "Provided dimensions do not match dataset dimensions."
-            f" Provided: {dims}, Dataset: {list(ds.dims)}. "
-            "Ensure process step outputs dimensions in the order specified here.",
-        )
-
-    # Set the dask chunksizes to be the shard sizes for efficient writing
-    # * The min is needed in case the shard size is larger than the length in that dimension
-    ds = ds.chunk({dim: min(shard, ds.sizes[dim]) for dim, shard in zip(dims, shards, strict=True)})
-
-    session = repo.writable_session(branch=branch)
-    try:
-        store_ds: xr.Dataset = xr.open_zarr(session.store, consolidated=False)
-        # If the time to be added is already in the store, don't do anything
-        if np.isin(ds.coords[append_dim].values, store_ds.coords[append_dim].values).all():
-            return None
-
-    except (FileNotFoundError, zarr.errors.GroupNotFoundError):
+    if isinstance(dst, icechunk.repository.Repository):
         to_icechunk(
             obj=ds,
             session=session,
-            mode="w-",
-            encoding=encoding(ds=ds, dims=dims, chunks=chunks, shards=shards),
+            append_dim=append_dim,
+            mode="a",
         )
-        _ = session.commit(message="initial commit")
-        return None
-
-    # Check the non-appending dimensions match
-    if not ds[[d for d in ds.dims if d != append_dim]].equals(
-        store_ds[[d for d in store_ds.dims if d != append_dim]],
-    ):
-        raise ValueError("Non-appending dimensions do not match existing store")
-
-    to_icechunk(
-        obj=ds,
-        session=session,
-        append_dim=append_dim,
-        mode="a",
-    )
-    _ = session.commit(
-        message=f"add data for {ds.coords[append_dim].values}",
-        rebase_with=icechunk.ConflictDetector(),
-        rebase_tries=5,
-    )
+        _ = session.commit(
+            message=f"add data for {ds.coords[append_dim].values}",
+            rebase_with=icechunk.ConflictDetector(),
+            rebase_tries=5,
+        )
+    elif isinstance(dst, str):
+        _ = ds.to_zarr(
+            store=dst,
+            mode="a",
+            append_dim=append_dim,
+            compute=True,
+            write_empty_chunks=False,
+            zarr_format=3,
+            consolidated=False,
+        )
 
     return None
+
+
+def get_existing_times(
+    dst: str | icechunk.repository.Repository,
+    time_dim: str,
+) -> list[dt.datetime]:
+    """Get the existing times in the store."""
+    try:
+        if isinstance(dst, str):
+            store_ds: xr.Dataset = xr.open_zarr(dst, consolidated=False)
+        elif isinstance(dst, icechunk.repository.Repository):
+            session = dst.readonly_session(branch="main")
+            store_ds = xr.open_zarr(session.store, consolidated=False)
+    except (FileNotFoundError, zarr.errors.GroupNotFoundError):
+        return []
+
+    return [
+        pd.Timestamp(t).to_pydatetime().astimezone(tz=dt.UTC)
+        for t in store_ds.coords[time_dim].values
+    ]
 
 
 def get_fs(

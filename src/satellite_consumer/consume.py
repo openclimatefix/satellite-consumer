@@ -5,6 +5,9 @@ Consolidates the old cli_downloader, backfill_hrv and backfill_nonhrv scripts.
 
 import datetime as dt
 import logging
+from typing import TYPE_CHECKING
+
+import pandas as pd
 
 from satellite_consumer import models, storage
 from satellite_consumer.download_eumetsat import (
@@ -12,6 +15,9 @@ from satellite_consumer.download_eumetsat import (
     get_products_iterator,
 )
 from satellite_consumer.process import process_raw
+
+if TYPE_CHECKING:
+    import icechunk.repository
 
 log = logging.getLogger(__name__)
 
@@ -27,7 +33,7 @@ def consume_to_store(
     crop_region_geos: tuple[float, float, float, float] | None,
     eumetsat_credentials: tuple[str, str],
     dims_chunks_shards: tuple[list[str], list[int], list[int]],
-    icechunk: bool = False,
+    use_icechunk: bool = False,
     aws_credentials: tuple[
         str | None,
         str | None,
@@ -45,8 +51,9 @@ def consume_to_store(
         credentials=eumetsat_credentials,
     )
 
-    if icechunk:
-        repo = storage.get_icechunk_repo(
+    dst: str | icechunk.repository.Repository = raw_zarr_paths[1]
+    if use_icechunk:
+        dst = storage.get_icechunk_repo(
             raw_zarr_paths[1],
             aws_access_key_id=aws_credentials[0],
             aws_secret_access_key=aws_credentials[1],
@@ -55,9 +62,27 @@ def consume_to_store(
             gcs_token=gcs_credentials,
         )
 
+    existing_times = storage.get_existing_times(dst=dst, time_dim="time")
+
     # Iterate through all products in search
+    num_skips: int = 0
     for i, p in enumerate(product_iter):
-        log.info("processing product %d: %s", i+1, p.sensing_end)
+        log.info("processing product %d: %s", i + 1, p.sensing_end)
+        rounded_time: dt.datetime = (
+            pd.Timestamp(p.sensing_end)
+            .round(f"{cadence_mins} min")
+            .to_pydatetime()
+            .astimezone(tz=dt.UTC)
+        )
+
+        if rounded_time in existing_times:
+            log.debug(
+                "skipping product %d at %s, already in store",
+                i + 1,
+                rounded_time,
+            )
+            num_skips += 1
+            continue
 
         raw_filepaths = download_raw(
             product=p,
@@ -70,24 +95,13 @@ def consume_to_store(
             resolution_meters=resolution_meters,
             crop_region_geos=crop_region_geos,
         )
-        if icechunk:
-            storage.write_to_icechunk(
-                ds=ds,
-                repo=repo,
-                branch="main",
-                append_dim="time",
-                dims=dims_chunks_shards[0],
-                chunks=dims_chunks_shards[1],
-                shards=dims_chunks_shards[2],
-            )
-        else:
-            storage.write_to_zarr(
-                ds=ds,
-                dst=raw_zarr_paths[1],
-                append_dim="time",
-                dims=dims_chunks_shards[0],
-                chunks=dims_chunks_shards[1],
-                shards=dims_chunks_shards[2],
-            )
+        storage.write_to_store(
+            ds=ds,
+            dst=dst,
+            append_dim="time",
+            dims=dims_chunks_shards[0],
+            chunks=dims_chunks_shards[1],
+            shards=dims_chunks_shards[2],
+        )
 
-    log.info("path=%s, finished %d writes", raw_zarr_paths[1], i+1)
+    log.info("path=%s, skips=%d, finished %d writes", raw_zarr_paths[1], num_skips, i + 1)

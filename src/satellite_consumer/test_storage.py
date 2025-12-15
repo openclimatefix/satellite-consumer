@@ -5,7 +5,7 @@ from typing import TypedDict
 import numpy as np
 import xarray as xr
 
-from satellite_consumer.storage import get_fs, write_to_zarr
+from satellite_consumer.storage import get_fs, write_to_store
 from satellite_consumer.test_mocks import mocks3
 
 
@@ -53,7 +53,7 @@ class TestStorage(unittest.TestCase):
 
             for test in tests:
                 with self.subTest(name=test["name"]):
-                    write_to_zarr(
+                    write_to_store(
                         ds=ds,
                         dst=test["dst"],
                         append_dim="time",

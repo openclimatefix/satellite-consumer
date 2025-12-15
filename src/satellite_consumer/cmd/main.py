@@ -92,7 +92,7 @@ def main() -> None:
             conf.get_string("credentials.eumetsat.key"),
             conf.get_string("credentials.eumetsat.secret"),
         ),
-        icechunk=conf.get_bool("consumer.use_icechunk"),
+        use_icechunk=conf.get_bool("consumer.use_icechunk"),
         aws_credentials=(
             conf.get_string("credentials.aws.access_key_id", None),
             conf.get_string("credentials.aws.secret_access_key", None),
