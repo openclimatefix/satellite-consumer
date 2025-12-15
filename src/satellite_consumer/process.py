@@ -186,6 +186,9 @@ def stack_channels_to_dim(ds: xr.Dataset, channels: list[models.SpectralChannel]
         .sel(channel=[c.name for c in channels])
     )
 
+    # Replace the attrs with the compiled version
+    ds.attrs = attrs
+
     return ds
 
 
