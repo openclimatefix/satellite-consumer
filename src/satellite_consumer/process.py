@@ -103,7 +103,7 @@ def _map_scene_to_dataset(
     lons, _ = ds.data_vars["data"].attrs["area"].get_lonlats()
     nan_frac = ds.data_vars["data"].isnull().where(np.isfinite(lons)).mean().values
     if nan_frac > 0.13:
-        raise ValueError(f"Too many NaN values on-disk in the data array: {nan_frac}")
+        raise ValueError(f"Too many NaN values on earth-disk in the data array: {nan_frac}")
 
     # Ensure DataArray has a time dimension
     rounded_time = pd.Timestamp(ds.data_vars["data"].attrs["time_parameters"]["nominal_end_time"])
