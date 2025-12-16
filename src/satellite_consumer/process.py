@@ -94,15 +94,11 @@ def _map_scene_to_dataset(
             .load()
         )
 
-    # Satpy returns a latlon ndarray that is infinite off-earth-disk
-    # Use this as a mask to check there are not too many NaNs on-earth-disk
-    # * RSS has 12.5% on-disk NaNs for their L1.5 data, so we allow up to 13%
-    lons, _ = ds.attrs["area"].get_lonlats()
-    channel_nan_fracs = list(ds.isnull().where(np.isfinite(lons)).mean().values())
-    mean_nan_frac = np.mean(channel_nan_fracs).item()
+    # RSS has 12.5% on-disk NaNs for their L1.5 data, so we allow up to 13%
+    nan_frac = get_earthdisk_nan_frac(ds)
 
-    if mean_nan_frac > 0.13:
-        raise ValueError(f"Too many NaN values on earth-disk in the data array: {mean_nan_frac}")
+    if nan_frac > 0.13:
+        raise ValueError(f"Too many NaN values on earth-disk in the data array: {nan_frac}")
 
     # Extract values from attributes before we overwrite them
     cal_slope, cal_offset = _get_calib_coefficients(ds, channels)
@@ -209,3 +205,28 @@ def _get_calib_coefficients(
     cal_offset = [calib_attrs["CalOffset"][c.satpy_index] for c in channels]
 
     return cal_slope, cal_offset
+
+
+def get_earthdisk_nan_frac(ds: xr.Dataset, chunksize: int = 500) -> float:
+    """Calculate the fraction of NaN values on the earth-disk in the dataset."""
+
+    # Use chunking to speed up the lon-lat generation
+    chunks = [
+        [
+            min(chunksize, ds.sizes[dim] - i*chunksize) 
+            for i in range(int(np.ceil(ds.sizes[dim]/chunksize)))
+        ] for dim in ["y", "x"]
+    ]
+
+    # This returns a lon-lat ndarray that is infinite off-earth-disk
+    # Use this as a mask to check how many NaNs there are on-earth-disk
+    lons, _ = ds.attrs["area"].get_lonlats(chunks=chunks)
+    on_earth_mask = np.isfinite(lons).compute()
+    
+    # Calculate the mean NaN fraction on-earth-disk for each channel
+    # We do this in a loop to avoid slow xarray operations
+    ds_nan = ds.isnull()
+    channel_nan_fracs = [
+        ds_nan.data_vars[var].values[on_earth_mask].mean() for var in ds_nan.data_vars
+    ]
+    return np.mean(channel_nan_fracs).item()
