@@ -86,60 +86,59 @@ def _map_scene_to_dataset(
         but it is important to be aware of it.
     """
     # Convert the Scene to a DataArray, filtering to the desired data variables
-    for channel in scene.wishlist:
-        scene[channel] = scene[channel].drop_vars("acq_time", errors="ignore")
-
     with warnings.catch_warnings(action="ignore"):
         ds: xr.Dataset = (
             scene.to_xarray_dataset() # type: ignore
-            .drop_vars("acq_time", errors="ignore")[[c.name for c in channels]]
-            .to_dataarray(name="data", dim="channel")
-            .to_dataset(promote_attrs=False)
+            .drop_vars(["acq_time", "crs"], errors="ignore")
+            .astype(np.float32)
+            .load()
         )
 
     # Satpy returns a latlon ndarray that is infinite off-earth-disk
     # Use this as a mask to check there are not too many NaNs on-earth-disk
     # * RSS has 12.5% on-disk NaNs for their L1.5 data, so we allow up to 13%
-    lons, _ = ds.data_vars["data"].attrs["area"].get_lonlats()
-    nan_frac = ds.data_vars["data"].isnull().where(np.isfinite(lons)).mean().values
-    if nan_frac > 0.13:
-        raise ValueError(f"Too many NaN values on earth-disk in the data array: {nan_frac}")
+    lons, _ = ds.attrs["area"].get_lonlats()
+    channel_nan_fracs = list(ds.isnull().where(np.isfinite(lons)).mean().values())
+    mean_nan_frac = np.mean(channel_nan_fracs).item()
 
-    # Ensure DataArray has a time dimension
-    rounded_time = pd.Timestamp(ds.data_vars["data"].attrs["time_parameters"]["nominal_end_time"])
+    if mean_nan_frac > 0.13:
+        raise ValueError(f"Too many NaN values on earth-disk in the data array: {mean_nan_frac}")
+
+    # Extract values from attributes before we overwrite them
+    cal_slope, cal_offset = _get_calib_coefficients(ds, channels)
+    time = pd.Timestamp(ds.attrs["time_parameters"]["nominal_end_time"])
+    platform_name = ds.attrs["platform_name"]
+    orbital_params = {
+        f"satellite_actual_{k}": float(ds.attrs["orbital_parameters"][f"satellite_actual_{k}"])
+        for k in ["longitude", "latitude", "altitude"]
+    }
+
+    # Stack channels into a new dimension and compile the metadata
+    ds = stack_channels_to_dim(ds, channels)
+
+    # Ensure Dataset has a time dimension
     if "time" not in ds.dims:
-        time = pd.to_datetime(rounded_time)
         ds = ds.expand_dims({"time": [time]})
 
-    # Add the satellite coordinates, and satellite name as non-dimensional coords
-    # These are pulled from the first channel, as they are identical across the board
-    cal_slope, cal_offset = _get_calib_coefficients(scene, channels)
-    first_satpy_channel = scene[next(iter(scene.wishlist))]
     ds = ds.assign(
-        instrument=("time", [first_satpy_channel.attrs["platform_name"]]),
+        instrument=("time", [platform_name]),
         cal_slope=(["time", "channel"], [cal_slope]),
         cal_offset=(["time", "channel"], [cal_offset]),
-        **{ # type: ignore
-            k: ("time", [float(first_satpy_channel.attrs["orbital_parameters"][k])])
-            for k in [
-                "satellite_actual_longitude",
-                "satellite_actual_latitude",
-                "satellite_actual_altitude",
-            ]
-        },
+        **{k: ("time", [v]) for k, v in orbital_params.items()}, # type: ignore
     )
 
     # Increase clarity of coordinates, including coordinate dimension names and attributes
     ds = ds.rename({"x": "x_geostationary", "y": "y_geostationary"})
-    for name in ["x_geostationary", "y_geostationary"]:
-        ds.coords[name].attrs["coordinate_reference_system"] = "geostationary"
+    for coord in ["x_geostationary", "y_geostationary"]:
+        ds.coords[coord].attrs["coordinate_reference_system"] = "geostationary"
 
     ds = (
         ds.transpose("time", "y_geostationary", "x_geostationary", "channel")
         .sortby(["y_geostationary", "x_geostationary"])
-        .sel(channel=[c.name for c in channels])
     )
-    ds["data"] = ds["data"].astype(np.float32)
+
+    # Serialize attributes to be JSON-compatible
+    ds.attrs = _serialize_dict(ds.attrs)
 
     if crop_region_geos is not None:
         ds = ds.sel(
@@ -147,67 +146,66 @@ def _map_scene_to_dataset(
             y_geostationary=slice(crop_region_geos[1], crop_region_geos[3]),
         )
 
-    del ds["crs"]
-    ds = ds.load()
+    return ds
 
-    ds.data_vars["data"].attrs = _filter_attrs(scene=scene)
+
+def _serialize_dict(d: dict[str, Any]) -> dict[str, Any]:
+    """Recursive helper function to serialize nested dicts."""
+    sd: dict[str, Any] = {}
+    for key, value in d.items():
+        if isinstance(value, dt.datetime):
+            sd[key] = value.isoformat()
+        elif isinstance(value, bool | np.bool_):
+            sd[key] = str(value)
+        elif isinstance(value, pyresample.geometry.AreaDefinition):
+            sd[key] = yaml.load(value.dump(), Loader=yaml.SafeLoader) # type: ignore
+        elif isinstance(value, dict):
+            sd[key] = _serialize_dict(value)
+        else:
+            sd[key] = str(value)
+    return sd
+
+
+def stack_channels_to_dim(ds: xr.Dataset, channels: list[models.SpectralChannel]) -> xr.Dataset:
+    """Stack the channels into a new dimension and filter and compile metadata."""
+    top_level_attrs = ["reader", "area", "georef_offset_corrected", "sensor"]
+    attrs = {k: v for k, v in ds.attrs.items() if k in top_level_attrs}
+    attrs["satellite_consumer_version"] = importlib.metadata.version("satellite_consumer")
+
+    # For each channel, add their attributes to the top-level dataset attributes
+    channel_attrs = ["units", "wavelength", "standard_name", "calibration", "resolution"]
+    attrs["channels"] = {}
+    for channel in channels:
+        attrs["channels"][channel.name] = {
+            k:v for k, v in ds[channel.name].attrs.items() if k in channel_attrs
+        }
+
+    ds = (
+        ds.to_dataarray(name="data", dim="channel")
+        .to_dataset(promote_attrs=False)
+        .sel(channel=[c.name for c in channels])
+    )
+
+    # Replace the attrs with the compiled version
+    ds.attrs = attrs
 
     return ds
 
 
-def _filter_attrs(scene: Scene) -> dict[str, Any]:
-    """Filter the attributes returned by satpy down to a subset of interest."""
-    attrs: dict[str, Any] = {
-        k: v
-        for k, v in scene[next(iter(scene.wishlist))].attrs.items()
-        if k in ["reader", "area", "georef_offset_corrected", "sensor"]
-    }
-    attrs["satellite_consumer_version"] = importlib.metadata.version("satellite_consumer")
-
-    # For each channel, add their attributes to the top-level dataset attributes
-    attrs["channels"] = {}
-    for channel in scene.wishlist:
-        attrs["channels"][channel["name"]] = {}
-        for attr in [
-            ca
-            for ca in scene[channel].attrs
-            if ca in ["units", "wavelength", "standard_name", "calibration", "resolution"]
-        ]:
-            attrs["channels"][channel["name"]][attr] = scene[channel].attrs[attr]
-
-    def _serialize(d: dict[str, Any]) -> dict[str, Any]:
-        """Recursive helper function to serialize nested dicts."""
-        sd: dict[str, Any] = {}
-        for key, value in d.items():
-            if isinstance(value, dt.datetime):
-                sd[key] = value.isoformat()
-            elif isinstance(value, bool | np.bool_):
-                sd[key] = str(value)
-            elif isinstance(value, pyresample.geometry.AreaDefinition):
-                sd[key] = yaml.load(value.dump(), Loader=yaml.SafeLoader) # type: ignore
-            elif isinstance(value, dict):
-                sd[key] = _serialize(value)
-            else:
-                sd[key] = str(value)
-        return sd
-
-    return _serialize(attrs)
-
-
 def _get_calib_coefficients(
-    scene: Scene,
+    ds: xr.Dataset,
     channels: list[models.SpectralChannel],
 ) -> tuple[list[float], list[float]]:
     """Pull the calibration slope and offset for each channel.
 
     These values effectively act as a y=mx+c to convert from raw counts to radiance.
     """
-    calib_attrs = scene[channels[0].name].attrs["raw_metadata"]["15_DATA_HEADER"][
-        "RadiometricProcessing"
-    ]["Level15ImageCalibration"]
+    calib_attrs = (
+        ds.attrs["raw_metadata"]["15_DATA_HEADER"]["RadiometricProcessing"]
+        ["Level15ImageCalibration"]
+    )
 
     cal_slope = [calib_attrs["CalSlope"][c.satpy_index] for c in channels]
     cal_offset = [calib_attrs["CalOffset"][c.satpy_index] for c in channels]
 
     return cal_slope, cal_offset
-
