@@ -128,10 +128,9 @@ def _map_scene_to_dataset(
     for coord in ["x_geostationary", "y_geostationary"]:
         ds.coords[coord].attrs["coordinate_reference_system"] = "geostationary"
 
-    ds = (
-        ds.transpose("time", "y_geostationary", "x_geostationary", "channel")
-        .sortby(["y_geostationary", "x_geostationary"])
-    )
+    # Make sure dimensions and coordinates are in expected order
+    ds = ds.transpose("time", "y_geostationary", "x_geostationary", "channel")
+    ds = sort_xy_coords(ds)
 
     # Serialize attributes to be JSON-compatible
     ds.attrs = _serialize_dict(ds.attrs)
@@ -229,3 +228,19 @@ def get_earthdisk_nan_frac(ds: xr.Dataset, chunksize: int = 500) -> float:
         ds_nan.data_vars[var].values[on_earth_mask].mean() for var in ds_nan.data_vars
     ]
     return float(np.mean(channel_nan_fracs))
+
+
+def sort_xy_coords(ds: xr.Dataset) -> xr.Dataset:
+    """Sort the Dataset spatial coordinates in ascending order."""
+    for dim in ["x_geostationary", "y_geostationary"]:
+        dim_diffs = np.diff(ds[dim].values)
+        # If coord is in monotonic descending order, reverse it
+        if (dim_diffs < 0).all():
+            ds = ds.isel({dim: slice(None, None, -1)})
+
+        # Else check that it is monotonic ascending
+        else:
+            if not (dim_diffs > 0).all():
+                raise ValueError(f"{dim} coordinate is not monotonic.")
+
+    return ds
