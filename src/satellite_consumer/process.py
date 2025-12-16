@@ -228,4 +228,4 @@ def get_earthdisk_nan_frac(ds: xr.Dataset, chunksize: int = 500) -> float:
     channel_nan_fracs = [
         ds_nan.data_vars[var].values[on_earth_mask].mean() for var in ds_nan.data_vars
     ]
-    return np.mean(channel_nan_fracs).item()
+    return float(np.mean(channel_nan_fracs))
