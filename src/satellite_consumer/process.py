@@ -209,11 +209,10 @@ def _get_calib_coefficients(
 
 def get_earthdisk_nan_frac(ds: xr.Dataset, chunksize: int = 500) -> float:
     """Calculate the fraction of NaN values on the earth-disk in the dataset."""
-
     # Use chunking to speed up the lon-lat generation
     chunks = [
         [
-            min(chunksize, ds.sizes[dim] - i*chunksize) 
+            min(chunksize, ds.sizes[dim] - i*chunksize)
             for i in range(int(np.ceil(ds.sizes[dim]/chunksize)))
         ] for dim in ["y", "x"]
     ]
@@ -222,7 +221,7 @@ def get_earthdisk_nan_frac(ds: xr.Dataset, chunksize: int = 500) -> float:
     # Use this as a mask to check how many NaNs there are on-earth-disk
     lons, _ = ds.attrs["area"].get_lonlats(chunks=chunks)
     on_earth_mask = np.isfinite(lons).compute()
-    
+
     # Calculate the mean NaN fraction on-earth-disk for each channel
     # We do this in a loop to avoid slow xarray operations
     ds_nan = ds.isnull()
