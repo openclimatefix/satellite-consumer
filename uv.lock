@@ -2428,7 +2428,7 @@ wheels = [
 
 [[package]]
 name = "satellite-consumer"
-version = "0.3.4.post5+git.afd40f36.dirty"
+version = "0.3.4.post12+git.8c3ecc0e.dirty"
 source = { editable = "." }
 dependencies = [
     { name = "eumdac" },
@@ -2475,7 +2475,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "requests", specifier = ">=2.32.3" },
     { name = "s3fs", specifier = ">=2025.2.0" },
-    { name = "satpy", extras = ["seviri-l1b-native", "seviri-l1b-nc"], specifier = ">=0.54.0" },
+    { name = "satpy", extras = ["seviri-l1b-native", "seviri-l1b-nc"], specifier = ">=0.54.0,<1.0.0" },
     { name = "sentry-sdk", specifier = ">=2.33.2" },
     { name = "xarray", specifier = ">=2025.11.0" },
     { name = "zarr", specifier = ">=3.1.5" },

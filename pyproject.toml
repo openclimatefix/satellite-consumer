@@ -21,7 +21,7 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
 ]
 dependencies = [
-    "satpy[seviri-l1b-native,seviri-l1b-nc]>=0.54.0",
+    "satpy[seviri-l1b-native,seviri-l1b-nc]>=0.54.0,<1.0.0",
     "pyhocon>=0.3.61",
     "xarray>=2025.11.0",
     "eumdac>=3.0.0",
