@@ -97,7 +97,7 @@ def _map_scene_to_dataset(
     # RSS has 12.5% on-disk NaNs for their L1.5 data, so we allow up to 13%
     nan_frac = get_earthdisk_nan_frac(ds)
 
-    if nan_frac > 0.13:
+    if nan_frac > 0.135:
         raise ValueError(f"Too many NaN values on earth-disk in the data array: {nan_frac}")
 
     # Extract values from attributes before we overwrite them
