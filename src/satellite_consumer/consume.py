@@ -31,7 +31,7 @@ def consume_to_store(
     raw_zarr_paths: tuple[str, str],
     channels: list[models.SpectralChannel],
     resolution_meters: int,
-    crop_region_geos: tuple[float, float, float, float] | None,
+    crop_region_lonlat: tuple[float, float, float, float] | None,
     eumetsat_credentials: tuple[str, str],
     dims_chunks_shards: tuple[list[str], list[int], list[int]],
     use_icechunk: bool = False,
@@ -105,7 +105,7 @@ def consume_to_store(
             paths=raw_filepaths,
             channels=channels,
             resolution_meters=resolution_meters,
-            crop_region_geos=crop_region_geos,
+            crop_region_lonlat=crop_region_lonlat,
         )
         storage.write_to_store(
             ds=ds,

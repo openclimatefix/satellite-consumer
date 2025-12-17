@@ -53,17 +53,15 @@ def main() -> None:
             f"No channels found for satellite {sat} at resolution {resolution!s} meters",
         )
 
-    # Get the geostationary crop bounds from the region string
-    crop_region_geos: tuple[float, float, float, float] | None = None
+    # Get the lon-lat crop bounds from the region string
+    crop_region_lonlat: tuple[float, float, float, float] | None = None
     crop_region: str = conf.get_string("consumer.crop_region")
     if crop_region != "":
-        crop_region_geos = _transform_crop_region(
-            left=conf.get_float(f"regions.{crop_region}.left"),
-            bottom=conf.get_float(f"regions.{crop_region}.bottom"),
-            right=conf.get_float(f"regions.{crop_region}.right"),
-            top=conf.get_float(f"regions.{crop_region}.top"),
-            satellite_height=conf.get_float(f"satellites.{sat}.height"),
-            satellite_longitude=conf.get_float(f"satellites.{sat}.longitude"),
+        crop_region_lonlat = (
+            conf.get_float(f"regions.{crop_region}.left"),
+            conf.get_float(f"regions.{crop_region}.bottom"),
+            conf.get_float(f"regions.{crop_region}.right"),
+            conf.get_float(f"regions.{crop_region}.top"),
         )
 
     prog_start = time.time()
@@ -87,7 +85,7 @@ def main() -> None:
         ),
         channels=channels,
         resolution_meters=resolution,
-        crop_region_geos=crop_region_geos,
+        crop_region_lonlat=crop_region_lonlat,
         eumetsat_credentials=(
             conf.get_string("credentials.eumetsat.key"),
             conf.get_string("credentials.eumetsat.secret"),
@@ -108,35 +106,6 @@ def main() -> None:
     )
 
     log.info(f"sat consumer finished in {time.time() - prog_start!s}")
-
-
-def _transform_crop_region(
-    left: float,
-    bottom: float,
-    right: float,
-    top: float,
-    satellite_height: float,
-    satellite_longitude: float,
-) -> tuple[float | int, float | int, float | int, float | int]:
-    """Transform lat/lon crop region to geostationary format."""
-    import pyproj
-
-    transformer = pyproj.Transformer.from_proj(
-        pyproj.Proj(proj="latlong", datum="WGS84"),
-        pyproj.Proj(
-            proj="geos",
-            h=satellite_height,
-            lon_0=satellite_longitude,
-            sweep="y",
-        ),
-    )
-    geos_bounds = transformer.transform_bounds(
-        left=left,
-        bottom=bottom,
-        right=right,
-        top=top,
-    )
-    return geos_bounds
 
 
 if __name__ == "__main__":
