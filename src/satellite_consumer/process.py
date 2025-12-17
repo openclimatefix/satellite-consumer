@@ -9,9 +9,9 @@ import hdf5plugin  # noqa: F401
 import numpy as np
 import pandas as pd
 import pyproj
-from pyresample.geometry import AreaDefinition
 import xarray as xr
 import yaml
+from pyresample.geometry import AreaDefinition
 from satpy.scene import Scene
 
 from satellite_consumer import models
@@ -104,7 +104,7 @@ def _map_scene_to_dataset(
         for k in ["longitude", "latitude", "altitude"]
     }
     area_def: AreaDefinition = ds.attrs["area"]
-    
+
     # RSS has 12.5% on-disk NaNs for their L1.5 data, so we allow up to 13.5%
     nan_frac = get_earthdisk_nan_frac(ds, area_def)
     if nan_frac > 0.135:
@@ -143,7 +143,7 @@ def _map_scene_to_dataset(
             pyproj.Proj(area_def.crs),
             always_xy=True,
         )
-        
+
         left, bottom, right, top = transformer.transform_bounds(
             left=crop_region_lonlat[0],
             bottom=crop_region_lonlat[1],
