@@ -237,7 +237,7 @@ def get_earthdisk_nan_frac(
 
     # This returns a lon-lat ndarray that is infinite off-earth-disk
     # Use this as a mask to check how many NaNs there are on-earth-disk
-    lons, _ = area_def.get_lonlats(chunks=chunks)
+    lons, _ = area_def.get_lonlats(chunks=chunks) # type: ignore
     on_earth_mask = np.isfinite(lons).compute()
 
     # Calculate the mean NaN fraction on-earth-disk for each channel
