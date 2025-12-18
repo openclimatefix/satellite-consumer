@@ -14,8 +14,8 @@ from satellite_consumer.download_eumetsat import (
     download_raw,
     get_products_iterator,
 )
-from satellite_consumer.process import process_raw
 from satellite_consumer.exceptions import ValidationError
+from satellite_consumer.process import process_raw
 
 if TYPE_CHECKING:
     import icechunk.repository
