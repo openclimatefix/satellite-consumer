@@ -15,7 +15,7 @@ import eumdac.product
 import eumdac.token
 import pandas as pd
 
-from satellite_consumer.exceptions import DownloadError
+from satellite_consumer.exceptions import DownloadError, ValidationError
 from satellite_consumer.storage import get_fs
 
 if TYPE_CHECKING:
@@ -128,6 +128,9 @@ def download_raw(
             raise DownloadError(
                 f"Failed to download output '{raw_file}' after {retries} attempts.",
             )
+
+    if len(downloaded_files) == 0:
+        raise ValidationError(f"No files downloaded for product '{product}'.")
 
     return downloaded_files
 

@@ -15,6 +15,7 @@ from satellite_consumer.download_eumetsat import (
     get_products_iterator,
 )
 from satellite_consumer.process import process_raw
+from satellite_consumer.exceptions import ValidationError
 
 if TYPE_CHECKING:
     import icechunk.repository
@@ -84,11 +85,22 @@ def consume_to_store(
             num_skips += 1
             continue
 
-        raw_filepaths = download_raw(
-            product=p,
-            folder=raw_zarr_paths[0],
-            filter_regex=filter_regex,
-        )
+        try:
+            raw_filepaths = download_raw(
+                product=p,
+                folder=raw_zarr_paths[0],
+                filter_regex=filter_regex,
+            )
+        except ValidationError as e:
+            log.warning(
+                "skipping product %d at %s, download failed: %s",
+                i + 1,
+                rounded_time,
+                str(e),
+            )
+            num_skips += 1
+            continue
+
         ds = process_raw(
             paths=raw_filepaths,
             channels=channels,
