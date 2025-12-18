@@ -8,9 +8,10 @@ from typing import Any
 import hdf5plugin  # noqa: F401
 import numpy as np
 import pandas as pd
-import pyresample.geometry
+import pyproj
 import xarray as xr
 import yaml
+from pyresample.geometry import AreaDefinition
 from satpy.scene import Scene
 
 from satellite_consumer import models
@@ -20,7 +21,7 @@ def process_raw(
     paths: list[str],
     channels: list[models.SpectralChannel],
     resolution_meters: int,
-    crop_region_geos: tuple[float, float, float, float] | None = None,
+    crop_region_lonlat: tuple[float, float, float, float] | None = None,
 ) -> xr.Dataset:
     """Process a set of raw files into an xarray DataArray.
 
@@ -28,8 +29,8 @@ def process_raw(
         paths: List of file paths to raw satellite data files.
         channels: List of channels to extract.
         resolution_meters: Desired spatial resolution in meters.
-        crop_region_geos: Optional tuple defining the geostationary coordinate
-            region to crop to, in the form (x_min, y_min, x_max, y_max).
+        crop_region_lonlat: Optional tuple defining the lon-lat coordinate
+            region to crop to, in the form (lon_min, lat_min, lon_max, lat_max).
     """
     try:
         # Meteosat 3rd gen don't output .nat files, and so requires a different loader
@@ -62,7 +63,7 @@ def process_raw(
         ds: xr.Dataset = _map_scene_to_dataset(
             scene=scene,
             channels=channels,
-            crop_region_geos=crop_region_geos,
+            crop_region_lonlat=crop_region_lonlat,
         )
     except Exception as e:
         raise ValueError(f"Error converting paths to Dataset: {e}") from e
@@ -73,7 +74,7 @@ def process_raw(
 def _map_scene_to_dataset(
     scene: Scene,
     channels: list[models.SpectralChannel],
-    crop_region_geos: tuple[float, float, float, float] | None = None,
+    crop_region_lonlat: tuple[float, float, float, float] | None = None,
 ) -> xr.Dataset:
     """Converts a Scene with satellite data into a data array.
 
@@ -94,20 +95,20 @@ def _map_scene_to_dataset(
             .load()
         )
 
-    # RSS has 12.5% on-disk NaNs for their L1.5 data, so we allow up to 13%
-    nan_frac = get_earthdisk_nan_frac(ds)
-
-    if nan_frac > 0.135:
-        raise ValueError(f"Too many NaN values on earth-disk in the data array: {nan_frac}")
-
     # Extract values from attributes before we overwrite them
     cal_slope, cal_offset = _get_calib_coefficients(ds, channels)
     time = pd.Timestamp(ds.attrs["time_parameters"]["nominal_end_time"])
-    platform_name = ds.attrs["platform_name"]
-    orbital_params = {
+    platform_name: str = ds.attrs["platform_name"]
+    orbital_params: dict[str, float] = {
         f"satellite_actual_{k}": float(ds.attrs["orbital_parameters"][f"satellite_actual_{k}"])
         for k in ["longitude", "latitude", "altitude"]
     }
+    area_def: AreaDefinition = ds.attrs["area"]
+
+    # RSS has 12.5% on-disk NaNs for their L1.5 data, so we allow up to 13.5%
+    nan_frac = get_earthdisk_nan_frac(ds, area_def)
+    if nan_frac > 0.135:
+        raise ValueError(f"Too many NaN values on earth-disk in the data array: {nan_frac}")
 
     # Stack channels into a new dimension and compile the metadata
     ds = stack_channels_to_dim(ds, channels)
@@ -135,10 +136,24 @@ def _map_scene_to_dataset(
     # Serialize attributes to be JSON-compatible
     ds.attrs = _serialize_dict(ds.attrs)
 
-    if crop_region_geos is not None:
+    if crop_region_lonlat is not None:
+
+        transformer = pyproj.Transformer.from_proj(
+            pyproj.Proj(proj="latlong", datum="WGS84"),
+            pyproj.Proj(area_def.crs),
+            always_xy=True,
+        )
+
+        left, bottom, right, top = transformer.transform_bounds(
+            left=crop_region_lonlat[0],
+            bottom=crop_region_lonlat[1],
+            right=crop_region_lonlat[2],
+            top=crop_region_lonlat[3],
+        )
+
         ds = ds.sel(
-            x_geostationary=slice(crop_region_geos[0], crop_region_geos[2]),
-            y_geostationary=slice(crop_region_geos[1], crop_region_geos[3]),
+            x_geostationary=slice(left, right),
+            y_geostationary=slice(bottom, top),
         )
 
     return ds
@@ -152,7 +167,7 @@ def _serialize_dict(d: dict[str, Any]) -> dict[str, Any]:
             sd[key] = value.isoformat()
         elif isinstance(value, bool | np.bool_):
             sd[key] = str(value)
-        elif isinstance(value, pyresample.geometry.AreaDefinition):
+        elif isinstance(value, AreaDefinition):
             sd[key] = yaml.load(value.dump(), Loader=yaml.SafeLoader) # type: ignore
         elif isinstance(value, dict):
             sd[key] = _serialize_dict(value)
@@ -206,7 +221,11 @@ def _get_calib_coefficients(
     return cal_slope, cal_offset
 
 
-def get_earthdisk_nan_frac(ds: xr.Dataset, chunksize: int = 500) -> float:
+def get_earthdisk_nan_frac(
+    ds: xr.Dataset,
+    area_def: AreaDefinition,
+    chunksize: int = 500,
+) -> float:
     """Calculate the fraction of NaN values on the earth-disk in the dataset."""
     # Use chunking to speed up the lon-lat generation
     chunks = [
@@ -218,7 +237,7 @@ def get_earthdisk_nan_frac(ds: xr.Dataset, chunksize: int = 500) -> float:
 
     # This returns a lon-lat ndarray that is infinite off-earth-disk
     # Use this as a mask to check how many NaNs there are on-earth-disk
-    lons, _ = ds.attrs["area"].get_lonlats(chunks=chunks)
+    lons, _ = area_def.get_lonlats(chunks=chunks) # type: ignore
     on_earth_mask = np.isfinite(lons).compute()
 
     # Calculate the mean NaN fraction on-earth-disk for each channel
