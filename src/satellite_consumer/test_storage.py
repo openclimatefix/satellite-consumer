@@ -45,9 +45,14 @@ class TestStorage(unittest.TestCase):
                         np.ones(shape=(1, 1392, 3712, 2)),
                     ),
                     "instrument": (["time"], ["FAKE"]),
+                    "cal_slope": (["time", "channel"], [[1.0, 1.0]]),
+                    "cal_offset": (["time", "channel"], [[1.0, 1.0]]),
                     "satellite_actual_longitude": (["time"], [0.0]),
                     "satellite_actual_latitude": (["time"], [0.0]),
                     "satellite_actual_altitude": (["time"], [35786023.0]),
+                    "projection_longitude": (["time"], [0.0]),
+                    "projection_latitude": (["time"], [0.0]),
+                    "projection_altitude": (["time"], [35786023.0]),
                 },
             )
 
