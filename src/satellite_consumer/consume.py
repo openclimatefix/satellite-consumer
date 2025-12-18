@@ -91,29 +91,28 @@ def consume_to_store(
                 folder=raw_zarr_paths[0],
                 filter_regex=filter_regex,
             )
+            ds = process_raw(
+                paths=raw_filepaths,
+                channels=channels,
+                resolution_meters=resolution_meters,
+                crop_region_lonlat=crop_region_lonlat,
+            )
+            storage.write_to_store(
+                ds=ds,
+                dst=dst,
+                append_dim="time",
+                dims=dims_chunks_shards[0],
+                chunks=dims_chunks_shards[1],
+                shards=dims_chunks_shards[2],
+            )
         except ValidationError as e:
             log.warning(
-                "skipping product %d at %s, download failed: %s",
+                "skipping invalid product %d at %s: %s",
                 i + 1,
                 rounded_time,
                 str(e),
             )
             num_skips += 1
             continue
-
-        ds = process_raw(
-            paths=raw_filepaths,
-            channels=channels,
-            resolution_meters=resolution_meters,
-            crop_region_lonlat=crop_region_lonlat,
-        )
-        storage.write_to_store(
-            ds=ds,
-            dst=dst,
-            append_dim="time",
-            dims=dims_chunks_shards[0],
-            chunks=dims_chunks_shards[1],
-            shards=dims_chunks_shards[2],
-        )
 
     log.info("path=%s, skips=%d, finished %d writes", raw_zarr_paths[1], num_skips, i + 1)

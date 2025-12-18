@@ -15,6 +15,7 @@ from pyresample.geometry import AreaDefinition
 from satpy.scene import Scene
 
 from satellite_consumer import models
+from satellite_consumer.exceptions import ValidationError
 
 
 def process_raw(
@@ -108,7 +109,7 @@ def _map_scene_to_dataset(
     # RSS has 12.5% on-disk NaNs for their L1.5 data, so we allow up to 13.5%
     nan_frac = get_earthdisk_nan_frac(ds, area_def)
     if nan_frac > 0.135:
-        raise ValueError(f"Too many NaN values on earth-disk in the data array: {nan_frac}")
+        raise ValidationError(f"Too many NaN values on earth-disk in the data array: {nan_frac}")
 
     # Stack channels into a new dimension and compile the metadata
     ds = stack_channels_to_dim(ds, channels)
