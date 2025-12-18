@@ -60,14 +60,11 @@ def process_raw(
     except Exception as e:
         raise OSError(f"Error reading paths as satpy Scene: {e}") from e
 
-    try:
-        ds: xr.Dataset = _map_scene_to_dataset(
-            scene=scene,
-            channels=channels,
-            crop_region_lonlat=crop_region_lonlat,
-        )
-    except Exception as e:
-        raise ValueError(f"Error converting paths to Dataset: {e}") from e
+    ds: xr.Dataset = _map_scene_to_dataset(
+        scene=scene,
+        channels=channels,
+        crop_region_lonlat=crop_region_lonlat,
+    )
 
     return ds
 
