@@ -97,22 +97,20 @@ def _map_scene_to_dataset(
         )
 
     # Extract values from attributes before we overwrite them
-    cal_slope, cal_offset = _get_calib_coefficients(ds, channels)
     time = pd.Timestamp(ds.attrs["time_parameters"]["nominal_end_time"])
     platform_name: str = ds.attrs["platform_name"]
-    orbital_params: dict[str, float] = {
-        f"satellite_actual_{k}": float(ds.attrs["orbital_parameters"][f"satellite_actual_{k}"])
-        for k in ["longitude", "latitude", "altitude"]
-    }
     area_def: AreaDefinition = ds.attrs["area"]
+    cal_slope, cal_offset = _get_calib_coefficients(ds, channels)
+    orbital_params = _get_orbital_params(ds)
+    
 
     # RSS has 12.5% on-disk NaNs for their L1.5 data, so we allow up to 13.5%
-    nan_frac = get_earthdisk_nan_frac(ds, area_def)
+    nan_frac = _get_earthdisk_nan_frac(ds, area_def)
     if nan_frac > 0.135:
         raise ValidationError(f"Too many NaN values on earth-disk in the data array: {nan_frac}")
 
     # Stack channels into a new dimension and compile the metadata
-    ds = stack_channels_to_dim(ds, channels)
+    ds = _stack_channels_to_dim(ds, channels)
 
     # Ensure Dataset has a time dimension
     if "time" not in ds.dims:
@@ -132,7 +130,7 @@ def _map_scene_to_dataset(
 
     # Make sure dimensions and coordinates are in expected order
     ds = ds.transpose("time", "y_geostationary", "x_geostationary", "channel")
-    ds = sort_xy_coords(ds)
+    ds = _sort_xy_coords(ds)
 
     # Serialize attributes to be JSON-compatible
     ds.attrs = _serialize_dict(ds.attrs)
@@ -177,7 +175,7 @@ def _serialize_dict(d: dict[str, Any]) -> dict[str, Any]:
     return sd
 
 
-def stack_channels_to_dim(ds: xr.Dataset, channels: list[models.SpectralChannel]) -> xr.Dataset:
+def _stack_channels_to_dim(ds: xr.Dataset, channels: list[models.SpectralChannel]) -> xr.Dataset:
     """Stack the channels into a new dimension and filter and compile metadata."""
     top_level_attrs = ["reader", "area", "georef_offset_corrected", "sensor"]
     attrs = {k: v for k, v in ds.attrs.items() if k in top_level_attrs}
@@ -222,7 +220,16 @@ def _get_calib_coefficients(
     return cal_slope, cal_offset
 
 
-def get_earthdisk_nan_frac(
+def _get_orbital_params(ds: xr.Dataset) -> dict[str, float]:
+    """Extract orbital parameters from the dataset attributes."""
+    keys = [
+        "satellite_actual_longitude", "satellite_actual_latitude",  "satellite_actual_altitude",
+        "projection_longitude", "projection_latitude",  "projection_altitude",
+    ]
+    return {k: float(ds.attrs["orbital_parameters"][k]) for k in keys}
+
+
+def _get_earthdisk_nan_frac(
     ds: xr.Dataset,
     area_def: AreaDefinition,
     chunksize: int = 500,
@@ -250,7 +257,7 @@ def get_earthdisk_nan_frac(
     return float(np.mean(channel_nan_fracs))
 
 
-def sort_xy_coords(ds: xr.Dataset) -> xr.Dataset:
+def _sort_xy_coords(ds: xr.Dataset) -> xr.Dataset:
     """Sort the Dataset spatial coordinates in ascending order."""
     for dim in ["x_geostationary", "y_geostationary"]:
         dim_diffs = np.diff(ds[dim].values)
