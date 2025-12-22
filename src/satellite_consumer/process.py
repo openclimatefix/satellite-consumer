@@ -114,7 +114,7 @@ def _map_scene_to_dataset(
         ds = ds.expand_dims({"time": [time]})
 
     ds = ds.assign(
-        instrument=("time", [platform_name]),
+        instrument=("time", np.array([platform_name]).astype("<U26")),
         cal_slope=(["time", "channel"], [cal_slope]),
         cal_offset=(["time", "channel"], [cal_offset]),
         **{k: ("time", [v]) for k, v in orbital_params.items()}, # type: ignore

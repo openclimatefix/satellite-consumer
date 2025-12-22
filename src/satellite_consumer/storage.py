@@ -50,7 +50,7 @@ def encoding(
             "chunks": chunks,
             "shards": shards,
         },
-        "instrument": {"dtype": "str"},
+        "instrument": {"dtype": "<U26"},
         "satellite_actual_longitude": {"dtype": "float32"},
         "satellite_actual_latitude": {"dtype": "float32"},
         "satellite_actual_altitude": {"dtype": "float32"},
