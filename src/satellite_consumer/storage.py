@@ -1,190 +1,234 @@
 """Storage module for reading and writing data to disk."""
 
 import datetime as dt
-import os
+import logging
 import re
-import tempfile
-import warnings
+from typing import Any
 
 import fsspec
 import gcsfs
 import icechunk
 import numpy as np
+import pandas as pd
 import s3fs
 import xarray as xr
 import zarr
+import zarr.codecs
+import zarr.errors
+import zarr.storage
 from fsspec.implementations.local import LocalFileSystem
-from loguru import logger as log
+from icechunk.xarray import to_icechunk
 
-from satellite_consumer.config import Coordinates
+log = logging.getLogger(__name__)
 
 
-def write_to_zarr(
-    da: xr.DataArray,
-    dst: str,
+def encoding(
+    ds: xr.Dataset,
+    dims: list[str],
+    chunks: list[int],
+    shards: list[int],
+) -> dict[str, Any]:
+    """Get the encoding dictionary for writing the dataset to Zarr."""
+    # Replace -1's with full dimension sizes
+    chunks = [
+        cd[0] if cd[0] > 0 else len(ds.coords[cd[1]].values)
+        for cd in zip(chunks, dims, strict=True)
+    ]
+    shards = [
+        sd[0] if sd[0] > 0 else len(ds.coords[sd[1]].values)
+        for sd in zip(shards, dims, strict=True)
+    ]
+
+    return {
+        "data": {
+            "compressors": zarr.codecs.BloscCodec(
+                cname="zstd",
+                clevel=3,
+                shuffle=zarr.codecs.BloscShuffle.bitshuffle,
+            ),
+            "fill_value": np.float32(np.nan),
+            "chunks": chunks,
+            "shards": shards,
+        },
+        "instrument": {"dtype": "<U26"},
+        "satellite_actual_longitude": {"dtype": "float32"},
+        "satellite_actual_latitude": {"dtype": "float32"},
+        "satellite_actual_altitude": {"dtype": "float32"},
+        # Coordinates
+        "channel": {"dtype": "str"},
+        "time": {
+            "dtype": "int",
+            "units": "nanoseconds since 1970-01-01",
+            "calendar": "proleptic_gregorian",
+        },
+    }
+
+
+def write_to_store(
+    ds: xr.Dataset,
+    dst: str | icechunk.repository.Repository,
+    append_dim: str,
+    chunks: list[int],
+    shards: list[int],
+    dims: list[str],
 ) -> None:
-    """Write the given data array to the given zarr store.
+    """Write the given dataset to the destination.
 
-    If a Zarr store already exists at the given path, the DataArray will be appended to it.
-
-    Any attributes on the dataarray object are serialized to json-compatible strings.
-
-    Args:
-        da: The data array to write as a Zarr store.
-        dst: The path to the Zarr store to write to. Can be a local filepath or S3 URL.
+    If a store already exists at the given path, the dataset will be appended to it.
     """
-    log.debug("Writing to store", coords=da.coords.sizes, dst=dst)
+    if dims != list(ds.dims):
+        raise ValueError(
+            "Provided dimensions do not match dataset dimensions."
+            f" Provided: {dims}, Dataset: {list(ds.dims)}. "
+            "Ensure process step outputs dimensions in the order specified here.",
+        )
+
+    # Set the dask chunksizes to be the shard sizes for efficient writing
+    # * The min is needed in case the shard size is larger than the length in that dimension
+    ds = ds.chunk(
+        chunks={dim: min(shard, ds.sizes[dim]) for dim, shard in zip(dims, shards, strict=True)},
+    )
+
     try:
-        # TODO: Remove warnings catch when Zarr makes up its mind on time objects
-        with warnings.catch_warnings(action="ignore"):
-            store_da: xr.DataArray = xr.open_dataarray(dst, engine="zarr", consolidated=False)
-
-        time_idx: int = list(store_da.coords["time"].values).index(da.coords["time"].values[0])
-        log.debug("Writing dataarray to zarr store", dst=dst, time_idx=time_idx)
-
-        with warnings.catch_warnings(action="ignore"):
-            _ = da.to_dataset(name="data", promote_attrs=True).to_zarr(
-                store=dst,
-                compute=True,
-                mode="a",
-                consolidated=False,
-                region={
-                    "time": slice(time_idx, time_idx + 1),
-                    "y_geostationary": slice(0, len(store_da.coords["y_geostationary"])),
-                    "x_geostationary": slice(0, len(store_da.coords["x_geostationary"])),
-                    "variable": "auto",
-                },
+        if isinstance(dst, icechunk.repository.Repository):
+            session = dst.writable_session(branch="main")
+            store_ds: xr.Dataset = xr.open_zarr(session.store, consolidated=False)
+        elif isinstance(dst, str):
+            store_ds = xr.open_zarr(dst, consolidated=False)
+    except (FileNotFoundError, zarr.errors.GroupNotFoundError):
+        # Write new store, specifying encodings
+        if isinstance(dst, icechunk.repository.Repository):
+            to_icechunk(
+                obj=ds,
+                session=session,
+                mode="w-",
+                encoding=encoding(ds=ds, dims=dims, chunks=chunks, shards=shards),
             )
-    except Exception as e:
-        raise OSError(f"Error writing dataset to zarr store {dst}: {e}") from e
+            _ = session.commit(message="initial commit")
+        elif isinstance(dst, str):
+            _ = ds.to_zarr(
+                dst,
+                mode="w-",
+                consolidated=False,
+                write_empty_chunks=False,
+                zarr_format=3,
+                compute=True,
+                encoding=encoding(ds=ds, dims=dims, chunks=chunks, shards=shards),
+            )
+        return None
+
+    # If the time to be added is already in the store, don't do anything
+    if np.isin(ds.coords[append_dim].values, store_ds.coords[append_dim].values).all():
+        return None
+
+    # Check the non-appending dimensions match
+    if not ds[[d for d in ds.dims if d != append_dim]].equals(
+        store_ds[[d for d in store_ds.dims if d != append_dim]],
+    ):
+        raise ValueError("Non-appending dimensions do not match existing store")
+
+    # * Append the new time dimension coordinate
+    if isinstance(dst, icechunk.repository.Repository):
+        to_icechunk(
+            obj=ds,
+            session=session,
+            append_dim=append_dim,
+            mode="a",
+        )
+        _ = session.commit(
+            message=f"add data for {ds.coords[append_dim].values}",
+            rebase_with=icechunk.ConflictDetector(),
+            rebase_tries=5,
+        )
+    elif isinstance(dst, str):
+        _ = ds.to_zarr(
+            store=dst,
+            mode="a",
+            append_dim=append_dim,
+            compute=True,
+            write_empty_chunks=False,
+            zarr_format=3,
+            consolidated=False,
+        )
 
     return None
 
 
-def create_latest_zip(src: str, time_slice: slice) -> str:
-    """Extract the latest windowed data from the store and write it to a zipped zarr."""
-    repo, _ = get_icechunk_repo(path=src)
-    session: icechunk.Session = repo.readonly_session(branch="main")
-    store_ds: xr.Dataset = xr.open_zarr(session.store, consolidated=False)
-    fs = get_fs(src)
-    dst = src.rsplit("/", 1)[0] + "/latest.zarr.zip"
+def get_existing_times(
+    dst: str | icechunk.repository.Repository,
+    time_dim: str,
+) -> list[dt.datetime]:
+    """Get the existing times in the store."""
+    try:
+        if isinstance(dst, str):
+            store_ds: xr.Dataset = xr.open_zarr(dst, consolidated=False)
+        elif isinstance(dst, icechunk.repository.Repository):
+            session = dst.readonly_session(branch="main")
+            store_ds = xr.open_zarr(session.store, consolidated=False)
+    except (FileNotFoundError, zarr.errors.GroupNotFoundError):
+        return []
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".zarr.zip") as tmpzip:
-        with zarr.storage.ZipStore(mode="w", path=tmpzip.name) as store:
-            store_ds.isel({"time": time_slice}).to_zarr( #type: ignore
-                store=store,
-                consolidated=False,
-                mode="w",
-            )
-        fs.put(tmpzip.name, dst)
-
-    return dst
-
-
-def create_empty_zarr(dst: str, coords: Coordinates) -> xr.DataArray:
-    """Create an empty zarr store at the given path.
-
-    Coordinate values are written to the zarr store as arrays.
-    The array is initialized with NaN values.
-    """
-    group: zarr.Group = zarr.create_group(dst, overwrite=True)
-
-    time_zarray: zarr.Array = group.create_array(
-        name="time",
-        dimension_names=["time"],
-        shape=(len(coords.time),),
-        dtype="int",
-        attributes={
-            "units": "nanoseconds since 1970-01-01",
-            "calendar": "proleptic_gregorian",
-        },
-    )
-    time_zarray[:] = coords.time
-
-    y_geo_zarray = group.create_array(
-        name="y_geostationary",
-        dimension_names=["y_geostationary"],
-        shape=(len(coords.y_geostationary),),
-        dtype="float",
-        attributes={
-            "coordinate_reference_system": "geostationary",
-        },
-    )
-    y_geo_zarray[:] = coords.y_geostationary
-
-    x_geo_zarray = group.create_array(
-        name="x_geostationary",
-        dimension_names=["x_geostationary"],
-        shape=(len(coords.x_geostationary),),
-        dtype="float",
-        attributes={
-            "coordinate_reference_system": "geostationary",
-        },
-    )
-    x_geo_zarray[:] = coords.x_geostationary
-
-    # TODO: Remove this when Zarr makes up its mind on string codecs
-    with warnings.catch_warnings(action="ignore"):
-        var_zarray = group.create_array(
-            name="variable",
-            dimension_names=["variable"],
-            shape=(len(coords.variable),),
-            dtype="str",
-        )
-        var_zarray[:] = coords.variable
-
-    _ = group.create_array(
-        name="data",
-        dimension_names=coords.dims(),
-        dtype="float",
-        shape=coords.shape(),
-        chunks=coords.chunks(),
-        shards=coords.shards(),
-        fill_value=np.nan,
-        config={"write_empty_chunks": False},
-    )
-
-    with warnings.catch_warnings(action="ignore"):
-        da = xr.open_dataarray(dst, engine="zarr", consolidated=False)
-
-    log.debug("Created empty zarr store", dst=dst, coords=da.coords.sizes)
-    return da
+    return [
+        pd.Timestamp(t).to_pydatetime().astimezone(tz=dt.UTC)
+        for t in store_ds.coords[time_dim].values
+    ]
 
 
-def get_fs(path: str) -> fsspec.AbstractFileSystem:
+def get_fs(
+    path: str,
+    aws_access_key_id: str | None = None,
+    aws_secret_access_key: str | None = None,
+    aws_region_name: str | None = None,
+    aws_endpoint_url: str | None = None,
+    gcs_token: str | None = None,
+) -> fsspec.AbstractFileSystem:
     """Get relevant filesystem for the given path.
 
     Args:
         path: The path to get the filesystem for. Use a protocol compatible with fsspec
             e.g. `s3://bucket-name/path/to/file` for remote access.
+        aws_access_key_id: AWS access key ID for S3 access.
+        aws_secret_access_key: AWS secret access key for S3 access.
+        aws_region_name: AWS region name for S3 access.
+        aws_endpoint_url: AWS endpoint URL for S3 access.
+        gcs_token: GCS token for GCS access.
     """
     fs: fsspec.AbstractFileSystem = LocalFileSystem(auto_mkdir=True)
     if path.startswith("s3://"):
         fs = s3fs.S3FileSystem(
             anon=False,
-            key=os.getenv("AWS_ACCESS_KEY_ID", None),
-            secret=os.getenv("AWS_SECRET_ACCESS_KEY", None),
+            key=aws_access_key_id,
+            secret=aws_secret_access_key,
             client_kwargs={
-                "region_name": os.getenv("AWS_REGION", "eu-west-1"),
-                "endpoint_url": os.getenv("AWS_ENDPOINT", None),
+                "region_name": aws_region_name,
+                "endpoint_url": aws_endpoint_url,
             },
         )
     elif path.startswith("gcs://"):
         fs = gcsfs.GCSFileSystem(
-            token=os.getenv("GOOGLE_APPLICATION_CREDENTIALS", None),
+            token=gcs_token,
         )
     return fs
 
 
-def get_icechunk_repo(path: str) -> tuple[icechunk.Repository, list[dt.datetime]]:
+def get_icechunk_repo(
+    path: str,
+    aws_access_key_id: str | None = None,
+    aws_secret_access_key: str | None = None,
+    aws_region_name: str | None = None,
+    aws_endpoint_url: str | None = None,
+    gcs_token: str | None = None,
+) -> icechunk.Repository:
     """Get an icechunk repository for the given path.
 
     Args:
         path: The path to the icechunk repository. Use a protocol compatible with fsspec
             e.g. `s3://bucket-name/path/to/file` for remote access.
-
-    Returns:
-        A tuple containing the icechunk repository, and a list of times that exist in it already.
+        aws_access_key_id: AWS access key ID for S3 access.
+        aws_secret_access_key: AWS secret access key for S3 access.
+        aws_region_name: AWS region name for S3 access.
+        aws_endpoint_url: AWS endpoint URL for S3 access.
+        gcs_token: GCS token for GCS access.
     """
     result = re.match(
         r"^(?P<protocol>[\w]{2,6}):\/\/(?P<bucket>[\w-]+)\/(?P<prefix>[\w.\/-]+)$",
@@ -197,41 +241,35 @@ def get_icechunk_repo(path: str) -> tuple[icechunk.Repository, list[dt.datetime]
     if result:
         match (result.group("protocol"), result.group("bucket"), result.group("prefix")):
             case ("s3", bucket, prefix):
-                log.debug("Initializing S3 backend", bucket=bucket, prefix=prefix)
+                log.debug("bucket=%s, prefix=%s, initializing S3 backend", bucket, prefix)
                 storage_config = icechunk.s3_storage(
                     bucket=bucket,
                     prefix=prefix,
-                    access_key_id=os.getenv("AWS_ACCESS_KEY_ID", None),
-                    secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY", None),
-                    region=os.getenv("AWS_REGION", "eu-west-1"),
-                    endpoint_url=os.getenv("AWS_ENDPOINT", None),
+                    access_key_id=aws_access_key_id,
+                    secret_access_key=aws_secret_access_key,
+                    region=aws_region_name,
+                    endpoint_url=aws_endpoint_url,
                 )
             case ("gcs", bucket, prefix):
-                log.debug("Initializing GCS backend", bucket=bucket, prefix=prefix)
+                log.debug("bucket=%s, prefix=%s, initializing GCS backend", bucket, prefix)
                 storage_config = icechunk.gcs_storage(
                     bucket=bucket,
                     prefix=prefix,
-                    application_credentials=os.getenv("GOOGLE_APPLICATION_CREDENTIALS", None),
+                    application_credentials=gcs_token,
                 )
             case _:
                 raise OSError(f"Unsupported protocol in path: {path}")
     else:
         # Try to do a local store
-        log.debug("Initializing local filesystem backend", path=path)
+        log.debug("path=%s, initializing local filesystem backend", path)
         storage_config = icechunk.local_filesystem_storage(path=path)
 
     if icechunk.Repository.exists(storage=storage_config):
         # Return existing store and the times in it
-        log.debug("Using existing icechunk store", path=path)
+        log.debug("path=%s, using existing icechunk store", path)
         repo = icechunk.Repository.open(storage=storage_config)
-        ro_session = repo.readonly_session(branch="main")
-        ds: xr.Dataset = xr.open_zarr(ro_session.store, consolidated=False)
-        times: list[dt.datetime] = [
-            dt.datetime.strptime(t, "%Y-%m-%dT%H:%M").replace(tzinfo=dt.UTC)
-            for t in np.datetime_as_string(ds.coords["time"].values, unit="m").tolist()
-        ]
-        return repo, times
+        return repo
 
     repo = icechunk.Repository.create(storage=storage_config)
-    log.debug("Created new icechunk store", path=path)
-    return repo, []
+    log.debug("path=%s, created new icechunk store", path)
+    return repo

@@ -1,83 +1,79 @@
 """Functions for processing satellite data."""
 
 import datetime as dt
+import importlib.metadata
+import warnings
 from typing import Any
 
-import hdf5plugin  # type: ignore # noqa: F401
+import hdf5plugin  # noqa: F401
 import numpy as np
 import pandas as pd
-import pyresample.geometry
-import satpy
+import pyproj
 import xarray as xr
 import yaml
-from loguru import logger as log
+from pyresample.geometry import AreaDefinition
+from satpy.scene import Scene
 
-from satellite_consumer.config import SpectralChannelMetadata
+from satellite_consumer import models
+from satellite_consumer.exceptions import ValidationError
 
 
 def process_raw(
     paths: list[str],
-    channels: list[SpectralChannelMetadata],
+    channels: list[models.SpectralChannel],
     resolution_meters: int,
-    normalize: bool = True,
-    crop_region_geos: tuple[float, float, float, float] | None = None,
-) -> xr.DataArray:
+    crop_region_lonlat: tuple[float, float, float, float] | None = None,
+) -> xr.Dataset:
     """Process a set of raw files into an xarray DataArray.
 
     Args:
-        paths: List of paths to the raw files to open. Can be a local paths or
-            S3 urls e.g. `s3://bucket-name/path/to/file`.
-        channels: List of channel names to load from the raw files.
-        resolution_meters: The resolution in meters to load the data at.
-        normalize: Whether to normalize the data to the unit interval [0, 1].
-        crop_region_geos: Optional bounds to crop the data to, in the format
-            (west, south, east, north) in geostationary coordinates.
-            If None, no cropping is applied.
+        paths: List of file paths to raw satellite data files.
+        channels: List of channels to extract.
+        resolution_meters: Desired spatial resolution in meters.
+        crop_region_lonlat: Optional tuple defining the lon-lat coordinate
+            region to crop to, in the form (lon_min, lat_min, lon_max, lat_max).
     """
-    log.debug(
-        "Reading raw files as a satpy Scene",
-        resolution=resolution_meters,
-        num_files=len(paths),
-    )
     try:
-        loader: str = "seviri_l1b_native" if paths[0].endswith(".nat") else "fci_l1c_nc"
-        scene: satpy.Scene = satpy.Scene(filenames={loader: paths})  # type:ignore
-        cnames: list[str] = [c.name for c in channels if resolution_meters in c.resolution_meters]
-        scene.load(
-            cnames,
-            resolution=resolution_meters if resolution_meters < 3000 else "*",
+        # Meteosat 3rd gen don't output .nat files, and so requires a different loader
+        loader: str = "fci_l1c_nc"
+        reader_kwargs: dict[str, Any] = {}
+        if paths[0].endswith(".nat"):
+            loader = "seviri_l1b_native"
+            # Nominal calibration represents raw integer counts to radiance via slope and intercept
+            # Include flag surfaces calibration values
+            reader_kwargs = {
+                "calib_mode": "nominal",
+                "include_raw_metadata": True,
+            }
+
+        scene: Scene = Scene(
+            filenames={loader: paths},  # type:ignore
+            reader_kwargs=reader_kwargs,
         )
+        scene.load( # type: ignore
+            wishlist=[c.name for c in channels],
+            # The resolution arg has to be "*" for 3000m, for some reason
+            resolution=resolution_meters if resolution_meters < 3000 else "*",
+            calibration=[c.representation for c in channels],
+        )
+
     except Exception as e:
         raise OSError(f"Error reading paths as satpy Scene: {e}") from e
 
-    try:
-        log.debug("Converting Scene to dataarray", normalize=normalize)
-        da: xr.DataArray = _map_scene_to_dataarray(scene=scene, crop_region_geos=crop_region_geos)
-    except Exception as e:
-        raise ValueError(f"Error converting paths to DataArray: {e}") from e
+    ds: xr.Dataset = _map_scene_to_dataset(
+        scene=scene,
+        channels=channels,
+        crop_region_lonlat=crop_region_lonlat,
+    )
 
-    if normalize:
-        # Rescale the data, save as dataarray
-        try:
-            da = _normalize(
-                da=da,
-                channels=[c for c in channels if resolution_meters in c.resolution_meters],
-            )
-        except Exception as e:
-            raise ValueError(f"Error rescaling dataarray: {e}") from e
-
-    # Reorder the coordinates, and set the data type
-    del da["crs"]
-    da = da.transpose("time", "y_geostationary", "x_geostationary", "variable")
-    da = da.astype(np.float32)
-    da = da.load()
-    return da
+    return ds
 
 
-def _map_scene_to_dataarray(
-    scene: satpy.Scene,  # type:ignore # Don't know why it dislikes this
-    crop_region_geos: tuple[float, float, float, float] | None = None,
-) -> xr.DataArray:
+def _map_scene_to_dataset(
+    scene: Scene,
+    channels: list[models.SpectralChannel],
+    crop_region_lonlat: tuple[float, float, float, float] | None = None,
+) -> xr.Dataset:
     """Converts a Scene with satellite data into a data array.
 
     Note!!!:
@@ -87,102 +83,188 @@ def _map_scene_to_dataarray(
         the scan finished, not the time it started. I don't dare change
         it in order to stay consistent with all the historical data,
         but it is important to be aware of it.
-
-    Args:
-        scene: The satpy.Scene containing the satellite data.
-        crop_region_geos: Optional bounds to crop the data to, in the format
     """
-    for channel in scene.wishlist:
-        # Drop unwanted variables
-        scene[channel] = scene[channel].drop_vars("acq_time", errors="ignore")
-
-    # Convert the Scene to a DataArray
-    da: xr.DataArray = scene.to_xarray_dataset().to_array(name="data")
-    if crop_region_geos is not None:
-        da = (
-            da.where(da.coords["x"] >= crop_region_geos[0], drop=True)
-            .where(da.coords["x"] <= crop_region_geos[2], drop=True)
-            .where(da.coords["y"] >= crop_region_geos[1], drop=True)
-            .where(da.coords["y"] <= crop_region_geos[3], drop=True)
+    # Convert the Scene to a DataArray, filtering to the desired data variables
+    with warnings.catch_warnings(action="ignore"):
+        ds: xr.Dataset = (
+            scene.to_xarray_dataset() # type: ignore
+            .drop_vars(["acq_time", "crs"], errors="ignore")
+            .astype(np.float32)
+            .load()
         )
 
-    # Handle attrs, converting to serializable format
-    da.attrs["variables"] = {}
-    for channel in scene.wishlist:
-        # Add channel metadata dataarray variables attributes
-        da.attrs["variables"][channel["name"]] = {}
-        for attr in [
-            ca
-            for ca in scene[channel].attrs
-            if ca not in ["area", "_satpy_id", "orbital_parameters", "time_parameters"]
-        ]:
-            da.attrs["variables"][channel["name"]][attr] = scene[channel].attrs[attr]
+    # Extract values from attributes before we overwrite them
+    time = pd.Timestamp(ds.attrs["time_parameters"]["nominal_end_time"])
+    platform_name: str = ds.attrs["platform_name"]
+    area_def: AreaDefinition = ds.attrs["area"]
+    cal_slope, cal_offset = _get_calib_coefficients(ds, channels)
+    orbital_params = _get_orbital_params(ds)
 
-    def _serialize(d: dict[str, Any]) -> dict[str, Any]:
-        sd: dict[str, Any] = {}
-        for key, value in d.items():
-            if isinstance(value, dt.datetime):
-                sd[key] = value.isoformat()
-            elif isinstance(value, bool | np.bool_):
-                sd[key] = str(value)
-            elif isinstance(value, pyresample.geometry.AreaDefinition):
-                sd[key] = yaml.load(value.dump(), Loader=yaml.SafeLoader)  # type:ignore
-            elif isinstance(value, dict):
-                sd[key] = _serialize(value)
-            else:
-                sd[key] = str(value)
-        return sd
 
-    da.attrs = _serialize(da.attrs)
+    # RSS has 12.5% on-disk NaNs for their L1.5 data, so we allow up to 13.5%
+    nan_frac = _get_earthdisk_nan_frac(ds, area_def)
+    if nan_frac > 0.2:
+        raise ValidationError(f"Too many NaN values on earth-disk in the data array: {nan_frac}")
 
-    # Ensure DataArray has a time dimension
-    rounded_time = pd.Timestamp(da.attrs["time_parameters"]["nominal_end_time"]).round("5 min")
-    da.attrs["end_time"] = rounded_time.__str__()
-    if "time" not in da.dims:
-        time = pd.to_datetime(rounded_time)
-        da = da.assign_coords({"time": time}).expand_dims("time")
+    # Stack channels into a new dimension and compile the metadata
+    ds = _stack_channels_to_dim(ds, channels)
 
-    # Increase clarity of coordinates, including coordinate dimension names and attributes
-    da = da.rename({"x": "x_geostationary", "y": "y_geostationary"})
-    for name in ["x_geostationary", "y_geostationary"]:
-        da.coords[name].attrs["coordinate_reference_system"] = "geostationary"
+    # Ensure Dataset has a time dimension
+    if "time" not in ds.dims:
+        ds = ds.expand_dims({"time": [time]})
 
-    da = (
-        da.transpose("time", "y_geostationary", "x_geostationary", "variable")
-        .chunk(
-            chunks={"time": 1, "y_geostationary": -1, "x_geostationary": -1, "variable": 1},
-        )
-        .sortby(["variable", "y_geostationary"])
-        .sortby("x_geostationary", ascending=False)
+    ds = ds.assign(
+        instrument=("time", np.array([platform_name]).astype("<U26")),
+        cal_slope=(["time", "channel"], [cal_slope]),
+        cal_offset=(["time", "channel"], [cal_offset]),
+        **{k: ("time", [v]) for k, v in orbital_params.items()}, # type: ignore
     )
 
-    return da
+    # Increase clarity of coordinates, including coordinate dimension names and attributes
+    ds = ds.rename({"x": "x_geostationary", "y": "y_geostationary"})
+    for coord in ["x_geostationary", "y_geostationary"]:
+        ds.coords[coord].attrs["coordinate_reference_system"] = "geostationary"
 
+    # Make sure dimensions and coordinates are in expected order
+    ds = ds.transpose("time", "y_geostationary", "x_geostationary", "channel")
+    ds = _sort_xy_coords(ds)
 
-def _normalize(da: xr.DataArray, channels: list[SpectralChannelMetadata]) -> xr.DataArray:
-    """Normalize DataArray values into the unit interval [0, 1].
+    # Serialize attributes to be JSON-compatible
+    ds.attrs = _serialize_dict(ds.attrs)
 
-    Normalization is carried out based on an approximation of the minimum and maximum
-    values of each spectral channel. These values were calculated from a subset of
-    image data and are not exact.
+    if crop_region_lonlat is not None:
 
-    NaNs in the original DataArray are preserved in the normalized DataArray.
-    """
-    known_variables = {c.name for c in channels}
-    incoming_variables = set(da.coords["variable"].values.tolist())
-    if not incoming_variables.issubset(known_variables):
-        raise ValueError(
-            "Cannot rescale DataArray as some variables present are not recognized: "
-            f"'{incoming_variables.difference(known_variables)}'",
+        transformer = pyproj.Transformer.from_proj(
+            pyproj.Proj(proj="latlong", datum="WGS84"),
+            pyproj.Proj(area_def.crs),
+            always_xy=True,
         )
 
-    # For each channel, subtract the minimum and divide by the range
-    for variable in da.coords["variable"]:
-        channel_metadata = next(filter(lambda c: c.name == variable, channels))
-        da.loc[{"variable": variable}] -= channel_metadata.minimum
-        da.loc[{"variable": variable}] /= channel_metadata.range
+        left, bottom, right, top = transformer.transform_bounds(
+            left=crop_region_lonlat[0],
+            bottom=crop_region_lonlat[1],
+            right=crop_region_lonlat[2],
+            top=crop_region_lonlat[3],
+        )
 
-    # Since the mins and maxes are approximations, clip the values to [0, 1]
-    da = da.clip(min=0, max=1).astype(np.float32)
+        ds = ds.sel(
+            x_geostationary=slice(left, right),
+            y_geostationary=slice(bottom, top),
+        )
 
-    return da
+    return ds
+
+
+def _serialize_dict(d: dict[str, Any]) -> dict[str, Any]:
+    """Recursive helper function to serialize nested dicts."""
+    sd: dict[str, Any] = {}
+    for key, value in d.items():
+        if isinstance(value, dt.datetime):
+            sd[key] = value.isoformat()
+        elif isinstance(value, bool | np.bool_):
+            sd[key] = str(value)
+        elif isinstance(value, AreaDefinition):
+            sd[key] = yaml.load(value.dump(), Loader=yaml.SafeLoader) # type: ignore
+        elif isinstance(value, dict):
+            sd[key] = _serialize_dict(value)
+        else:
+            sd[key] = str(value)
+    return sd
+
+
+def _stack_channels_to_dim(ds: xr.Dataset, channels: list[models.SpectralChannel]) -> xr.Dataset:
+    """Stack the channels into a new dimension and filter and compile metadata."""
+    top_level_attrs = ["reader", "area", "georef_offset_corrected", "sensor"]
+    attrs = {k: v for k, v in ds.attrs.items() if k in top_level_attrs}
+    attrs["satellite_consumer_version"] = importlib.metadata.version("satellite_consumer")
+
+    # For each channel, add their attributes to the top-level dataset attributes
+    channel_attrs = ["units", "wavelength", "standard_name", "calibration", "resolution"]
+    attrs["channels"] = {}
+    for channel in channels:
+        attrs["channels"][channel.name] = {
+            k:v for k, v in ds[channel.name].attrs.items() if k in channel_attrs
+        }
+
+    ds = (
+        ds.to_dataarray(name="data", dim="channel")
+        .to_dataset(promote_attrs=False)
+        .sel(channel=[c.name for c in channels])
+    )
+
+    # Replace the attrs with the compiled version
+    ds.attrs = attrs
+
+    return ds
+
+
+def _get_calib_coefficients(
+    ds: xr.Dataset,
+    channels: list[models.SpectralChannel],
+) -> tuple[list[float], list[float]]:
+    """Pull the calibration slope and offset for each channel.
+
+    These values effectively act as a y=mx+c to convert from raw counts to radiance.
+    """
+    calib_attrs = (
+        ds.attrs["raw_metadata"]["15_DATA_HEADER"]["RadiometricProcessing"]
+        ["Level15ImageCalibration"]
+    )
+
+    cal_slope = [calib_attrs["CalSlope"][c.satpy_index] for c in channels]
+    cal_offset = [calib_attrs["CalOffset"][c.satpy_index] for c in channels]
+
+    return cal_slope, cal_offset
+
+
+def _get_orbital_params(ds: xr.Dataset) -> dict[str, float]:
+    """Extract orbital parameters from the dataset attributes."""
+    keys = [
+        "satellite_actual_longitude", "satellite_actual_latitude",  "satellite_actual_altitude",
+        "projection_longitude", "projection_latitude",  "projection_altitude",
+    ]
+    return {k: float(ds.attrs["orbital_parameters"][k]) for k in keys}
+
+
+def _get_earthdisk_nan_frac(
+    ds: xr.Dataset,
+    area_def: AreaDefinition,
+    chunksize: int = 500,
+) -> float:
+    """Calculate the fraction of NaN values on the earth-disk in the dataset."""
+    # Use chunking to speed up the lon-lat generation
+    chunks = [
+        [
+            min(chunksize, ds.sizes[dim] - i*chunksize)
+            for i in range(int(np.ceil(ds.sizes[dim]/chunksize)))
+        ] for dim in ["y", "x"]
+    ]
+
+    # This returns a lon-lat ndarray that is infinite off-earth-disk
+    # Use this as a mask to check how many NaNs there are on-earth-disk
+    lons, _ = area_def.get_lonlats(chunks=chunks) # type: ignore
+    on_earth_mask = np.isfinite(lons).compute()
+
+    # Calculate the mean NaN fraction on-earth-disk for each channel
+    # We do this in a loop to avoid slow xarray operations
+    ds_nan = ds.isnull()
+    channel_nan_fracs = [
+        ds_nan.data_vars[var].values[on_earth_mask].mean() for var in ds_nan.data_vars
+    ]
+    return float(np.mean(channel_nan_fracs))
+
+
+def _sort_xy_coords(ds: xr.Dataset) -> xr.Dataset:
+    """Sort the Dataset spatial coordinates in ascending order."""
+    for dim in ["x_geostationary", "y_geostationary"]:
+        dim_diffs = np.diff(ds[dim].values)
+        # If coord is in monotonic descending order, reverse it
+        if (dim_diffs < 0).all():
+            ds = ds.isel({dim: slice(None, None, -1)})
+
+        # Else check that it is monotonic ascending
+        else:
+            if not (dim_diffs > 0).all():
+                raise ValueError(f"{dim} coordinate is not monotonic.")
+
+    return ds
