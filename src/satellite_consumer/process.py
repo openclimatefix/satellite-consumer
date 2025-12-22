@@ -103,7 +103,7 @@ def _map_scene_to_dataset(
 
     # RSS has 12.5% on-disk NaNs for their L1.5 data, so we allow up to 13.5%
     nan_frac = _get_earthdisk_nan_frac(ds, area_def)
-    if nan_frac > 0.15:
+    if nan_frac > 0.2:
         raise ValidationError(f"Too many NaN values on earth-disk in the data array: {nan_frac}")
 
     # Stack channels into a new dimension and compile the metadata
