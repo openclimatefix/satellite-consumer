@@ -53,10 +53,12 @@ dev = [
     "pylsp-mypy",
     "python-lsp-ruff",
     "ty>=0.0.1a8",
+    "pytest>=9.0.2",
 ]
 
 [project.scripts]
 sat-consumer = "satellite_consumer.cmd.main:main"
+sat-cleanup = "satellite_consumer.cleanup:main"
 
 [project.urls]
 repository = "https://github.com/openclimatefix/satellite-consumer"
