@@ -3,20 +3,17 @@
 Consolidates the old cli_downloader, backfill_hrv and backfill_nonhrv scripts.
 """
 
+import asyncio
 import datetime as dt
-import itertools
 import os
 import warnings
-from collections.abc import Generator, Iterable
 from importlib.metadata import PackageNotFoundError, version
 from typing import TypeVar
 
-import eumdac.product
 import icechunk
 import numpy as np
 import sentry_sdk
 from icechunk.xarray import to_icechunk
-from joblib import Parallel, delayed
 from loguru import logger as log
 
 from satellite_consumer import storage
@@ -26,7 +23,7 @@ from satellite_consumer.config import (
     SatelliteConsumerConfig,
 )
 from satellite_consumer.download_eumetsat import (
-    download_raw,
+    buffered_download_stream,
     get_products_iterator,
 )
 from satellite_consumer.exceptions import ValidationError
@@ -41,7 +38,7 @@ except PackageNotFoundError:
     __version__ = "v?"
 
 
-def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
+async def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
     """Logic for the consume command (and the archive command)."""
     window = command_opts.time_window
     product_iter = get_products_iterator(
@@ -57,88 +54,76 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
     if command_opts.icechunk:
         repo, existing_times = storage.get_icechunk_repo(path=command_opts.zarr_path)
 
-        def _batcher(it: Iterable[T], batch_size: int = 10) -> Generator[tuple[T, ...]]:
-            """Yield successive n-sized chunks from an iterable (excepting the last batch)."""
-            while True:
-                batch = tuple(itertools.islice(it, batch_size))
-                if not batch:
-                    return
-                yield batch
+        async for raw_filepaths in buffered_download_stream(
+            products=product_iter,
+            folder=f"{command_opts.workdir}/raw",
+            filter_regex=command_opts.satellite_metadata.file_filter_regex,
+            max_concurrent=command_opts.num_workers,
+        ):
+            log.info(". . . . [Processing]", num_files=len(raw_filepaths))
+            if len(raw_filepaths) == 0:
+                num_skipped += 1
+                continue
 
-        for batch_num, product_batch in enumerate(_batcher(product_iter, command_opts.num_workers)):
-            log.debug("Processing batch of products", num_products=len(product_batch))
-
-            # Download the files for each product in the batch in parallel
-            raw_filegroups = Parallel(n_jobs=command_opts.num_workers, prefer="threads")(
-                delayed(download_raw)(
-                    product=p,
-                    folder=f"{command_opts.workdir}/raw",
-                    filter_regex=command_opts.satellite_metadata.file_filter_regex,
-                    existing_times=existing_times,
-                )
-                for p in product_batch
+            # Process the raw files in a potentially non-blocking way
+            # We use to_thread because process_raw is CPU bound and blocking
+            da = await asyncio.to_thread(
+                process_raw,
+                paths=raw_filepaths,
+                channels=command_opts.satellite_metadata.channels,
+                resolution_meters=command_opts.resolution,
+                normalize=command_opts.rescale,
+                crop_region_geos=command_opts.crop_region_geos,
             )
 
-            log.debug("Downloaded raw files for product batch", num_filegroups=len(raw_filegroups))
+            # Don't write invalid data to the store
+            if command_opts.validate:
+                validate(src=da)
 
-            # Process each products set of files in series
-            for i, raw_filepaths in enumerate(raw_filegroups):
-                if len(raw_filepaths) == 0:
-                    num_skipped += 1
-                    continue
-                da = process_raw(
-                    paths=raw_filepaths,
-                    channels=command_opts.satellite_metadata.channels,
-                    resolution_meters=command_opts.resolution,
-                    normalize=command_opts.rescale,
-                    crop_region_geos=command_opts.crop_region_geos,
-                )
-                # Don't write invalid data to the store
-                if command_opts.validate:
-                    validate(src=da)
-
-                # Commit the data to the icechunk store
-                # * If the store was just created, write as a fresh repo
-                log.debug(
-                    "Writing data to icechunk store",
-                    dst=command_opts.zarr_path,
-                    time=str(np.datetime_as_string(da.coords["time"].values[0], unit="m")),
-                )
-                if len(existing_times) == 0 and batch_num == 0 and i == 0:
-                    session: icechunk.Session = repo.writable_session(branch="main")
-                    # TODO: Remove warnings catch when Zarr makes up its mind about codecs
-                    with warnings.catch_warnings(action="ignore"):
-                        to_icechunk(
-                            obj=da.to_dataset(name="data", promote_attrs=True),
-                            session=session,
-                            mode="w-",
-                            encoding={
-                                "time": {
-                                    "units": "nanoseconds since 1970-01-01",
-                                    "calendar": "proleptic_gregorian",
-                                },
-                                "data": {"dtype": "f4"},
+            # Commit the data to the icechunk store
+            # * If the store was just created, write as a fresh repo
+            log.debug(
+                "Writing data to icechunk store",
+                dst=command_opts.zarr_path,
+                time=str(np.datetime_as_string(da.coords["time"].values[0], unit="m")),
+            )
+            # Since Icechunk writes are not thread safe or async, we do this in the main thread
+            # This effectively makes this the "sequential bottleneck" which is desired for ordering
+            if len(existing_times) == 0 and num_written == 0:
+                session: icechunk.Session = repo.writable_session(branch="main")
+                # TODO: Remove warnings catch when Zarr makes up its mind about codecs
+                with warnings.catch_warnings(action="ignore"):
+                    to_icechunk(
+                        obj=da.to_dataset(name="data", promote_attrs=True),
+                        session=session,
+                        mode="w-",
+                        encoding={
+                            "time": {
+                                "units": "nanoseconds since 1970-01-01",
+                                "calendar": "proleptic_gregorian",
                             },
-                        )
-                    _ = session.commit(message="initial commit")
-                # Otherwise, append the data to the existing store
-                else:
-                    session = repo.writable_session(branch="main")
-                    # TODO: Remove warnings catch when Zarr makes up its mind about codecs
-                    with warnings.catch_warnings(action="ignore"):
-                        to_icechunk(
-                            obj=da.to_dataset(name="data", promote_attrs=True),
-                            session=session,
-                            append_dim="time",
-                            mode="a",
-                        )
-                    _ = session.commit(
-                        message=f"add {len(da.coords['time']) * len(da.coords['variable'])} images",
-                        rebase_with=icechunk.ConflictDetector(),
-                        rebase_tries=5,
+                            "data": {"dtype": "f4"},
+                        },
                     )
-                num_written += 1
-                processed_filepaths.extend(raw_filepaths)
+                _ = session.commit(message="initial commit")
+            # Otherwise, append the data to the existing store
+            else:
+                session = repo.writable_session(branch="main")
+                # TODO: Remove warnings catch when Zarr makes up its mind about codecs
+                with warnings.catch_warnings(action="ignore"):
+                    to_icechunk(
+                        obj=da.to_dataset(name="data", promote_attrs=True),
+                        session=session,
+                        append_dim="time",
+                        mode="a",
+                    )
+                _ = session.commit(
+                    message=f"add {len(da.coords['time']) * len(da.coords['variable'])} images",
+                    rebase_with=icechunk.ConflictDetector(),
+                    rebase_tries=5,
+                )
+            num_written += 1
+            processed_filepaths.extend(raw_filepaths)
 
         log.info(
             "Finished population of icechunk store",
@@ -160,16 +145,20 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                 coords=command_opts.as_coordinates(),
             )
 
-        def _etl(product: eumdac.product.Product) -> list[str]:
-            """Download, process, and save a single NAT file."""
-            raw_filepaths = download_raw(
-                product,
-                folder=f"{command_opts.workdir}/raw",
-                filter_regex=command_opts.satellite_metadata.file_filter_regex,
-            )
+        # Iterate through all products in search
+        async for raw_filepaths in buffered_download_stream(
+            products=product_iter,
+            folder=f"{command_opts.workdir}/raw",
+            filter_regex=command_opts.satellite_metadata.file_filter_regex,
+            max_concurrent=command_opts.num_workers,
+        ):
+            log.info(". . . . [Processing]", num_files=len(raw_filepaths))
             if len(raw_filepaths) == 0:
-                return []
-            da = process_raw(
+                num_skipped += 1
+                continue
+
+            da = await asyncio.to_thread(
+                process_raw,
                 paths=raw_filepaths,
                 channels=command_opts.satellite_metadata.channels,
                 resolution_meters=command_opts.resolution,
@@ -177,25 +166,18 @@ def _consume_to_store(command_opts: ConsumeCommandOptions) -> None:
                 crop_region_geos=command_opts.crop_region_geos,
             )
             storage.write_to_zarr(da=da, dst=command_opts.zarr_path)
-            return raw_filepaths
-
-        # Iterate through all products in search
-        for raw_filepaths in Parallel(
-            n_jobs=command_opts.num_workers,
-            return_as="generator",
-            prefer="threads",
-        )(delayed(_etl)(product) for product in product_iter):
-            if len(raw_filepaths) == 0:
-                num_skipped += 1
-            else:
-                processed_filepaths.extend(raw_filepaths)
+            processed_filepaths.extend(raw_filepaths)
 
         # Might not need this as skipped files are all NaN
         # and the validation step should catch it
-        if num_skipped / (num_skipped + len(raw_filepaths)) > 0.05:
+        if (
+            num_skipped > 0
+            and len(processed_filepaths) > 0
+            and num_skipped / (num_skipped + len(processed_filepaths)) > 0.05
+        ):
             raise ValidationError(
                 f"Too many files had to be skipped "
-                f"({num_skipped}/{num_skipped + len(raw_filepaths)}). "
+                f"({num_skipped}/{num_skipped + len(processed_filepaths)}). "
                 "Use dataset at your own risk!",
             )
 
@@ -244,7 +226,7 @@ def run(config: SatelliteConsumerConfig) -> None:
         sentry_sdk.set_tag("app_version", __version__)
 
     if isinstance(config.command_options, ConsumeCommandOptions):
-        _consume_to_store(command_opts=config.command_options)
+        asyncio.run(_consume_to_store(command_opts=config.command_options))
     elif isinstance(config.command_options, ExtractLatestCommandOptions):
         _extract_latest_command(command_opts=config.command_options)
     else:
