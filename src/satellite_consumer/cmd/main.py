@@ -1,5 +1,6 @@
 """Entrypoint to the satellite consumer."""
 
+import asyncio
 import datetime as dt
 import importlib.metadata
 import importlib.resources
@@ -74,7 +75,7 @@ def main() -> None:
         dt_range[1].isoformat(),
     )
 
-    consume.consume_to_store(
+    asyncio.run(consume.consume_to_store(
         dt_range=dt_range,
         cadence_mins=conf.get_int(f"satellites.{sat}.cadence_mins"),
         product_id=conf.get_string(f"satellites.{sat}.product_id"),
@@ -103,7 +104,8 @@ def main() -> None:
             conf.get_list(f"satellites.{sat}.chunks"),
             conf.get_list(f"satellites.{sat}.shards"),
         ),
-    )
+        concurrent_downloads=conf.get_int("consumer.num_workers", 5),
+    ))
 
     log.info(f"sat consumer finished in {time.time() - prog_start!s}")
 

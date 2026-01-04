@@ -1,5 +1,6 @@
 """Functions for interfacing with EUMETSAT's API and data."""
 
+import asyncio
 import datetime as dt
 import logging
 import os
@@ -7,7 +8,8 @@ import re
 import shutil
 import tempfile
 import time
-from collections.abc import Iterator
+from collections import deque
+from collections.abc import AsyncIterator, Iterator
 from typing import TYPE_CHECKING
 
 import eumdac.customisation
@@ -134,6 +136,59 @@ def download_raw(
 
     return downloaded_files
 
+async def buffered_download_stream(
+    products: Iterator["eumdac.product.Product"],
+    folder: str,
+    filter_regex: str,
+    max_concurrent: int = 5,
+) -> AsyncIterator[list[str]]:
+    """Yield downloaded files from a stream of products.
+
+    Maintains a buffer of concurrent downloads to ensure the next product is ready
+    as soon as the consumer is free.
+    """
+    # Create the task buffer
+    tasks: deque[asyncio.Task[list[str]]] = deque()
+
+    # Fill the initial buffer
+    for product in products:
+        if len(tasks) >= max_concurrent:
+            break
+        tasks.append(
+            asyncio.create_task(
+                asyncio.to_thread(
+                    download_raw,
+                    product=product,
+                    folder=folder,
+                    filter_regex=filter_regex,
+                ),
+            ),
+        )
+
+    # Yield results and replenish the buffer
+    while tasks:
+        # Wait for the *chronologically next* task to finish
+        # This preserves the order of the products stream
+        result = await tasks.popleft()
+        yield result
+
+        # Add the next product to the buffer (if any left)
+        try:
+             next_product = next(products)
+             tasks.append(
+                asyncio.create_task(
+                    asyncio.to_thread(
+                        download_raw,
+                        product=next_product,
+                        folder=folder,
+                        filter_regex=filter_regex,
+                    ),
+                ),
+            )
+        except StopIteration:
+            pass
+
+
 def download_customisation(
     customisation: eumdac.customisation.Customisation,
     folder: str,
@@ -212,4 +267,3 @@ def download_customisation(
                 )
 
     return downloaded_filepaths
-

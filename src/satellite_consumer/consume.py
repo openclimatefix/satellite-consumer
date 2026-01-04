@@ -3,27 +3,31 @@
 Consolidates the old cli_downloader, backfill_hrv and backfill_nonhrv scripts.
 """
 
+import asyncio
 import datetime as dt
 import logging
 from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+    import eumdac
+    import icechunk.repository
 
 import pandas as pd
 
 from satellite_consumer import models, storage
 from satellite_consumer.download_eumetsat import (
-    download_raw,
+    buffered_download_stream,
     get_products_iterator,
 )
 from satellite_consumer.exceptions import ValidationError
 from satellite_consumer.process import process_raw
 
-if TYPE_CHECKING:
-    import icechunk.repository
-
 log = logging.getLogger(__name__)
 
 
-def consume_to_store(
+async def consume_to_store(
     dt_range: tuple[dt.datetime, dt.datetime],
     cadence_mins: int,
     product_id: str,
@@ -42,6 +46,7 @@ def consume_to_store(
         str | None,
     ] = (None, None, None, None),
     gcs_credentials: str | None = None,
+    concurrent_downloads: int = 5,
 ) -> None:
     """Consume satellite data into a zarr store."""
     product_iter = get_products_iterator(
@@ -65,38 +70,52 @@ def consume_to_store(
 
     existing_times = storage.get_existing_times(dst=dst, time_dim="time")
 
-    # Iterate through all products in search
+    # Defined a generator that yields only the products we need (skipping existing)
+    def filtered_product_iter() -> "Iterator[eumdac.product.Product]":
+        for i, p in enumerate(product_iter):
+             log.info("processing product %d: %s", i + 1, p.sensing_end)
+             rounded_time: dt.datetime = (
+                pd.Timestamp(p.sensing_end)
+                .round(f"{cadence_mins} min")
+                .to_pydatetime()
+                .astimezone(tz=dt.UTC)
+            )
+             if rounded_time in existing_times:
+                log.debug(
+                    "skipping product %d at %s, already in store",
+                     i + 1,
+                    rounded_time,
+                )
+                continue
+             yield p
+
     num_skips: int = 0
-    for i, p in enumerate(product_iter):
-        log.info("processing product %d: %s", i + 1, p.sensing_end)
-        rounded_time: dt.datetime = (
-            pd.Timestamp(p.sensing_end)
-            .round(f"{cadence_mins} min")
-            .to_pydatetime()
-            .astimezone(tz=dt.UTC)
-        )
+    num_writes: int = 0
 
-        if rounded_time in existing_times:
-            log.debug(
-                "skipping product %d at %s, already in store",
-                i + 1,
-                rounded_time,
-            )
-            num_skips += 1
-            continue
+    # Use the buffered stream to download concurrently
+    async for raw_filepaths in buffered_download_stream(
+        products=filtered_product_iter(),
+        folder=raw_zarr_paths[0],
+        filter_regex=filter_regex,
+        max_concurrent=concurrent_downloads,
+    ):
+         if not raw_filepaths:
+             num_skips += 1
+             continue
 
-        try:
-            raw_filepaths = download_raw(
-                product=p,
-                folder=raw_zarr_paths[0],
-                filter_regex=filter_regex,
-            )
-            ds = process_raw(
+         log.info(". . . . [Processing] num_files=%d", len(raw_filepaths))
+
+         try:
+            # Process in thread to avoid blocking download loop
+            ds = await asyncio.to_thread(
+                process_raw,
                 paths=raw_filepaths,
                 channels=channels,
                 resolution_meters=resolution_meters,
                 crop_region_lonlat=crop_region_lonlat,
             )
+
+            # Write to store (this part remains synchronous/blocking to ensure safety/ordering)
             storage.write_to_store(
                 ds=ds,
                 dst=dst,
@@ -105,14 +124,13 @@ def consume_to_store(
                 chunks=dims_chunks_shards[1],
                 shards=dims_chunks_shards[2],
             )
-        except ValidationError as e:
+            num_writes += 1
+         except ValidationError as e:
             log.warning(
-                "skipping invalid product %d at %s: %s",
-                i + 1,
-                rounded_time,
+                "skipping invalid product: %s",
                 str(e),
             )
             num_skips += 1
             continue
 
-    log.info("path=%s, skips=%d, finished %d writes", raw_zarr_paths[1], num_skips, i + 1)
+    log.info("path=%s, skips=%d, finished %d writes", raw_zarr_paths[1], num_skips, num_writes)
