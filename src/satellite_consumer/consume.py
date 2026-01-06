@@ -86,17 +86,20 @@ def consume_to_store(
             continue
 
         try:
+            log.info("downloading product files")
             raw_filepaths = download_raw(
                 product=p,
                 folder=raw_zarr_paths[0],
                 filter_regex=filter_regex,
             )
+            log.info("processing product files")
             ds = process_raw(
                 paths=raw_filepaths,
                 channels=channels,
                 resolution_meters=resolution_meters,
                 crop_region_lonlat=crop_region_lonlat,
             )
+            log.info("saving product files")
             storage.write_to_store(
                 ds=ds,
                 dst=dst,
