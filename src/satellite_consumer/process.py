@@ -2,6 +2,7 @@
 
 import datetime as dt
 import importlib.metadata
+import logging
 import warnings
 from typing import Any
 
@@ -17,6 +18,7 @@ from satpy.scene import Scene
 from satellite_consumer import models
 from satellite_consumer.exceptions import ValidationError
 
+log = logging.getLogger(__name__)
 
 def process_raw(
     paths: list[str],
@@ -152,6 +154,8 @@ def _map_scene_to_dataset(
             y_geostationary=slice(bottom, top),
         )
 
+        log.info(str(ds.data_vars["data"].attrs))
+
     return ds
 
 
@@ -188,11 +192,12 @@ def _stack_channels_to_dim(ds: xr.Dataset, channels: list[models.SpectralChannel
 
     ds = (
         ds.to_dataarray(name="data", dim="channel")
-        .to_dataset(promote_attrs=False)
+        .to_dataset(promote_attrs=True)
         .sel(channel=[c.name for c in channels])
     )
 
     # Replace the attrs with the compiled version
+    ds.data_vars["data"].attrs.clear()
     ds.attrs = attrs
 
     return ds
