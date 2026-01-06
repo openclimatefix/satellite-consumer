@@ -40,6 +40,7 @@ def encoding(
     ]
 
     return {
+        # Data variables
         "data": {
             "compressors": zarr.codecs.BloscCodec(
                 cname="zstd",
@@ -50,16 +51,21 @@ def encoding(
             "chunks": chunks,
             "shards": shards,
         },
-        "instrument": {"dtype": "<U26"},
-        "satellite_actual_longitude": {"dtype": "float32"},
-        "satellite_actual_latitude": {"dtype": "float32"},
-        "satellite_actual_altitude": {"dtype": "float32"},
+        "instrument": {"dtype": "<U26", "chunks": (1000,)},
+        "satellite_actual_longitude": {"dtype": "float64", "chunks": (1000,)},
+        "satellite_actual_latitude": {"dtype": "float64", "chunks": (1000,)},
+        "satellite_actual_altitude": {"dtype": "float64", "chunks": (1000,)},
+        "cal_offset": {"dtype": "float64", "chunks": (1000,)},
+        "cal_slope": {"dtype": "float64", "chunks": (1000,)},
+        "projection_longitude": {"dtype": "float64", "chunks": (1000,)},
+        "projection_latitude": {"dtype": "float64", "chunks": (1000,)},
         # Coordinates
         "channel": {"dtype": "str"},
         "time": {
             "dtype": "int",
             "units": "nanoseconds since 1970-01-01",
             "calendar": "proleptic_gregorian",
+            "chunks": (1000,),
         },
     }
 
@@ -115,10 +121,6 @@ def write_to_store(
                 compute=True,
                 encoding=encoding(ds=ds, dims=dims, chunks=chunks, shards=shards),
             )
-        return None
-
-    # If the time to be added is already in the store, don't do anything
-    if np.isin(ds.coords[append_dim].values, store_ds.coords[append_dim].values).all():
         return None
 
     # Check the non-appending dimensions match
