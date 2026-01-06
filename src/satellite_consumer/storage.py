@@ -40,6 +40,7 @@ def encoding(
     ]
 
     return {
+        # Data variables
         "data": {
             "compressors": zarr.codecs.BloscCodec(
                 cname="zstd",
@@ -50,10 +51,14 @@ def encoding(
             "chunks": chunks,
             "shards": shards,
         },
-        "instrument": {"dtype": "<U26"},
-        "satellite_actual_longitude": {"dtype": "float32"},
-        "satellite_actual_latitude": {"dtype": "float32"},
-        "satellite_actual_altitude": {"dtype": "float32"},
+        "instrument": {"dtype": "<U26", "chunks": (1000,)},
+        "satellite_actual_longitude": {"dtype": "float64", "chunks": (1000,)},
+        "satellite_actual_latitude": {"dtype": "float64", "chunks": (1000,)},
+        "satellite_actual_altitude": {"dtype": "float64", "chunks": (1000,)},
+        "cal_offset": {"dtype": "float64", "chunks": (1000,)},
+        "cal_slope": {"dtype": "float64", "chunks": (1000,)},
+        "projection_longitude": {"dtype": "float64", "chunks": (1000,)},
+        "projection_latitude": {"dtype": "float64", "chunks": (1000,)},
         # Coordinates
         "channel": {"dtype": "str"},
         "time": {
