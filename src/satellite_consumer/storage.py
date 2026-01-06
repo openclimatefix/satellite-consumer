@@ -60,6 +60,7 @@ def encoding(
             "dtype": "int",
             "units": "nanoseconds since 1970-01-01",
             "calendar": "proleptic_gregorian",
+            "chunks": (1000,),
         },
     }
 
@@ -115,10 +116,6 @@ def write_to_store(
                 compute=True,
                 encoding=encoding(ds=ds, dims=dims, chunks=chunks, shards=shards),
             )
-        return None
-
-    # If the time to be added is already in the store, don't do anything
-    if np.isin(ds.coords[append_dim].values, store_ds.coords[append_dim].values).all():
         return None
 
     # Check the non-appending dimensions match
