@@ -89,12 +89,6 @@ def write_to_store(
             "Ensure process step outputs dimensions in the order specified here.",
         )
 
-    # Set the dask chunksizes to be the shard sizes for efficient writing
-    # * The min is needed in case the shard size is larger than the length in that dimension
-    ds = ds.chunk(
-        chunks={dim: min(shard, ds.sizes[dim]) for dim, shard in zip(dims, shards, strict=True)},
-    )
-
     try:
         if isinstance(dst, icechunk.repository.Repository):
             session = dst.writable_session(branch="main")
