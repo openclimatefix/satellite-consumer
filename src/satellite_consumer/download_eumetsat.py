@@ -75,7 +75,7 @@ def download_raw(
     """
     fs = get_fs(path=folder)
     # Filter to only product files we care about
-    raw_files: list[str] = [p for p in product.entries if re.search(filter_regex, p)]
+    product_files: list[str] = [p for p in product.entries if re.search(filter_regex, p)]
     rounded_time: dt.datetime = (
         pd.Timestamp(product.sensing_end)
             .round(f"{cadence_mins} min")
@@ -83,56 +83,54 @@ def download_raw(
             .astimezone(tz=dt.UTC)
     )
 
-    downloaded_files: list[str] = []
-    for raw_file in raw_files:
-        if product.qualityStatus != "NOMINAL":
-            log.warning("%s not nominal, skipping", product)
-            continue
+    if product.qualityStatus != "NOMINAL":
+        raise ValidationError(f"Product {product} qualityStatus is {product.qualityStatus}")
 
-        date_folder: str = rounded_time.strftime("%Y/%m/%d")
-        filepath: str = f"{folder}/{date_folder}/{raw_file}"
-        try:
-            if fs.exists(filepath):
-                log.debug("file %s exists, skipping", raw_file)
-                downloaded_files.append(filepath)
-                continue
-        except Exception as e:
-            raise OSError(
-                f"Could not determine if file '{filepath}' exists: '{e}'"
-                "Ensure you have the required access permissions.",
-            ) from e
+    date_folder: str = rounded_time.strftime("%Y/%m/%d")
+    expected_files: list[str] = [f"{folder}/{date_folder}/{name}" for name in product_files]
 
+    try:
+        if all(fs.exists(f) for f in expected_files):
+            log.debug(
+                "all files for product %s exist in %s, skipping",
+                product,
+                f"{folder}/{date_folder}",
+            )
+            return expected_files
+    except Exception as e:
+        raise OSError(
+            f"Could not determine if file exists: '{e}'"
+            "Ensure you have the required access permissions.",
+        ) from e
+
+    with tempfile.TemporaryDirectory() as tmpdir:
         for i in range(retries):
             try:
                 # Copying to temp then putting seems to be quicker than copying to fs
                 with (
-                    product.open(raw_file) as fsrc,
-                    tempfile.NamedTemporaryFile() as fdst,
+                    product.open() as fsrc,
+                    tempfile.NamedTemporaryFile(suffix=".zip") as fdst,
                 ):
                     shutil.copyfileobj(fsrc, fdst, length=1024 * 1024)
-                    fs.put(fdst.name, filepath)
-                    if os.stat(fdst.name).st_size != fs.info(filepath).get("size", 0):
-                        raise DownloadError(
-                            f"Downloaded file size mismatch for '{raw_file}'. "
-                            f"Expected {os.stat(fdst.name).st_size}, "
-                            f"got {fs.info(filepath).get('size', 0)}.",
-                        )
-                downloaded_files.append(filepath)
-                break
+                    shutil.unpack_archive(fdst.name, tmpdir, "zip")
+                    for file in product_files:
+                        save_path: str = f"{folder}/{date_folder}/{file}"
+                        fs.put(f"{tmpdir}/{file}", save_path)
+                        if os.stat(f"{tmpdir}/{file}").st_size != fs.info(save_path).get("size", 0):
+                            raise DownloadError(
+                                f"Downloaded file size mismatch for '{save_path}'. "
+                                f"Expected {os.stat(f"{tmpdir}/{file}").st_size}, "
+                                f"got {fs.info(save_path).get('size', 0)}.",
+                            )
+                return expected_files
             except Exception as e:
                 log.warning(
-                    f"error downloading product '{product}' (attempt {i}/{retries}): '{e}'",
+                    f"error downloading product '{product._id}' (attempt {i}/{retries}): '{e}'",
                 )
 
-        if i == retries:
-            raise DownloadError(
-                f"Failed to download output '{raw_file}' after {retries} attempts.",
-            )
-
-    if len(downloaded_files) == 0:
-        raise ValidationError(f"No files downloaded for product '{product}'.")
-
-    return downloaded_files
+    raise DownloadError(
+        f"Failed to download output '{product._id}' after {retries} attempts.",
+    )
 
 def download_customisation(
     customisation: eumdac.customisation.Customisation,

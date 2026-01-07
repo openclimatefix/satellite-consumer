@@ -51,21 +51,21 @@ def encoding(
             "chunks": chunks,
             "shards": shards,
         },
-        "instrument": {"dtype": "<U26", "chunks": (1000,)},
-        "satellite_actual_longitude": {"dtype": "float64", "chunks": (1000,)},
-        "satellite_actual_latitude": {"dtype": "float64", "chunks": (1000,)},
-        "satellite_actual_altitude": {"dtype": "float64", "chunks": (1000,)},
-        "cal_offset": {"dtype": "float64", "chunks": (1000,)},
-        "cal_slope": {"dtype": "float64", "chunks": (1000,)},
-        "projection_longitude": {"dtype": "float64", "chunks": (1000,)},
-        "projection_latitude": {"dtype": "float64", "chunks": (1000,)},
+        "instrument": {"dtype": "<U26", "chunks": (10000,)},
+        "satellite_actual_longitude": {"dtype": "float64", "chunks": (10000,)},
+        "satellite_actual_latitude": {"dtype": "float64", "chunks": (10000,)},
+        "satellite_actual_altitude": {"dtype": "float64", "chunks": (10000,)},
+        "cal_offset": {"dtype": "float64", "chunks": (10000,)},
+        "cal_slope": {"dtype": "float64", "chunks": (10000,)},
+        "projection_longitude": {"dtype": "float64", "chunks": (10000,)},
+        "projection_latitude": {"dtype": "float64", "chunks": (10000,)},
         # Coordinates
         "channel": {"dtype": "str"},
         "time": {
             "dtype": "int",
             "units": "nanoseconds since 1970-01-01",
             "calendar": "proleptic_gregorian",
-            "chunks": (1000,),
+            "chunks": (10000,),
         },
     }
 
@@ -88,12 +88,6 @@ def write_to_store(
             f" Provided: {dims}, Dataset: {list(ds.dims)}. "
             "Ensure process step outputs dimensions in the order specified here.",
         )
-
-    # Set the dask chunksizes to be the shard sizes for efficient writing
-    # * The min is needed in case the shard size is larger than the length in that dimension
-    ds = ds.chunk(
-        chunks={dim: min(shard, ds.sizes[dim]) for dim, shard in zip(dims, shards, strict=True)},
-    )
 
     try:
         if isinstance(dst, icechunk.repository.Repository):
