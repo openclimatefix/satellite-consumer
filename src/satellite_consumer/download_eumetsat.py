@@ -129,7 +129,7 @@ def download_raw(
                 )
                 if i + 1 == retries:
                     raise DownloadError(
-                        f"Failed to download output '{product._id}' after {retries} attempts: '{e}'",
+                        f"Failed to download output '{product._id}': '{e}'",
                     ) from e
 
     return expected_files

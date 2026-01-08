@@ -14,7 +14,7 @@ from satellite_consumer.download_eumetsat import (
     download_raw,
     get_products_iterator,
 )
-from satellite_consumer.exceptions import ValidationError
+from satellite_consumer.exceptions import DownloadError, ValidationError
 from satellite_consumer.process import process_raw
 
 if TYPE_CHECKING:
@@ -128,4 +128,10 @@ def consume_to_store(
             num_errs += 1
             continue
 
-    log.info("path=%s, skips=%d, errs=%d, finished %d writes", raw_zarr_paths[1], num_skips, num_errs, i + 1)
+    log.info(
+        "path=%s, skips=%d, errs=%d, finished %d writes",
+        raw_zarr_paths[1],
+        num_skips,
+        num_errs,
+        i + 1,
+    )
