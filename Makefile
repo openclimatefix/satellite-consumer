@@ -1,16 +1,22 @@
-.PHONY: test
-test:
-	uv run python -m unittest discover -s src/satellite_consumer -p "test_*.py"
+.PHONY: init
+init:
+	@git config --local core.hooksPath .github/hooks
+	@uv --version &> /dev/null || (echo "uv is not installed. See https://docs.astral.sh/uv/getting-started/installation/" && exit 1)
+	@uv sync
 
-.PHONY: test-cov
-test-cov:
-	uv run python -m xmlrunner discover -s src/satellite_consumer -p "test_*.py"
+.PHONY: lint.dryrun
+lint.check:
+	@uv run ruff check .
+	@uv run ruff format --check .
+	@uv run mypy .
 
 .PHONY: lint
-lint:
-	uv run ruff check --fix .
+format:
+	@uv run ruff check --fix .
+	@uv run ruff format .
 
-.PHONY: typecheck
-typecheck:
-	uv run mypy .
+.PHONY: test
+test:
+	@uv run python -m xmlrunner discover -s src/satellite_consumer -p "test_*.py" -o unit-tests.xml
+
 

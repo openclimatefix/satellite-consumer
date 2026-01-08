@@ -1,0 +1,33 @@
+name: Unit Test
+
+on:  
+  push:
+    branches-ignore: [ "main" ]
+    paths-ignore: ['README.md']
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up UV
+        uses: astral-sh/setup-uv@e92bafb6253dcd438e0484186d7669ea7a8ca1cc # v6.4.3
+        with:
+          enable-cache: true
+
+      - name: Check linting / typechecking / formatting
+        run: make lint.dryrun
+
+      - name: Run unit tests
+        run: make test
+
+      - name: Test Summary
+        uses: test-summary/action@31493c76ec9e7aa675f1585d3ed6f1da69269a86 # v2.4
+        with:
+          paths: "unit-tests.xml"
+          output: "test-summary.md"
+        if: always()
+

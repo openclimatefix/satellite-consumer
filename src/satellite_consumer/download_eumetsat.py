@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
+
 def get_products_iterator(
     product_id: str,
     cadence_mins: int,
@@ -48,8 +49,7 @@ def get_products_iterator(
         ) from e
     if search_results.total_results == 0:
         raise DownloadError(
-            f"No products found for {product_id} "
-            f"in the given time range '{start!s}-{end!s}.",
+            f"No products found for {product_id} in the given time range '{start!s}-{end!s}.",
         )
     if search_results.total_results != expected_products_count:
         log.warning(
@@ -58,6 +58,7 @@ def get_products_iterator(
         )
 
     return search_results.__iter__()
+
 
 def download_raw(
     product: eumdac.product.Product,
@@ -78,9 +79,9 @@ def download_raw(
     product_files: list[str] = [p for p in product.entries if re.search(filter_regex, p)]
     rounded_time: dt.datetime = (
         pd.Timestamp(product.sensing_end)
-            .round(f"{cadence_mins} min")
-            .to_pydatetime()
-            .astimezone(tz=dt.UTC)
+        .round(f"{cadence_mins} min")
+        .to_pydatetime()
+        .astimezone(tz=dt.UTC)
     )
 
     if product.qualityStatus != "NOMINAL":
@@ -119,7 +120,7 @@ def download_raw(
                         if os.stat(f"{tmpdir}/{file}").st_size != fs.info(save_path).get("size", 0):
                             raise DownloadError(
                                 f"Downloaded file size mismatch for '{save_path}'. "
-                                f"Expected {os.stat(f"{tmpdir}/{file}").st_size}, "
+                                f"Expected {os.stat(f'{tmpdir}/{file}').st_size}, "
                                 f"got {fs.info(save_path).get('size', 0)}.",
                             )
                 break
@@ -133,6 +134,7 @@ def download_raw(
                     ) from e
 
     return expected_files
+
 
 def download_customisation(
     customisation: eumdac.customisation.Customisation,
@@ -212,4 +214,3 @@ def download_customisation(
                 )
 
     return downloaded_filepaths
-
