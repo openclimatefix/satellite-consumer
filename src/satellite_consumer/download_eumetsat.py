@@ -122,15 +122,17 @@ def download_raw(
                                 f"Expected {os.stat(f"{tmpdir}/{file}").st_size}, "
                                 f"got {fs.info(save_path).get('size', 0)}.",
                             )
-                return expected_files
+                break
             except Exception as e:
-                log.warning(
+                log.debug(
                     f"error downloading product '{product._id}' (attempt {i}/{retries}): '{e}'",
                 )
+                if i + 1 == retries:
+                    raise DownloadError(
+                        f"Failed to download output '{product._id}' after {retries} attempts: '{e}'",
+                    ) from e
 
-    raise DownloadError(
-        f"Failed to download output '{product._id}' after {retries} attempts.",
-    )
+    return expected_files
 
 def download_customisation(
     customisation: eumdac.customisation.Customisation,
