@@ -17,6 +17,6 @@ format:
 
 .PHONY: test
 test:
-	@uv run python -m xmlrunner discover -s src/satellite_consumer -p "test_*.py" -o unit-tests.xml
+	@uv run python -m xmlrunner discover -s src/satellite_consumer -p "test_*.py" --output-file="unit-tests.xml" --outsuffix=""
 
 
