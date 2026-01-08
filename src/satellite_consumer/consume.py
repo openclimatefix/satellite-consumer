@@ -14,7 +14,7 @@ from satellite_consumer.download_eumetsat import (
     download_raw,
     get_products_iterator,
 )
-from satellite_consumer.exceptions import ValidationError
+from satellite_consumer.exceptions import DownloadError, ValidationError
 from satellite_consumer.process import process_raw
 
 if TYPE_CHECKING:
@@ -67,6 +67,7 @@ def consume_to_store(
 
     # Iterate through all products in search
     num_skips: int = 0
+    num_errs: int = 0
     for i, p in enumerate(product_iter):
         log.info("processing product %d: %s", i + 1, p.sensing_end)
         rounded_time: dt.datetime = (
@@ -117,5 +118,20 @@ def consume_to_store(
             )
             num_skips += 1
             continue
+        except DownloadError as e:
+            log.error(
+                "error downloading product %d at %s: %s",
+                i + 1,
+                rounded_time,
+                str(e),
+            )
+            num_errs += 1
+            continue
 
-    log.info("path=%s, skips=%d, finished %d writes", raw_zarr_paths[1], num_skips, i + 1)
+    log.info(
+        "path=%s, skips=%d, errs=%d, finished %d writes",
+        raw_zarr_paths[1],
+        num_skips,
+        num_errs,
+        i + 1,
+    )
