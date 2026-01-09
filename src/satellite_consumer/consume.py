@@ -99,7 +99,7 @@ def _download_and_process(
         )
 
         return ds
-    
+
     except Exception as e:
         return e
 
@@ -171,8 +171,8 @@ async def consume_to_store(
     num_skips: int = 0
     total_num: int = 0
     async for item in _buffered_apply(
-        filter(_not_stored, product_iter), 
-        bound_func, 
+        filter(_not_stored, product_iter),
+        bound_func,
         buffer_size=buffer_size,
     ):
         total_num += 1
@@ -198,7 +198,7 @@ async def consume_to_store(
 
         elif isinstance(item, Exception):
             raise item
-        
+
         else:
             raise TypeError(f"Unexpected return type {type(item)}")
 
