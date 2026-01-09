@@ -170,6 +170,7 @@ async def consume_to_store(
     # Iterate through all products in search
     num_skips: int = 0
     total_num: int = 0
+    num_errs: int = 0
     async for item in _buffered_apply(
         filter(_not_stored, product_iter),
         bound_func,
@@ -194,7 +195,7 @@ async def consume_to_store(
 
         elif isinstance(item, DownloadError):
             log.error("error downloading product %s", str(item))
-            num_skips += 1
+            num_errs += 1
 
         elif isinstance(item, Exception):
             raise item
@@ -203,8 +204,9 @@ async def consume_to_store(
             raise TypeError(f"Unexpected return type {type(item)}")
 
     log.info(
-        "path=%s, skips=%d, finished %d writes",
+        "path=%s, skips=%d, errs=%d, finished %d writes",
         raw_zarr_paths[1],
         num_skips,
+        num_errs,
         total_num,
     )
