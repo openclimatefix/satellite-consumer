@@ -2430,7 +2430,7 @@ wheels = [
 
 [[package]]
 name = "satellite-consumer"
-version = "0.3.10.post3+git.ac05fa7c.dirty"
+version = "0.3.10.post4+git.13142264.dirty"
 source = { editable = "." }
 dependencies = [
     { name = "asyncio" },
