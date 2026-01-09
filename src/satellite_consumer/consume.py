@@ -30,8 +30,10 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
-T = TypeVar("T") # Type of the input
-R = TypeVar("R") # Type of the return
+T = TypeVar("T")  # Type of the input
+R = TypeVar("R")  # Type of the return
+
+
 async def _buffered_apply(
     item_iter: Iterator[T],
     func: Callable[[T], R],

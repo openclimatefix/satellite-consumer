@@ -75,37 +75,39 @@ def main() -> None:
         dt_range[1].isoformat(),
     )
 
-    asyncio.run(consume.consume_to_store(
-        dt_range=dt_range,
-        cadence_mins=conf.get_int(f"satellites.{sat}.cadence_mins"),
-        product_id=conf.get_string(f"satellites.{sat}.product_id"),
-        filter_regex=conf.get_string(f"satellites.{sat}.file_filter_regex"),
-        raw_zarr_paths=(
-            conf.get_string("consumer.raw_path"),
-            conf.get_string("consumer.zarr_path"),
-        ),
-        channels=channels,
-        resolution_meters=resolution,
-        crop_region_lonlat=crop_region_lonlat,
-        eumetsat_credentials=(
-            conf.get_string("credentials.eumetsat.key"),
-            conf.get_string("credentials.eumetsat.secret"),
-        ),
-        use_icechunk=conf.get_bool("consumer.use_icechunk"),
-        aws_credentials=(
-            conf.get_string("credentials.aws.access_key_id", None),
-            conf.get_string("credentials.aws.secret_access_key", None),
-            conf.get_string("credentials.aws.endpoint_url", None),
-            conf.get_string("credentials.aws.region", None),
-        ),
-        gcs_credentials=conf.get_string("credentials.gcs.application_credentials", None),
-        dims_chunks_shards=(
-            conf.get_list(f"satellites.{sat}.dimensions"),
-            conf.get_list(f"satellites.{sat}.chunks"),
-            conf.get_list(f"satellites.{sat}.shards"),
-        ),
-        buffer_size=conf.get_int("consumer.buffer_size"),
-    ))
+    asyncio.run(
+        consume.consume_to_store(
+            dt_range=dt_range,
+            cadence_mins=conf.get_int(f"satellites.{sat}.cadence_mins"),
+            product_id=conf.get_string(f"satellites.{sat}.product_id"),
+            filter_regex=conf.get_string(f"satellites.{sat}.file_filter_regex"),
+            raw_zarr_paths=(
+                conf.get_string("consumer.raw_path"),
+                conf.get_string("consumer.zarr_path"),
+            ),
+            channels=channels,
+            resolution_meters=resolution,
+            crop_region_lonlat=crop_region_lonlat,
+            eumetsat_credentials=(
+                conf.get_string("credentials.eumetsat.key"),
+                conf.get_string("credentials.eumetsat.secret"),
+            ),
+            use_icechunk=conf.get_bool("consumer.use_icechunk"),
+            aws_credentials=(
+                conf.get_string("credentials.aws.access_key_id", None),
+                conf.get_string("credentials.aws.secret_access_key", None),
+                conf.get_string("credentials.aws.endpoint_url", None),
+                conf.get_string("credentials.aws.region", None),
+            ),
+            gcs_credentials=conf.get_string("credentials.gcs.application_credentials", None),
+            dims_chunks_shards=(
+                conf.get_list(f"satellites.{sat}.dimensions"),
+                conf.get_list(f"satellites.{sat}.chunks"),
+                conf.get_list(f"satellites.{sat}.shards"),
+            ),
+            buffer_size=conf.get_int("consumer.buffer_size"),
+        )
+    )
 
     log.info(f"sat consumer finished in {time.time() - prog_start!s}")
 

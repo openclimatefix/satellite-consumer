@@ -5,15 +5,16 @@ init:
 	@uv sync
 
 .PHONY: lint.dryrun
-lint.check:
+lint.dryrun:
 	@uv run ruff check .
 	@uv run ruff format --check .
 	@uv run mypy .
 
 .PHONY: lint
-format:
+lint:
 	@uv run ruff check --fix .
 	@uv run ruff format .
+	@uv run mypy .
 
 .PHONY: test
 test:
