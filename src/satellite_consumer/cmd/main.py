@@ -104,6 +104,7 @@ def main() -> None:
             conf.get_list(f"satellites.{sat}.chunks"),
             conf.get_list(f"satellites.{sat}.shards"),
         ),
+        buffer_size=conf.get_int("consumer.buffer_size"),
     ))
 
     log.info(f"sat consumer finished in {time.time() - prog_start!s}")
