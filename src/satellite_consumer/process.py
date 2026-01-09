@@ -20,6 +20,7 @@ from satellite_consumer.exceptions import ValidationError
 
 log = logging.getLogger(__name__)
 
+
 def process_raw(
     paths: list[str],
     channels: list[models.SpectralChannel],
@@ -52,7 +53,7 @@ def process_raw(
             filenames={loader: paths},  # type:ignore
             reader_kwargs=reader_kwargs,
         )
-        scene.load( # type: ignore
+        scene.load(  # type: ignore
             wishlist=[c.name for c in channels],
             # The resolution arg has to be "*" for 3000m, for some reason
             resolution=resolution_meters if resolution_meters < 3000 else "*",
@@ -89,7 +90,7 @@ def _map_scene_to_dataset(
     # Convert the Scene to a DataArray, filtering to the desired data variables
     with warnings.catch_warnings(action="ignore"):
         ds: xr.Dataset = (
-            scene.to_xarray_dataset() # type: ignore
+            scene.to_xarray_dataset()  # type: ignore
             .drop_vars(["acq_time", "crs"], errors="ignore")
             .astype(np.float32)
             .load()
@@ -101,7 +102,6 @@ def _map_scene_to_dataset(
     area_def: AreaDefinition = ds.attrs["area"]
     cal_slope, cal_offset = _get_calib_coefficients(ds, channels)
     orbital_params = _get_orbital_params(ds)
-
 
     # RSS has 12.5% on-disk NaNs for their L1.5 data, so we allow up to 13.5%
     nan_frac = _get_earthdisk_nan_frac(ds, area_def)
@@ -119,7 +119,7 @@ def _map_scene_to_dataset(
         instrument=("time", np.array([platform_name]).astype("<U26")),
         cal_slope=(["time", "channel"], [cal_slope]),
         cal_offset=(["time", "channel"], [cal_offset]),
-        **{k: ("time", [v]) for k, v in orbital_params.items()}, # type: ignore
+        **{k: ("time", [v]) for k, v in orbital_params.items()},  # type: ignore
     )
 
     # Increase clarity of coordinates, including coordinate dimension names and attributes
@@ -135,7 +135,6 @@ def _map_scene_to_dataset(
     ds.attrs = _serialize_dict(ds.attrs)
 
     if crop_region_lonlat is not None:
-
         transformer = pyproj.Transformer.from_proj(
             pyproj.Proj(proj="latlong", datum="WGS84"),
             pyproj.Proj(area_def.crs),
@@ -168,7 +167,7 @@ def _serialize_dict(d: dict[str, Any]) -> dict[str, Any]:
         elif isinstance(value, bool | np.bool_):
             sd[key] = str(value)
         elif isinstance(value, AreaDefinition):
-            sd[key] = yaml.load(value.dump(), Loader=yaml.SafeLoader) # type: ignore
+            sd[key] = yaml.load(value.dump(), Loader=yaml.SafeLoader)  # type: ignore
         elif isinstance(value, dict):
             sd[key] = _serialize_dict(value)
         else:
@@ -187,7 +186,7 @@ def _stack_channels_to_dim(ds: xr.Dataset, channels: list[models.SpectralChannel
     attrs["channels"] = {}
     for channel in channels:
         attrs["channels"][channel.name] = {
-            k:v for k, v in ds[channel.name].attrs.items() if k in channel_attrs
+            k: v for k, v in ds[channel.name].attrs.items() if k in channel_attrs
         }
 
     ds = (
@@ -211,10 +210,9 @@ def _get_calib_coefficients(
 
     These values effectively act as a y=mx+c to convert from raw counts to radiance.
     """
-    calib_attrs = (
-        ds.attrs["raw_metadata"]["15_DATA_HEADER"]["RadiometricProcessing"]
-        ["Level15ImageCalibration"]
-    )
+    calib_attrs = ds.attrs["raw_metadata"]["15_DATA_HEADER"]["RadiometricProcessing"][
+        "Level15ImageCalibration"
+    ]
 
     cal_slope = [calib_attrs["CalSlope"][c.satpy_index] for c in channels]
     cal_offset = [calib_attrs["CalOffset"][c.satpy_index] for c in channels]
@@ -225,8 +223,12 @@ def _get_calib_coefficients(
 def _get_orbital_params(ds: xr.Dataset) -> dict[str, float]:
     """Extract orbital parameters from the dataset attributes."""
     keys = [
-        "satellite_actual_longitude", "satellite_actual_latitude",  "satellite_actual_altitude",
-        "projection_longitude", "projection_latitude",  "projection_altitude",
+        "satellite_actual_longitude",
+        "satellite_actual_latitude",
+        "satellite_actual_altitude",
+        "projection_longitude",
+        "projection_latitude",
+        "projection_altitude",
     ]
     return {k: float(ds.attrs["orbital_parameters"][k]) for k in keys}
 
@@ -240,14 +242,15 @@ def _get_earthdisk_nan_frac(
     # Use chunking to speed up the lon-lat generation
     chunks = [
         [
-            min(chunksize, ds.sizes[dim] - i*chunksize)
-            for i in range(int(np.ceil(ds.sizes[dim]/chunksize)))
-        ] for dim in ["y", "x"]
+            min(chunksize, ds.sizes[dim] - i * chunksize)
+            for i in range(int(np.ceil(ds.sizes[dim] / chunksize)))
+        ]
+        for dim in ["y", "x"]
     ]
 
     # This returns a lon-lat ndarray that is infinite off-earth-disk
     # Use this as a mask to check how many NaNs there are on-earth-disk
-    lons, _ = area_def.get_lonlats(chunks=chunks) # type: ignore
+    lons, _ = area_def.get_lonlats(chunks=chunks)  # type: ignore
     on_earth_mask = np.isfinite(lons).compute()
 
     # Calculate the mean NaN fraction on-earth-disk for each channel
