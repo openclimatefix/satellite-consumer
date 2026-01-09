@@ -3,11 +3,18 @@
 Consolidates the old cli_downloader, backfill_hrv and backfill_nonhrv scripts.
 """
 
+import asyncio
 import datetime as dt
 import logging
-from typing import TYPE_CHECKING
+from collections import deque
+from collections.abc import AsyncIterator, Callable, Iterator
+from functools import partial
+from itertools import islice
+from typing import TYPE_CHECKING, TypeVar
 
+import eumdac.product
 import pandas as pd
+import xarray as xr
 
 from satellite_consumer import models, storage
 from satellite_consumer.download_eumetsat import (
@@ -23,7 +30,81 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
-def consume_to_store(
+T = TypeVar("T") # Type of the input
+R = TypeVar("R") # Type of the return
+async def _buffered_apply(
+    item_iter: Iterator[T],
+    func: Callable[[T], R],
+    buffer_size: int,
+) -> AsyncIterator[R]:
+    """Asynchronously applies a synchronous function to items using a sliding window buffer.
+
+    The function `func` is applied simultaneously in threads up to a buffer size of `buffer_size`
+    items ahead. It yields results as soon as they are available, strictly preserving the order of
+    the input iterator.
+
+    Args:
+        item_iter: An iterator producing the input items.
+        func: The function to apply to each item.
+        buffer_size: The length of the buffer.
+
+    Yields:
+        The result of `func` applied to each item from `item_iter`, in the original order.
+    """
+
+    def create_task(item: T) -> asyncio.Task[R]:
+        return asyncio.create_task(asyncio.to_thread(func, item))
+
+    tasks: deque[asyncio.Task[R]] = deque()
+
+    # Fill the buffer initially
+    for item in islice(item_iter, buffer_size):
+        tasks.append(create_task(item))
+
+    # Loop through the remaining items: yield one, add one
+    for item in item_iter:
+        # Get next item and kick off the task before yielding
+        result = await tasks.popleft()
+        tasks.append(create_task(item))
+        yield result
+
+    # Drain the remaining tasks in the buffer
+    while tasks:
+        yield await tasks.popleft()
+
+
+def _download_and_process(
+    product: eumdac.product.Product,
+    folder: str,
+    filter_regex: str,
+    channels: list[models.SpectralChannel],
+    resolution_meters: int,
+    crop_region_lonlat: tuple[float, float, float, float] | None,
+) -> xr.Dataset | Exception:
+    """Wrapper of the download and process functions."""
+    try:
+        log.debug("downloading %s", product._id)
+        raw_filepaths = download_raw(
+            product=product,
+            folder=folder,
+            filter_regex=filter_regex,
+        )
+
+        log.debug("processing %s", product._id)
+        ds = process_raw(
+            paths=raw_filepaths,
+            channels=channels,
+            resolution_meters=resolution_meters,
+            crop_region_lonlat=crop_region_lonlat,
+        )
+
+        return ds
+
+    except Exception as e:
+        return e
+
+
+async def consume_to_store(
     dt_range: tuple[dt.datetime, dt.datetime],
     cadence_mins: int,
     product_id: str,
@@ -32,8 +113,9 @@ def consume_to_store(
     channels: list[models.SpectralChannel],
     resolution_meters: int,
     crop_region_lonlat: tuple[float, float, float, float] | None,
-    eumetsat_credentials: tuple[str, str],
     dims_chunks_shards: tuple[list[str], list[int], list[int]],
+    eumetsat_credentials: tuple[str, str],
+    buffer_size: int,
     use_icechunk: bool = False,
     aws_credentials: tuple[
         str | None,
@@ -52,6 +134,16 @@ def consume_to_store(
         credentials=eumetsat_credentials,
     )
 
+    # This function will be applied to all products
+    bound_func = partial(
+        _download_and_process,
+        folder=raw_zarr_paths[0],
+        filter_regex=filter_regex,
+        channels=channels,
+        resolution_meters=resolution_meters,
+        crop_region_lonlat=crop_region_lonlat,
+    )
+
     dst: str | icechunk.repository.Repository = raw_zarr_paths[1]
     if use_icechunk:
         dst = storage.get_icechunk_repo(
@@ -63,75 +155,58 @@ def consume_to_store(
             gcs_token=gcs_credentials,
         )
 
+    # Filter out the times which already exist in the store
     existing_times = storage.get_existing_times(dst=dst, time_dim="time")
 
-    # Iterate through all products in search
-    num_skips: int = 0
-    num_errs: int = 0
-    for i, p in enumerate(product_iter):
-        log.info("processing product %d: %s", i + 1, p.sensing_end)
+    def _not_stored(product: eumdac.product.Product) -> bool:
         rounded_time: dt.datetime = (
-            pd.Timestamp(p.sensing_end)
+            pd.Timestamp(product.sensing_end)
             .round(f"{cadence_mins} min")
             .to_pydatetime()
             .astimezone(tz=dt.UTC)
         )
+        return rounded_time not in existing_times
 
-        if rounded_time in existing_times:
-            log.debug(
-                "skipping product %d at %s, already in store",
-                i + 1,
-                rounded_time,
-            )
-            num_skips += 1
-            continue
+    # Iterate through all products in search
+    num_skips: int = 0
+    total_num: int = 0
+    num_errs: int = 0
+    async for item in _buffered_apply(
+        filter(_not_stored, product_iter),
+        bound_func,
+        buffer_size=buffer_size,
+    ):
+        total_num += 1
 
-        try:
-            log.info("downloading product files")
-            raw_filepaths = download_raw(
-                product=p,
-                folder=raw_zarr_paths[0],
-                filter_regex=filter_regex,
-            )
-            log.info("processing product files")
-            ds = process_raw(
-                paths=raw_filepaths,
-                channels=channels,
-                resolution_meters=resolution_meters,
-                crop_region_lonlat=crop_region_lonlat,
-            )
-            log.info("saving product files")
+        if isinstance(item, xr.Dataset):
+            log.info(f"saving image for timestamp {pd.Timestamp(item.time.item())}")
             storage.write_to_store(
-                ds=ds,
+                ds=item,
                 dst=dst,
                 append_dim="time",
                 dims=dims_chunks_shards[0],
                 chunks=dims_chunks_shards[1],
                 shards=dims_chunks_shards[2],
             )
-        except ValidationError as e:
-            log.warning(
-                "skipping invalid product %d at %s: %s",
-                i + 1,
-                rounded_time,
-                str(e),
-            )
+
+        elif isinstance(item, ValidationError):
+            log.warning("skipping invalid product %s", str(item))
             num_skips += 1
-            continue
-        except DownloadError as e:
-            log.error(
-                "error downloading product %d at %s: %s",
-                i + 1,
-                rounded_time,
-                str(e),
-            )
+
+        elif isinstance(item, DownloadError):
+            log.error("error downloading product %s", str(item))
             num_errs += 1
-            continue
+
+        elif isinstance(item, Exception):
+            raise item
+
+        else:
+            raise TypeError(f"Unexpected return type {type(item)}")
 
     log.info(
         "path=%s, skips=%d, errs=%d, finished %d writes",
         raw_zarr_paths[1],
         num_skips,
         num_errs,
-        i + 1,
+        total_num,
     )
