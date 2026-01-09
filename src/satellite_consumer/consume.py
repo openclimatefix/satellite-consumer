@@ -17,7 +17,10 @@ import pandas as pd
 import xarray as xr
 
 from satellite_consumer import models, storage
-from satellite_consumer.download_eumetsat import download_raw, get_products_iterator
+from satellite_consumer.download_eumetsat import (
+    download_raw,
+    get_products_iterator,
+)
 from satellite_consumer.exceptions import DownloadError, ValidationError
 from satellite_consumer.process import process_raw
 
