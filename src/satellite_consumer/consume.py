@@ -115,7 +115,7 @@ async def consume_to_store(
     crop_region_lonlat: tuple[float, float, float, float] | None,
     dims_chunks_shards: tuple[list[str], list[int], list[int]],
     eumetsat_credentials: tuple[str, str],
-    buffer_size: int = 10,
+    buffer_size: int,
     use_icechunk: bool = False,
     aws_credentials: tuple[
         str | None,
