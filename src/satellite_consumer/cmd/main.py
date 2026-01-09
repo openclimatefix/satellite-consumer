@@ -106,6 +106,9 @@ def main() -> None:
                 conf.get_list(f"satellites.{sat}.shards"),
             ),
             buffer_size=conf.get_int("consumer.buffer_size"),
+            max_workers=conf.get_int("consumer.max_workers"),
+            accum_writes=conf.get_int("consumer.accum_writes"),
+            executor=conf.get_string("consumer.executor"),
         ),
     )
 
