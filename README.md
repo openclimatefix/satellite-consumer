@@ -37,7 +37,7 @@ or, if you prefer a CLI:
 $ pip install git+https://github.com/openclimatefix/satellite-consumer.git
 ```
 
-This will put the `sat-consumer-cli` command in your virtual environments `bin` directory.
+This will put the `sat-consumer-cli` command in your virtual environment's `bin` directory.
 
 ## Example usage
 
@@ -113,7 +113,7 @@ Each command then has its own set of configuration options:
 ### How do I add a new satellite to the consumer?
 
 Currently the consumer is built to the specific data requirements of Open Climate Fix.
-However, adding a new satellite in the from EUMETSAT shouldn't be too hard, provided it uses
+However, adding a new satellite from EUMETSAT shouldn't be too hard, provided it uses
 the same `seviri_l1b_native` format and sensor channels - just update the available satellites
 in `config.py`.
 
@@ -145,6 +145,11 @@ Use them via:
 $ python -m mypy .
 $ python -m ruff check .
 ```
+> [!NOTE]
+> **Windows users**: The `make` commands mentioned below require GNU Make, which is not available
+> by default on Windows. If you're on Windows, use the Python commands above directly instead
+> of the `make` commands.
+
 
 Be sure to do this periodically while developing to catch any errors early
 and prevent headaches with the CI pipeline. It may seem like a hassle at first,
@@ -163,8 +168,8 @@ $ python -m unittest discover -s src/satellite_consumer -p "test_*.py"
 ```
 
 > [!Note]
-> If you have created your virtual environment using `uv`, the above can be run via
-> the `Makefile`, using `make typecheck`, `make lint`, and `make test` respectively.
+> If you have created your virtual environment using `uv` **and have GNU Make installed**,
+> you can use the convenience commands: `make typecheck`, `make lint`, and `make test`.
 
  
 ## Further reading
