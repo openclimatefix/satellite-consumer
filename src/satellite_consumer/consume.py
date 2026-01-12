@@ -6,6 +6,7 @@ Consolidates the old cli_downloader, backfill_hrv and backfill_nonhrv scripts.
 import asyncio
 import datetime as dt
 import logging
+import time
 import warnings
 from collections import deque
 from collections.abc import AsyncIterator, Callable, Iterator
@@ -15,6 +16,7 @@ from itertools import islice
 from typing import TYPE_CHECKING, Literal, TypeVar
 
 import eumdac.product
+import numpy as np
 import pandas as pd
 import xarray as xr
 from zarr.errors import UnstableSpecificationWarning
@@ -111,6 +113,32 @@ def _download_and_process(
         return e
 
 
+class EMA:
+    """Track Exponential moving average (EMA) of values."""
+
+    def __init__(self, alpha: float = 0.3) -> None:
+        """Track Exponential moving average (EMA) of values.
+
+        Args:
+            alpha: Smoothing factor in range [0, 1]. Increase to give more weight to recent values.
+                Ranges from 0 (yields old value) to 1 (yields new value).
+        """
+        self.alpha: float = alpha
+        self.last: float = 0
+        self.calls: int = 0
+
+    def __call__(self, x: float) -> float:
+        """Add value to EMA and return new average.
+
+        Args:
+            x: New value to include in EMA.
+        """
+        beta = 1 - self.alpha
+        self.last = self.alpha * x + beta * self.last
+        self.calls += 1
+        return self.last / (1 - beta**self.calls) if self.calls else self.last
+
+
 async def consume_to_store(
     dt_range: tuple[dt.datetime, dt.datetime],
     cadence_mins: int,
@@ -182,6 +210,8 @@ async def consume_to_store(
     total_num: int = 0
     num_errs: int = 0
     results: list[xr.Dataset] = []
+    t_last: float = 0
+    get_iter_time_ema = EMA()
     async for item in _buffered_apply(
         filter(_not_stored, product_iter),
         bound_func,
@@ -211,11 +241,29 @@ async def consume_to_store(
                 )
                 results = []
 
-                progress_frac = (
-                    pd.to_datetime(ds.time.values[-1]).tz_localize("UTC") - dt_range[0]
-                ) / (dt_range[1] - dt_range[0])
+                # Log progress and timings
+                latest_timestamp = pd.to_datetime(ds.time.values[-1]).tz_localize("UTC")
+                progress_frac = (latest_timestamp - dt_range[0]) / (dt_range[1] - dt_range[0])
+                num_images_remaining = (dt_range[1] - latest_timestamp).total_seconds() / (
+                    60 * cadence_mins
+                )
 
-                log.info("progress through time range %.2f%%", progress_frac * 100)
+                t_now = time.time()
+                # Skip the time taken by the first yielded item due to setup time
+                if t_last == 0:
+                    time_per_image = np.nan
+                    eta = dt.timedelta(seconds=0)
+                else:
+                    time_per_image = get_iter_time_ema((t_now - t_last) / accum_writes)
+                    eta = dt.timedelta(seconds=num_images_remaining * time_per_image)
+                t_last = t_now
+
+                log.info(
+                    "%.2f%% progress through time range. %.2f seconds/image. ETA %s",
+                    progress_frac * 100,
+                    time_per_image,
+                    eta,
+                )
 
         elif isinstance(item, ValidationError):
             log.warning("skipping invalid product %s", str(item))
