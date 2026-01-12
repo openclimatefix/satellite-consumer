@@ -66,13 +66,17 @@ def download_raw(
     filter_regex: str,
     retries: int = 6,
     cadence_mins: int = 5,
+    nest_by_date: bool = True,
 ) -> list[str]:
     """Download a product to filesystem.
 
     EUMDAC products are collections of files, with a `.nat` file containing the data,
     and with `.xml` files containing metadata.
-    This function only downloads the `.nat` files, skipping any files that are already present in
-    the folder.
+    This function downloads the whole product as a zipped archive and unpacks it locally to reduce
+    network calls.
+
+    Nesting the raw files by date is recommended if keeping files after processing as it prevents
+    the creation of overly populated folders on disk.
     """
     fs = get_fs(path=folder)
     # Filter to only product files we care about
@@ -87,15 +91,15 @@ def download_raw(
     if product.qualityStatus != "NOMINAL":
         raise ValidationError(f"Product {product} qualityStatus is {product.qualityStatus}")
 
-    date_folder: str = rounded_time.strftime("%Y/%m/%d")
-    expected_files: list[str] = [f"{folder}/{date_folder}/{name}" for name in product_files]
+    save_folder: str = f"{folder}/{rounded_time.strftime('%Y/%m/%d')}" if nest_by_date else folder
+    expected_files: list[str] = [f"{save_folder}/{name}" for name in product_files]
 
     try:
         if all(fs.exists(f) for f in expected_files):
             log.debug(
                 "all files for product %s exist in %s, skipping",
                 product,
-                f"{folder}/{date_folder}",
+                save_folder,
             )
             return expected_files
     except Exception as e:
@@ -115,7 +119,7 @@ def download_raw(
                     shutil.copyfileobj(fsrc, fdst, length=1024 * 1024)
                     shutil.unpack_archive(fdst.name, tmpdir, "zip")
                     for file in product_files:
-                        save_path: str = f"{folder}/{date_folder}/{file}"
+                        save_path: str = f"{save_folder}/{file}"
                         fs.put(f"{tmpdir}/{file}", save_path)
                         if os.stat(f"{tmpdir}/{file}").st_size != fs.info(save_path).get("size", 0):
                             raise DownloadError(

@@ -85,6 +85,7 @@ def main() -> None:
                 conf.get_string("consumer.raw_path"),
                 conf.get_string("consumer.zarr_path"),
             ),
+            keep_raw=conf.get_bool("consumer.keep_raw"),
             channels=channels,
             resolution_meters=resolution,
             crop_region_lonlat=crop_region_lonlat,
