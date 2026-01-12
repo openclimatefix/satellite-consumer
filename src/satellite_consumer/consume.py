@@ -6,27 +6,28 @@ Consolidates the old cli_downloader, backfill_hrv and backfill_nonhrv scripts.
 import asyncio
 import datetime as dt
 import logging
+import warnings
 from collections import deque
 from collections.abc import AsyncIterator, Callable, Iterator
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from functools import partial
 from itertools import islice
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, Literal, TypeVar
 
 import eumdac.product
 import pandas as pd
 import xarray as xr
+from zarr.errors import UnstableSpecificationWarning
 
 from satellite_consumer import models, storage
-from satellite_consumer.download_eumetsat import (
-    download_raw,
-    get_products_iterator,
-)
+from satellite_consumer.download_eumetsat import download_raw, get_products_iterator
 from satellite_consumer.exceptions import DownloadError, ValidationError
 from satellite_consumer.process import process_raw
 
 if TYPE_CHECKING:
     import icechunk.repository
 
+warnings.simplefilter(action="ignore", category=UnstableSpecificationWarning)
 log = logging.getLogger(__name__)
 
 
@@ -38,6 +39,8 @@ async def _buffered_apply(
     item_iter: Iterator[T],
     func: Callable[[T], R],
     buffer_size: int,
+    max_workers: int,
+    executor: Literal["threads", "processes"],
 ) -> AsyncIterator[R]:
     """Asynchronously applies a synchronous function to items using a sliding window buffer.
 
@@ -49,30 +52,33 @@ async def _buffered_apply(
         item_iter: An iterator producing the input items.
         func: The function to apply to each item.
         buffer_size: The length of the buffer.
+        max_workers: The number of workers in the pool.
+        executor: "threads" or "processes".
 
     Yields:
         The result of `func` applied to each item from `item_iter`, in the original order.
     """
+    loop = asyncio.get_running_loop()
 
-    def create_task(item: T) -> asyncio.Task[R]:
-        return asyncio.create_task(asyncio.to_thread(func, item))
+    ExecutorClass = ProcessPoolExecutor if executor == "processes" else ThreadPoolExecutor
 
-    tasks: deque[asyncio.Task[R]] = deque()
+    with ExecutorClass(max_workers=max_workers) as pool:
+        tasks: deque[asyncio.Future[R]] = deque()
 
-    # Fill the buffer initially
-    for item in islice(item_iter, buffer_size):
-        tasks.append(create_task(item))
+        # Fill the buffer initially
+        for item in islice(item_iter, buffer_size):
+            tasks.append(loop.run_in_executor(pool, func, item))
 
-    # Loop through the remaining items: yield one, add one
-    for item in item_iter:
-        # Get next item and kick off the task before yielding
-        result = await tasks.popleft()
-        tasks.append(create_task(item))
-        yield result
+        # Loop through the remaining items: yield one, add one
+        for item in item_iter:
+            # Get next item and kick off the task before yielding
+            result = await tasks.popleft()
+            tasks.append(loop.run_in_executor(pool, func, item))
+            yield result
 
-    # Drain the remaining tasks in the buffer
-    while tasks:
-        yield await tasks.popleft()
+        # Drain the remaining tasks in the buffer
+        while tasks:
+            yield await tasks.popleft()
 
 
 def _download_and_process(
@@ -99,7 +105,6 @@ def _download_and_process(
             resolution_meters=resolution_meters,
             crop_region_lonlat=crop_region_lonlat,
         )
-
         return ds
 
     except Exception as e:
@@ -118,6 +123,9 @@ async def consume_to_store(
     dims_chunks_shards: tuple[list[str], list[int], list[int]],
     eumetsat_credentials: tuple[str, str],
     buffer_size: int,
+    max_workers: int,
+    accum_writes: int,
+    executor: Literal["threads", "processes"],
     use_icechunk: bool = False,
     aws_credentials: tuple[
         str | None,
@@ -173,23 +181,41 @@ async def consume_to_store(
     num_skips: int = 0
     total_num: int = 0
     num_errs: int = 0
+    results: list[xr.Dataset] = []
     async for item in _buffered_apply(
         filter(_not_stored, product_iter),
         bound_func,
         buffer_size=buffer_size,
+        max_workers=max_workers,
+        executor=executor,
     ):
         total_num += 1
 
         if isinstance(item, xr.Dataset):
-            log.info(f"saving image for timestamp {pd.Timestamp(item.time.item())}")
-            storage.write_to_store(
-                ds=item,
-                dst=dst,
-                append_dim="time",
-                dims=dims_chunks_shards[0],
-                chunks=dims_chunks_shards[1],
-                shards=dims_chunks_shards[2],
-            )
+            log.info(f"pulled image for timestamp {pd.Timestamp(item.time.item())}")
+            results.append(item)
+
+            # If we've reached the write block size, concat the datasets and write out
+            if len(results) == accum_writes:
+                ds = xr.concat(results, dim="time") if accum_writes > 1 else results[0]
+
+                log.info(f"saving last {accum_writes} accumulated images")
+
+                storage.write_to_store(
+                    ds=ds,
+                    dst=dst,
+                    append_dim="time",
+                    dims=dims_chunks_shards[0],
+                    chunks=dims_chunks_shards[1],
+                    shards=dims_chunks_shards[2],
+                )
+                results = []
+
+                progress_frac = (
+                    pd.to_datetime(ds.time.values[-1]).tz_localize("UTC") - dt_range[0]
+                ) / (dt_range[1] - dt_range[0])
+
+                log.info("progress through time range %.2f%%", progress_frac * 100)
 
         elif isinstance(item, ValidationError):
             log.warning("skipping invalid product %s", str(item))
@@ -204,6 +230,21 @@ async def consume_to_store(
 
         else:
             raise TypeError(f"Unexpected return type {type(item)}")
+
+    # Write out any remaining values
+    if len(results) > 0:
+        ds = xr.concat(results, dim="time") if accum_writes > 1 else results[0]
+
+        log.info(f"saving last {accum_writes} accumulated images")
+
+        storage.write_to_store(
+            ds=ds,
+            dst=dst,
+            append_dim="time",
+            dims=dims_chunks_shards[0],
+            chunks=dims_chunks_shards[1],
+            shards=dims_chunks_shards[2],
+        )
 
     log.info(
         "path=%s, skips=%d, errs=%d, finished %d writes",
