@@ -25,6 +25,7 @@ from satellite_consumer import models, storage
 from satellite_consumer.download_eumetsat import download_raw, get_products_iterator
 from satellite_consumer.exceptions import DownloadError, ValidationError
 from satellite_consumer.process import process_raw
+from satellite_consumer.storage import get_fs
 
 if TYPE_CHECKING:
     import icechunk.repository
@@ -90,6 +91,7 @@ def _download_and_process(
     channels: list[models.SpectralChannel],
     resolution_meters: int,
     crop_region_lonlat: tuple[float, float, float, float] | None,
+    keep_raw: bool,
 ) -> xr.Dataset | Exception:
     """Wrapper of the download and process functions."""
     try:
@@ -98,6 +100,7 @@ def _download_and_process(
             product=product,
             folder=folder,
             filter_regex=filter_regex,
+            nest_by_date=keep_raw,
         )
 
         log.debug("processing %s", product._id)
@@ -107,6 +110,12 @@ def _download_and_process(
             resolution_meters=resolution_meters,
             crop_region_lonlat=crop_region_lonlat,
         )
+
+        if not keep_raw:
+            fs = get_fs(folder)
+            for path in raw_filepaths:
+                fs.delete(path)
+
         return ds
 
     except Exception as e:
@@ -145,6 +154,7 @@ async def consume_to_store(
     product_id: str,
     filter_regex: str,
     raw_zarr_paths: tuple[str, str],
+    keep_raw: bool,
     channels: list[models.SpectralChannel],
     resolution_meters: int,
     crop_region_lonlat: tuple[float, float, float, float] | None,
@@ -180,6 +190,7 @@ async def consume_to_store(
         channels=channels,
         resolution_meters=resolution_meters,
         crop_region_lonlat=crop_region_lonlat,
+        keep_raw=keep_raw,
     )
 
     dst: str | icechunk.repository.Repository = raw_zarr_paths[1]
