@@ -14,6 +14,7 @@ import eumdac.customisation
 import eumdac.product
 import eumdac.token
 import pandas as pd
+from fsspec.implementations.local import LocalFileSystem
 
 from satellite_consumer.exceptions import DownloadError, ValidationError
 from satellite_consumer.storage import get_fs
@@ -79,6 +80,7 @@ def download_raw(
     the creation of overly populated folders on disk.
     """
     fs = get_fs(path=folder)
+    fs.mkdirs(path=folder, exist_ok=True)
     # Filter to only product files we care about
     product_files: list[str] = [p for p in product.entries if re.search(filter_regex, p)]
     rounded_time: dt.datetime = (
@@ -108,13 +110,17 @@ def download_raw(
             "Ensure you have the required access permissions.",
         ) from e
 
-    with tempfile.TemporaryDirectory() as tmpdir:
+    # If saving raw files to S3, use a local temp directory to unzip the archives.
+    # Otherwise handle the unzipping in the raw archive folder path.
+    with tempfile.TemporaryDirectory(
+        dir=folder if isinstance(fs, LocalFileSystem) else None,
+    ) as tmpdir:
         for i in range(retries):
             try:
                 # Copying to temp then putting seems to be quicker than copying to fs
                 with (
                     product.open() as fsrc,
-                    tempfile.NamedTemporaryFile(suffix=".zip") as fdst,
+                    tempfile.NamedTemporaryFile(dir=tmpdir, suffix=".zip") as fdst,
                 ):
                     shutil.copyfileobj(fsrc, fdst, length=1024 * 1024)
                     shutil.unpack_archive(fdst.name, tmpdir, "zip")

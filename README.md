@@ -43,8 +43,7 @@ This will put the `sat-consumer-cli` command in your virtual environments `bin` 
 
 ```bash
 $ docker run \
-    -e SATCONS_COMMAND=consume \
-    -e SATCONS_SATELLITE=rss \
+    -e <SATCONS_CONFIG_VARIABLE>=<your-value>
     -e EUMETSAT_CONSUMER_KEY=<your-key> \
     -e EUMETSAT_CONSUMER_SECRET=<your-secret> \
     -v $(pwd)/work:/work \
@@ -54,59 +53,10 @@ $ docker run \
 This will download the latest available data for the `rss` satellite and store it in the `/work` directory.
 For a description of all the possible configuration options, see [Documentation](#documentation).
 
-## Documentation
+## Configuration
 
-The satellite consumer provides a number of commands for different logical processing of raw data.
-These commands (and their options) can be seen when using the cli entrypoint:
-
-```bash
-$ sat-consumer-cli --help
-```
-
-When running the satellite consumer using the environment entrypoint (as in the docker container)
-
-```bash
-$ sat-consumer
-```
-
-the command is chosen via an environment variable. There are also a number of common configuration
-options that are shared between all commands:
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `SATCONS_COMMAND` |  | The command to run (consume/extract-latest). |
-| `SATCONS_SATELLITE` | | The satellite to consume data from. |
-| `SATCONS_WORKDIR` | `/mnt/disks/sat` | The working directory. In the container, this is set to `/work` for easy mounting. |
-| `SATCONS_RESOLUTION` | `3000` | The desired resolution of the satellite images in meters ('3000', '1000'). |
-| `SENTRY_DSN` |  | The Sentry DSN for error reporting. If set, errors will be reported to Sentry. |
-| `ENVIRONMENT` | `local` | The deployed environment, used for logging and error reporting. |
-
-Each command then has its own set of configuration options:
-
-**Consume:**
-
-*Downloads scans for a given time and window into a zarr store in the given working directory.*
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `SATCONS_TIME` | | The time to consume data for (when using the `consume` command). Leave unset to download latest available. | 
-| `SATCONS_WINDOW_MINS` | `0` | The time window to consume data for in minutes (defaults to a single scan). |
-| `SATCONS_WINDOW_MONTHS` | `0` | The number of months to consume data for (takes precedence over `SATCONS_WINDOW_MINS`). |
-| `SATCONS_VALIDATE` | `false` | Whether to validate the downloaded data. |
-| `SATCONS_RESCALE` | `false` | Whether to rescale the downloaded data to the unit interval. |
-| `SATCONS_NUM_WORKERS` | `1` | The number of workers to use for processing. |
-| `SATCONS_ICECHUNKS` | `false` | Whether to use icechunk repositories for storage. |
-| `SATCONS_CROP_REGION` | `` | The region string to crop data to ('uk', 'india', 'west-europe') |
-| `EUMETSAT_CONSUMER_KEY` |  | The EUMETSAT consumer key. |
-| `EUMETSAT_CONSUMER_SECRET` |  | The EUMETSAT consumer secret. |
-
-**Extract Latest:**
-
-*Extracts the latest available data for a given satellite's store into a zipped zarr.*
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `SATCONS_WINDOW_MINS` | `210` | The time window to extract data for. |
+There are a number of configuration options exposed via environment variables. For the full list,
+see `cmd/application.conf.
 
 ## FAQ
 
@@ -124,14 +74,13 @@ OCF recommends using [uv](https://docs.astral.sh/uv/) for managing your virtual 
 ```bash
 $ git clone git@github.com:openclimatefix/satellite-consumer.git
 $ cd satellite-consumer
-$ uv sync
 ```
 
-### Running the CLI
+Initialize the repository with recommended settings for development via 
 
-The python package contains a CLI entrypoint for ease of use when developing, which is available
-to your shell via the `sat-consumer-cli` command, assuming you have built the project in a virtual
-environment, and activated it.
+```bash
+$ make init
+```
 
 ### Linting and static type checking
  
@@ -139,11 +88,10 @@ This project uses [MyPy](https://mypy.readthedocs.io/en/stable/) for static type
 and [Ruff](https://docs.astral.sh/ruff/) for linting.
 Installing the development dependencies makes them available in your virtual environment.
 
-Use them via:
+There is a makefile target to automatically lint, typecheck, and format the codebase:
 
 ```bash
-$ python -m mypy .
-$ python -m ruff check .
+$ make lint
 ```
 
 Be sure to do this periodically while developing to catch any errors early
@@ -159,14 +107,10 @@ be sure to pass `--extra=dev` to the `pip install -e .` command when creating yo
 Run the unit tests with:
 
 ```bash
-$ python -m unittest discover -s src/satellite_consumer -p "test_*.py"
+$ make test
 ```
-
-> [!Note]
-> If you have created your virtual environment using `uv`, the above can be run via
-> the `Makefile`, using `make typecheck`, `make lint`, and `make test` respectively.
-
  
+
 ## Further reading
 
 On the directory structure:
