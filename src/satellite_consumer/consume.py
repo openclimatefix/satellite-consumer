@@ -13,7 +13,7 @@ from collections.abc import AsyncIterator, Callable, Iterator
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from functools import partial
 from itertools import islice
-from typing import TYPE_CHECKING, Literal, TypeVar
+from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
 import eumdac.product
 import numpy as np
@@ -158,7 +158,7 @@ async def consume_to_store(
     channels: list[models.SpectralChannel],
     resolution_meters: int,
     crop_region_lonlat: tuple[float, float, float, float] | None,
-    dims_chunks_shards: tuple[list[str], list[int], list[int]],
+    encoding: dict[str, Any],
     eumetsat_credentials: tuple[str, str],
     buffer_size: int,
     max_workers: int,
@@ -233,22 +233,20 @@ async def consume_to_store(
         total_num += 1
 
         if isinstance(item, xr.Dataset):
-            log.info(f"pulled image for timestamp {pd.Timestamp(item.time.item())}")
+            log.debug(f"pulled image for timestamp {pd.Timestamp(item.time.item())}")
             results.append(item)
 
             # If we've reached the write block size, concat the datasets and write out
             if len(results) == accum_writes:
                 ds = xr.concat(results, dim="time") if accum_writes > 1 else results[0]
 
-                log.info(f"saving last {accum_writes} accumulated images")
+                log.debug(f"saving last {accum_writes} accumulated images")
 
                 storage.write_to_store(
                     ds=ds,
                     dst=dst,
                     append_dim="time",
-                    dims=dims_chunks_shards[0],
-                    chunks=dims_chunks_shards[1],
-                    shards=dims_chunks_shards[2],
+                    encoding=encoding,
                 )
                 results = []
 
@@ -294,15 +292,13 @@ async def consume_to_store(
     if len(results) > 0:
         ds = xr.concat(results, dim="time") if accum_writes > 1 else results[0]
 
-        log.info(f"saving last {accum_writes} accumulated images")
+        log.debug(f"saving last {accum_writes} accumulated images")
 
         storage.write_to_store(
             ds=ds,
             dst=dst,
             append_dim="time",
-            dims=dims_chunks_shards[0],
-            chunks=dims_chunks_shards[1],
-            shards=dims_chunks_shards[2],
+            encoding=encoding,
         )
 
     log.info(

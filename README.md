@@ -31,14 +31,6 @@ Install using the container image:
 $ docker pull ghcr.io/openclimatefix/satellite-consumer
 ```
 
-or, if you prefer a CLI:
-
-```bash
-$ pip install git+https://github.com/openclimatefix/satellite-consumer.git
-```
-
-This will put the `sat-consumer-cli` command in your virtual environments `bin` directory.
-
 ## Example usage
 
 ```bash

@@ -101,11 +101,7 @@ def main() -> None:
                 conf.get_string("credentials.aws.region", None),
             ),
             gcs_credentials=conf.get_string("credentials.gcs.application_credentials", None),
-            dims_chunks_shards=(
-                conf.get_list(f"satellites.{sat}.dimensions"),
-                conf.get_list(f"satellites.{sat}.chunks"),
-                conf.get_list(f"satellites.{sat}.shards"),
-            ),
+            encoding=conf.get_config(f"satellites.{sat}.encoding"),
             buffer_size=conf.get_int("consumer.buffer_size"),
             max_workers=conf.get_int("consumer.max_workers"),
             accum_writes=conf.get_int("consumer.accum_writes"),

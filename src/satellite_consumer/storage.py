@@ -3,12 +3,11 @@
 import datetime as dt
 import logging
 import re
-from typing import Any
+from typing import Any, TypeVar, overload
 
 import fsspec
 import gcsfs
 import icechunk
-import numpy as np
 import pandas as pd
 import s3fs
 import xarray as xr
@@ -22,66 +21,65 @@ from icechunk.xarray import to_icechunk
 log = logging.getLogger(__name__)
 
 
-def encoding(
+T = TypeVar("T")
+
+
+@overload
+def _sanitize_encoding(ds: xr.Dataset, dims: list[str], data: dict[Any, Any]) -> dict[str, Any]: ...
+
+
+@overload
+def _sanitize_encoding[T](
     ds: xr.Dataset,
     dims: list[str],
-    chunks: list[int],
-    shards: list[int],
-) -> dict[str, Any]:
-    """Get the encoding dictionary for writing the dataset to Zarr."""
-    # Replace -1's with full dimension sizes
-    chunks = [
-        cd[0] if cd[0] > 0 else len(ds.coords[cd[1]].values)
-        for cd in zip(chunks, dims, strict=True)
-    ]
-    shards = [
-        sd[0] if sd[0] > 0 else len(ds.coords[sd[1]].values)
-        for sd in zip(shards, dims, strict=True)
-    ]
+    data: T,
+) -> T: ...
 
-    return {
-        # Data variables
-        "data": {
-            "compressors": zarr.codecs.BloscCodec(
-                cname="zstd",
-                clevel=3,
-                shuffle=zarr.codecs.BloscShuffle.bitshuffle,
-            ),
-            "fill_value": np.float32(np.nan),
-            "chunks": chunks,
-            "shards": shards,
-        },
-        "instrument": {"dtype": "<U26", "chunks": (10000,)},
-        "satellite_actual_longitude": {"dtype": "float64", "chunks": (10000,)},
-        "satellite_actual_latitude": {"dtype": "float64", "chunks": (10000,)},
-        "satellite_actual_altitude": {"dtype": "float64", "chunks": (10000,)},
-        "cal_offset": {"dtype": "float64", "chunks": (10000,)},
-        "cal_slope": {"dtype": "float64", "chunks": (10000,)},
-        "projection_longitude": {"dtype": "float64", "chunks": (10000,)},
-        "projection_latitude": {"dtype": "float64", "chunks": (10000,)},
-        # Coordinates
-        "channel": {"dtype": "str"},
-        "time": {
-            "dtype": "int",
-            "units": "nanoseconds since 1970-01-01",
-            "calendar": "proleptic_gregorian",
-            "chunks": (10000,),
-        },
-    }
+
+def _sanitize_encoding(
+    ds: xr.Dataset,
+    dims: list[str],
+    data: Any,
+) -> Any:
+    """Get the encoding dictionary for writing the dataset to Zarr."""
+    if isinstance(data, dict):
+        sanitized_data: dict[str, Any] = {}
+        for key, value in data.items():
+            if key in ["chunks", "shards"] and isinstance(value, list):
+                # Replace all -1's with the correspoinding dimension length
+                # Might not be chunked along all dims, hence strict=False
+                sanitized_data[key] = [
+                    cd[0] if cd[0] > 0 else len(ds.coords[cd[1]].values)
+                    for cd in zip(value, dims, strict=False)
+                ]
+            elif key == "compressors":
+                # Replace any mention of compressors with a standard Blosc Zstd compressor
+                sanitized_data[key] = zarr.codecs.BloscCodec(
+                    cname="zstd",
+                    clevel=3,
+                    shuffle=zarr.codecs.BloscShuffle.bitshuffle,
+                )
+            elif key == "_ARRAY_DIMENSIONS":
+                # Remove _ARRAY_DIMENSIONS key as it is not a valid Zarr encoding key, if exists
+                continue
+            else:
+                sanitized_data[key] = _sanitize_encoding(ds=ds, dims=dims, data=value)
+
+        return sanitized_data
+    return data
 
 
 def write_to_store(
     ds: xr.Dataset,
     dst: str | icechunk.repository.Repository,
     append_dim: str,
-    chunks: list[int],
-    shards: list[int],
-    dims: list[str],
+    encoding: dict[str, Any],
 ) -> None:
     """Write the given dataset to the destination.
 
     If a store already exists at the given path, the dataset will be appended to it.
     """
+    dims = encoding["_ARRAY_DIMENSIONS"]
     if dims != list(ds.dims):
         raise ValueError(
             "Provided dimensions do not match dataset dimensions."
@@ -102,7 +100,7 @@ def write_to_store(
                 obj=ds,
                 session=session,
                 mode="w-",
-                encoding=encoding(ds=ds, dims=dims, chunks=chunks, shards=shards),
+                encoding=_sanitize_encoding(ds=ds, dims=dims, data=encoding),
             )
             _ = session.commit(message="initial commit")
         elif isinstance(dst, str):
@@ -113,7 +111,7 @@ def write_to_store(
                 write_empty_chunks=False,
                 zarr_format=3,
                 compute=True,
-                encoding=encoding(ds=ds, dims=dims, chunks=chunks, shards=shards),
+                encoding=_sanitize_encoding(ds=ds, dims=dims, data=encoding),
             )
         return None
 
