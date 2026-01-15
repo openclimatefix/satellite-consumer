@@ -233,14 +233,14 @@ async def consume_to_store(
         total_num += 1
 
         if isinstance(item, xr.Dataset):
-            log.info(f"pulled image for timestamp {pd.Timestamp(item.time.item())}")
+            log.debug(f"pulled image for timestamp {pd.Timestamp(item.time.item())}")
             results.append(item)
 
             # If we've reached the write block size, concat the datasets and write out
             if len(results) == accum_writes:
                 ds = xr.concat(results, dim="time") if accum_writes > 1 else results[0]
 
-                log.info(f"saving last {accum_writes} accumulated images")
+                log.debug(f"saving last {accum_writes} accumulated images")
 
                 storage.write_to_store(
                     ds=ds,
@@ -292,7 +292,7 @@ async def consume_to_store(
     if len(results) > 0:
         ds = xr.concat(results, dim="time") if accum_writes > 1 else results[0]
 
-        log.info(f"saving last {accum_writes} accumulated images")
+        log.debug(f"saving last {accum_writes} accumulated images")
 
         storage.write_to_store(
             ds=ds,
