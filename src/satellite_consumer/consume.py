@@ -92,6 +92,7 @@ def _download_and_process(
     resolution_meters: int,
     crop_region_lonlat: tuple[float, float, float, float] | None,
     keep_raw: bool,
+    retries: int,
 ) -> xr.Dataset | Exception:
     """Wrapper of the download and process functions."""
     try:
@@ -101,6 +102,7 @@ def _download_and_process(
             folder=folder,
             filter_regex=filter_regex,
             nest_by_date=keep_raw,
+            retries=retries,
         )
 
         log.debug("processing %s", product._id)
@@ -164,6 +166,7 @@ async def consume_to_store(
     max_workers: int,
     accum_writes: int,
     executor: Literal["threads", "processes"],
+    retries: int,
     use_icechunk: bool = False,
     aws_credentials: tuple[
         str | None,
@@ -191,6 +194,7 @@ async def consume_to_store(
         resolution_meters=resolution_meters,
         crop_region_lonlat=crop_region_lonlat,
         keep_raw=keep_raw,
+        retries=retries,
     )
 
     dst: str | icechunk.repository.Repository = raw_zarr_paths[1]
