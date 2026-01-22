@@ -16,7 +16,7 @@ import eumdac.token
 import pandas as pd
 from fsspec.implementations.local import LocalFileSystem
 
-from satellite_consumer.exceptions import DownloadError, ValidationError
+from satellite_consumer.exceptions import DownloadError
 from satellite_consumer.storage import get_fs
 
 if TYPE_CHECKING:
@@ -89,9 +89,6 @@ def download_raw(
         .to_pydatetime()
         .astimezone(tz=dt.UTC)
     )
-
-    if product.qualityStatus != "NOMINAL":
-        raise ValidationError(f"Product {product} qualityStatus is {product.qualityStatus}")
 
     save_folder: str = f"{folder}/{rounded_time.strftime('%Y/%m/%d')}" if nest_by_date else folder
     expected_files: list[str] = [f"{save_folder}/{name}" for name in product_files]

@@ -216,6 +216,12 @@ async def consume_to_store(
         )
         return rounded_time not in existing_times
 
+    def _nominal_quality(product: eumdac.product.Product) -> bool:
+        return product.qualityStatus == "NOMINAL"
+
+    def _product_filter(product: eumdac.product.Product) -> bool:
+        return _nominal_quality(product) and _not_stored(product)
+
     # Iterate through all products in search
     num_skips: int = 0
     total_num: int = 0
@@ -224,7 +230,7 @@ async def consume_to_store(
     t_last: float = 0
     get_iter_time_ema = EMA()
     async for item in _buffered_apply(
-        filter(_not_stored, product_iter),
+        filter(_product_filter, product_iter),
         bound_func,
         buffer_size=buffer_size,
         max_workers=max_workers,
