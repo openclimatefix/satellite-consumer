@@ -123,7 +123,11 @@ def download_raw(
                     tempfile.NamedTemporaryFile(dir=tmpdir, suffix=".zip") as fdst,
                 ):
                     shutil.copyfileobj(fsrc, fdst, length=1024 * 1024)
+
+                    # Make sure the file is flushed to disk before unzipping
+                    fdst.flush()
                     shutil.unpack_archive(fdst.name, tmpdir, "zip")
+
                     for file in product_files:
                         save_path: str = f"{save_folder}/{file}"
                         fs.put(f"{tmpdir}/{file}", save_path)
