@@ -157,7 +157,7 @@ def check_coords(ds: xr.Dataset, store_ds: xr.Dataset, skip_dims: list[str]) -> 
 
 async def consume_to_store(
     dt_range: tuple[dt.datetime, dt.datetime],
-    continue_store: bool,
+    jump_to_latest: bool,
     cadence_mins: int,
     product_id: str,
     filter_regex: str,
@@ -202,11 +202,17 @@ async def consume_to_store(
             pd.to_datetime(store_ds.coords["time"].values, utc=True).to_pydatetime().tolist()
         )
 
+    # Optionally set the start datetime to the last datetime in the store
+    if jump_to_latest and store_ds is not None:
+        start = existing_times[-1]
+        log.info(f"skipping to end of store: {start}")
+    else:
+        start = dt_range[0]
+
     product_iter = get_products_iterator(
         product_id=product_id,
         cadence_mins=cadence_mins,
-        # Optionally set the start datetime to the last datetime in the store
-        start=existing_times[-1] if (continue_store and store_ds is not None) else dt_range[0],
+        start=start,
         end=dt_range[1],
         credentials=eumetsat_credentials,
     )
