@@ -85,6 +85,7 @@ class TestStorage(unittest.TestCase):
                         dst=test["dst"],
                         append_dim="time",
                         encoding=encoding,
+                        write_new=True,
                     )
                     store_ds = xr.open_zarr(test["dst"], consolidated=False)
                     self.assertTrue((store_ds.data_vars["data"].isel(time=0).values == 1.0).all())

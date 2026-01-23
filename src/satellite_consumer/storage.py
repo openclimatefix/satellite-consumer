@@ -1,6 +1,5 @@
 """Storage module for reading and writing data to disk."""
 
-import datetime as dt
 import logging
 import re
 from typing import Any, TypeVar, overload
@@ -8,7 +7,6 @@ from typing import Any, TypeVar, overload
 import fsspec
 import gcsfs
 import icechunk
-import pandas as pd
 import s3fs
 import xarray as xr
 import zarr
@@ -74,6 +72,7 @@ def write_to_store(
     dst: str | icechunk.repository.Repository,
     append_dim: str,
     encoding: dict[str, Any],
+    write_new: bool,
 ) -> None:
     """Write the given dataset to the destination.
 
@@ -87,85 +86,65 @@ def write_to_store(
             "Ensure process step outputs dimensions in the order specified here.",
         )
 
-    try:
-        if isinstance(dst, icechunk.repository.Repository):
-            session = dst.writable_session(branch="main")
-            store_ds: xr.Dataset = xr.open_zarr(session.store, consolidated=False)
-        elif isinstance(dst, str):
-            store_ds = xr.open_zarr(dst, consolidated=False)
-    except (FileNotFoundError, zarr.errors.GroupNotFoundError):
-        # Write new store, specifying encodings
-        if isinstance(dst, icechunk.repository.Repository):
+    if isinstance(dst, icechunk.repository.Repository):
+        session = dst.writable_session(branch="main")
+        if write_new:
             to_icechunk(
                 obj=ds,
                 session=session,
                 mode="w-",
                 encoding=_sanitize_encoding(ds=ds, dims=dims, data=encoding),
             )
-            _ = session.commit(message="initial commit")
-        elif isinstance(dst, str):
-            _ = ds.to_zarr(
-                dst,
-                mode="w-",
-                consolidated=False,
-                write_empty_chunks=False,
-                zarr_format=3,
-                compute=True,
-                encoding=_sanitize_encoding(ds=ds, dims=dims, data=encoding),
+            commit_message = "initial commit"
+        else:
+            to_icechunk(
+                obj=ds,
+                session=session,
+                append_dim=append_dim,
+                mode="a",
             )
-        return None
+            commit_message = f"add data for {ds.coords[append_dim].values}"
 
-    # Check the non-appending dimensions match
-    if not ds[[d for d in ds.dims if d != append_dim]].equals(
-        store_ds[[d for d in store_ds.dims if d != append_dim]],
-    ):
-        raise ValueError("Non-appending dimensions do not match existing store")
-
-    # * Append the new time dimension coordinate
-    if isinstance(dst, icechunk.repository.Repository):
-        to_icechunk(
-            obj=ds,
-            session=session,
-            append_dim=append_dim,
-            mode="a",
-        )
-        _ = session.commit(
-            message=f"add data for {ds.coords[append_dim].values}",
+        session.commit(
+            message=commit_message,
             rebase_with=icechunk.ConflictDetector(),
             rebase_tries=5,
         )
+
     elif isinstance(dst, str):
-        _ = ds.to_zarr(
-            store=dst,
-            mode="a",
-            append_dim=append_dim,
-            compute=True,
-            write_empty_chunks=False,
-            zarr_format=3,
-            consolidated=False,
-        )
+        if write_new:
+            ds.to_zarr(
+                store=dst,
+                mode="w-",
+                zarr_format=3,
+                consolidated=False,
+                write_empty_chunks=False,
+                compute=True,
+                encoding=_sanitize_encoding(ds=ds, dims=dims, data=encoding),
+            )
+        else:
+            ds.to_zarr(
+                store=dst,
+                mode="a",
+                append_dim=append_dim,
+                zarr_format=3,
+                consolidated=False,
+                write_empty_chunks=False,
+                compute=True,
+            )
 
-    return None
 
-
-def get_existing_times(
-    dst: str | icechunk.repository.Repository,
-    time_dim: str,
-) -> list[dt.datetime]:
-    """Get the existing times in the store."""
+def get_existing_dataset(dst: str | icechunk.repository.Repository) -> xr.Dataset | None:
+    """Get the dataset in the store if it exists."""
     try:
         if isinstance(dst, str):
             store_ds: xr.Dataset = xr.open_zarr(dst, consolidated=False)
         elif isinstance(dst, icechunk.repository.Repository):
             session = dst.readonly_session(branch="main")
             store_ds = xr.open_zarr(session.store, consolidated=False)
+        return store_ds
     except (FileNotFoundError, zarr.errors.GroupNotFoundError):
-        return []
-
-    return [
-        pd.Timestamp(t).to_pydatetime().astimezone(tz=dt.UTC)
-        for t in store_ds.coords[time_dim].values
-    ]
+        return None
 
 
 def get_fs(
