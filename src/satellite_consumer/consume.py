@@ -25,7 +25,6 @@ from satellite_consumer import models, storage
 from satellite_consumer.download_eumetsat import download_raw, get_products_iterator
 from satellite_consumer.exceptions import DownloadError, ValidationError
 from satellite_consumer.process import process_raw
-from satellite_consumer.storage import get_fs
 
 if TYPE_CHECKING:
     import icechunk.repository
@@ -112,7 +111,7 @@ def _download_and_process(
         )
 
         if not keep_raw:
-            fs = get_fs(folder)
+            fs = storage.get_fs(folder)
             for path in raw_filepaths:
                 fs.delete(path)
 
@@ -146,6 +145,14 @@ class EMA:
         self.last = self.alpha * x + beta * self.last
         self.calls += 1
         return self.last / (1 - beta**self.calls) if self.calls else self.last
+
+
+def check_coords(ds: xr.Dataset, store_ds: xr.Dataset, skip_dims: list[str]) -> None:
+    """Check the dimensions of the two datasets are identical."""
+    if not ds[[d for d in ds.dims if d not in skip_dims]].equals(
+        store_ds[[d for d in store_ds.dims if d not in skip_dims]],
+    ):
+        raise ValueError("Non-appending dimensions do not match existing store")
 
 
 async def consume_to_store(
@@ -204,8 +211,15 @@ async def consume_to_store(
             gcs_token=gcs_credentials,
         )
 
+    store_ds = storage.get_existing_dataset(dst)
+
     # Filter out the times which already exist in the store
-    existing_times = storage.get_existing_times(dst=dst, time_dim="time")
+    if store_ds is None:
+        existing_times = []
+    else:
+        existing_times = (
+            pd.to_datetime(store_ds.coords["time"].values, utc=True).to_pydatetime().tolist()
+        )
 
     def _not_stored(product: eumdac.product.Product) -> bool:
         rounded_time: dt.datetime = (
@@ -252,11 +266,20 @@ async def consume_to_store(
 
                 log.debug(f"saving last {accum_writes} accumulated images")
 
+                # Check the non-append coords match the coords already in the store
+                if store_ds is None:
+                    write_new_store = True
+                    store_ds = ds
+                else:
+                    write_new_store = False
+                    check_coords(ds, store_ds, skip_dims=["time"])
+
                 storage.write_to_store(
                     ds=ds,
                     dst=dst,
                     append_dim="time",
                     encoding=encoding,
+                    write_new=write_new_store,
                 )
                 results = []
 
@@ -309,6 +332,7 @@ async def consume_to_store(
             dst=dst,
             append_dim="time",
             encoding=encoding,
+            write_new=store_ds is None,
         )
 
     log.info(
