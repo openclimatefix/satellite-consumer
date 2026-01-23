@@ -217,7 +217,11 @@ async def consume_to_store(
         return rounded_time not in existing_times
 
     def _nominal_quality(product: eumdac.product.Product) -> bool:
-        return product.qualityStatus == "NOMINAL"
+        if product.qualityStatus == "NOMINAL":
+            return True
+        else:
+            log.warning(f"skipping product {product}: qualityStatus is {product.qualityStatus}")
+            return False
 
     def _product_filter(product: eumdac.product.Product) -> bool:
         return _nominal_quality(product) and _not_stored(product)
