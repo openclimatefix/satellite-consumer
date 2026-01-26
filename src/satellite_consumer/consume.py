@@ -157,6 +157,7 @@ def check_coords(ds: xr.Dataset, store_ds: xr.Dataset, skip_dims: list[str]) -> 
 
 async def consume_to_store(
     dt_range: tuple[dt.datetime, dt.datetime],
+    jump_to_latest: bool,
     cadence_mins: int,
     product_id: str,
     filter_regex: str,
@@ -181,10 +182,37 @@ async def consume_to_store(
     gcs_credentials: str | None = None,
 ) -> None:
     """Consume satellite data into a zarr store."""
+    # If the store already exists, open it and find its timestamps
+    dst: str | icechunk.repository.Repository = raw_zarr_paths[1]
+    if use_icechunk:
+        dst = storage.get_icechunk_repo(
+            raw_zarr_paths[1],
+            aws_access_key_id=aws_credentials[0],
+            aws_secret_access_key=aws_credentials[1],
+            aws_region_name=aws_credentials[2],
+            aws_endpoint_url=aws_credentials[3],
+            gcs_token=gcs_credentials,
+        )
+
+    store_ds = storage.get_existing_dataset(dst)
+    if store_ds is None:
+        existing_times = []
+    else:
+        existing_times = (
+            pd.to_datetime(store_ds.coords["time"].values, utc=True).to_pydatetime().tolist()
+        )
+
+    # Optionally set the start datetime to the last datetime in the store
+    if jump_to_latest and store_ds is not None:
+        start = existing_times[-1]
+        log.info(f"skipping to end of store: {start}")
+    else:
+        start = dt_range[0]
+
     product_iter = get_products_iterator(
         product_id=product_id,
         cadence_mins=cadence_mins,
-        start=dt_range[0],
+        start=start,
         end=dt_range[1],
         credentials=eumetsat_credentials,
     )
@@ -199,27 +227,6 @@ async def consume_to_store(
         crop_region_lonlat=crop_region_lonlat,
         keep_raw=keep_raw,
     )
-
-    dst: str | icechunk.repository.Repository = raw_zarr_paths[1]
-    if use_icechunk:
-        dst = storage.get_icechunk_repo(
-            raw_zarr_paths[1],
-            aws_access_key_id=aws_credentials[0],
-            aws_secret_access_key=aws_credentials[1],
-            aws_region_name=aws_credentials[2],
-            aws_endpoint_url=aws_credentials[3],
-            gcs_token=gcs_credentials,
-        )
-
-    store_ds = storage.get_existing_dataset(dst)
-
-    # Filter out the times which already exist in the store
-    if store_ds is None:
-        existing_times = []
-    else:
-        existing_times = (
-            pd.to_datetime(store_ds.coords["time"].values, utc=True).to_pydatetime().tolist()
-        )
 
     def _not_stored(product: eumdac.product.Product) -> bool:
         rounded_time: dt.datetime = (
