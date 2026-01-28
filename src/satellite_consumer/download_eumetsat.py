@@ -1,6 +1,7 @@
 """Functions for interfacing with EUMETSAT's API and data."""
 
 import datetime as dt
+import hashlib
 import logging
 import os
 import re
@@ -23,6 +24,47 @@ if TYPE_CHECKING:
     from eumdac.collection import Collection, SearchResults
 
 log = logging.getLogger(__name__)
+
+
+def calculate_md5(filepath: str) -> str:
+    """Calculate MD5 hash of a file.
+
+    Args:
+        filepath: Path to the file to hash.
+
+    Returns:
+        Hexadecimal MD5 hash string.
+    """
+    hash_md5 = hashlib.md5()  # noqa: S324
+    with open(filepath, "rb") as f:
+        for chunk in iter(lambda: f.read(8192), b""):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()
+
+
+def verify_md5_hash(filepath: str, expected_hash: str) -> bool:
+    """Verify that a file's MD5 hash matches the expected value.
+
+    Args:
+        filepath: Path to the file to verify.
+        expected_hash: Expected MD5 hash string.
+
+    Returns:
+        True if the hash matches, False otherwise.
+    """
+    if not expected_hash:
+        log.debug("No expected hash provided, skipping MD5 verification")
+        return True
+
+    actual_hash = calculate_md5(filepath)
+    if actual_hash.lower() != expected_hash.lower():
+        log.warning(
+            f"MD5 hash mismatch for '{filepath}': "
+            f"expected '{expected_hash}', got '{actual_hash}'"
+        )
+        return False
+    log.debug(f"MD5 verification passed for '{filepath}'")
+    return True
 
 
 def get_products_iterator(
@@ -68,6 +110,7 @@ def download_raw(
     retries: int = 6,
     cadence_mins: int = 5,
     nest_by_date: bool = True,
+    verify_md5: bool = False,
 ) -> list[str]:
     """Download a product to filesystem.
 
@@ -78,6 +121,20 @@ def download_raw(
 
     Nesting the raw files by date is recommended if keeping files after processing as it prevents
     the creation of overly populated folders on disk.
+
+    Args:
+        product: EUMDAC product to download.
+        folder: Folder to download the product to.
+        filter_regex: Regular expression to filter the files to download.
+        retries: Number of times to retry downloading the product.
+        cadence_mins: Cadence of the product in minutes.
+        nest_by_date: Whether to nest the raw files by date.
+        verify_md5: Whether to verify the MD5 hash of the downloaded archive.
+            Uses the hash provided by EUMETSAT to detect corrupted downloads.
+            Disabled by default for backward compatibility.
+
+    Returns:
+        List of paths to the downloaded files.
     """
     fs = get_fs(path=folder)
     fs.mkdirs(path=folder, exist_ok=True)
@@ -121,8 +178,27 @@ def download_raw(
                 ):
                     shutil.copyfileobj(fsrc, fdst, length=1024 * 1024)
 
-                    # Make sure the file is flushed to disk before unzipping
+                    # Make sure the file is flushed to disk before verification
                     fdst.flush()
+
+                    # Verify MD5 hash if enabled and hash is available
+                    if verify_md5:
+                        # Get expected hash from product metadata (if available)
+                        expected_hash = getattr(product, "hash", None) or getattr(
+                            fsrc, "headers", {}
+                        ).get("Content-MD5")
+                        if expected_hash:
+                            if not verify_md5_hash(fdst.name, expected_hash):
+                                raise DownloadError(
+                                    f"MD5 hash verification failed for product "
+                                    f"'{product._id}'. The download may be corrupted.",
+                                )
+                        else:
+                            log.debug(
+                                f"MD5 verification requested but no hash available "
+                                f"for product '{product._id}'"
+                            )
+
                     shutil.unpack_archive(fdst.name, tmpdir, "zip")
 
                     for file in product_files:
