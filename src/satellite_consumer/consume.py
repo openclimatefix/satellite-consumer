@@ -95,6 +95,11 @@ def _download_and_process(
     """Wrapper of the download and process functions."""
     raw_filepaths: list[str] = []
 
+    # Calling `product.qualityStatus` makes an http request which can be slow. This filter is  done
+    # inside this function so that it can be run on a worker and so avoid stalling the main process
+    if product.qualityStatus != "NOMINAL":
+        return ValidationError(f"Product {product} qualityStatus is {product.qualityStatus}")
+
     try:
         log.debug("downloading %s", product._id)
         raw_filepaths = download_raw(
@@ -247,16 +252,6 @@ async def consume_to_store(
         )
         return rounded_time not in existing_times
 
-    def _nominal_quality(product: eumdac.product.Product) -> bool:
-        if product.qualityStatus == "NOMINAL":
-            return True
-        else:
-            log.warning(f"skipping product {product}: qualityStatus is {product.qualityStatus}")
-            return False
-
-    def _product_filter(product: eumdac.product.Product) -> bool:
-        return _nominal_quality(product) and _not_stored(product)
-
     # Iterate through all products in search
     num_skips: int = 0
     total_num: int = 0
@@ -265,7 +260,7 @@ async def consume_to_store(
     t_last: float = 0
     get_iter_time_ema = EMA()
     async for item in _buffered_apply(
-        filter(_product_filter, product_iter),
+        filter(_not_stored, product_iter),
         bound_func,
         buffer_size=buffer_size,
         max_workers=max_workers,
