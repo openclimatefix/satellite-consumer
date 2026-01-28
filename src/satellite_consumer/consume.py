@@ -93,6 +93,8 @@ def _download_and_process(
     keep_raw: bool,
 ) -> xr.Dataset | Exception:
     """Wrapper of the download and process functions."""
+    raw_filepaths: list[str] = []
+
     try:
         log.debug("downloading %s", product._id)
         raw_filepaths = download_raw(
@@ -110,15 +112,23 @@ def _download_and_process(
             crop_region_lonlat=crop_region_lonlat,
         )
 
-        if not keep_raw:
-            fs = storage.get_fs(folder)
-            for path in raw_filepaths:
-                fs.delete(path)
-
         return ds
 
     except Exception as e:
         return e
+
+    finally:
+        # Cleanup files
+        if not keep_raw and raw_filepaths:
+            try:
+                fs = storage.get_fs(folder)
+                for path in raw_filepaths:
+                    if fs.exists(path):
+                        fs.delete(path)
+            except Exception:
+                # log this rather than returning it, since an error is already returned from the
+                # except block
+                log.warning(f"failed to clean up {raw_filepaths}")
 
 
 class EMA:
