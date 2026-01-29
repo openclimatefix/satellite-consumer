@@ -97,7 +97,7 @@ def _map_scene_to_dataset(
         )
 
     # Extract values from attributes before we overwrite them
-    time = pd.Timestamp(ds.attrs["time_parameters"]["nominal_end_time"])
+    time = pd.Timestamp(ds.attrs["time_parameters"]["nominal_end_time"]).as_unit("ns")
     platform_name: str = ds.attrs["platform_name"]
     area_def: AreaDefinition = ds.attrs["area"]
     cal_slope, cal_offset = _get_calib_coefficients(ds, channels)
@@ -111,9 +111,7 @@ def _map_scene_to_dataset(
     # Stack channels into a new dimension and compile the metadata
     ds = _stack_channels_to_dim(ds, channels)
 
-    # Ensure Dataset has a time dimension
-    if "time" not in ds.dims:
-        ds = ds.expand_dims({"time": [time]})
+    ds = ds.expand_dims({"time": [time]})
 
     ds = ds.assign(
         instrument=("time", np.array([platform_name]).astype("<U26")),
