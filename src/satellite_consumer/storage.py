@@ -16,7 +16,7 @@ import zarr.storage
 from fsspec.implementations.local import LocalFileSystem
 from icechunk.xarray import to_icechunk
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("sat_consumer")
 
 
 T = TypeVar("T")

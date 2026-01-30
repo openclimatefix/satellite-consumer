@@ -30,7 +30,7 @@ if TYPE_CHECKING:
     import icechunk.repository
 
 warnings.simplefilter(action="ignore", category=UnstableSpecificationWarning)
-log = logging.getLogger(__name__)
+log = logging.getLogger("sat_consumer")
 
 
 T = TypeVar("T")  # Type of the input
