@@ -25,12 +25,24 @@ from satellite_consumer import models, storage
 from satellite_consumer.download_eumetsat import download_raw, get_products_iterator
 from satellite_consumer.exceptions import DownloadError, ValidationError
 from satellite_consumer.process import process_raw
+from satellite_consumer.request_patch import construct_patched_request_function
 
 if TYPE_CHECKING:
     import icechunk.repository
 
 warnings.simplefilter(action="ignore", category=UnstableSpecificationWarning)
 log = logging.getLogger("sat_consumer")
+
+
+def init_worker(timeout: int) -> None:
+    """Patch the `eumdac.request._request()` function in all workers."""
+    import eumdac.request
+
+    eumdac.request._request = construct_patched_request_function(
+        max_retries=3,
+        backoff_factor=0.3,
+        timeout=timeout,
+    )
 
 
 T = TypeVar("T")  # Type of the input
@@ -43,6 +55,8 @@ async def _buffered_apply(
     buffer_size: int,
     max_workers: int,
     executor: Literal["threads", "processes"],
+    initializer: Callable[[Any], None] | None = None,
+    initargs: tuple[Any, ...] | None = None,
 ) -> AsyncIterator[R]:
     """Asynchronously applies a synchronous function to items using a sliding window buffer.
 
@@ -56,6 +70,8 @@ async def _buffered_apply(
         buffer_size: The length of the buffer.
         max_workers: The number of workers in the pool.
         executor: "threads" or "processes".
+        initializer: Function that is called at the start of each worker process.
+        initargs: Arguments passed to the initializer
 
     Yields:
         The result of `func` applied to each item from `item_iter`, in the original order.
@@ -64,7 +80,7 @@ async def _buffered_apply(
 
     ExecutorClass = ProcessPoolExecutor if executor == "processes" else ThreadPoolExecutor
 
-    with ExecutorClass(max_workers=max_workers) as pool:
+    with ExecutorClass(max_workers=max_workers, initializer=initializer, initargs=initargs) as pool:
         tasks: deque[asyncio.Future[R]] = deque()
 
         # Fill the buffer initially
@@ -187,6 +203,7 @@ async def consume_to_store(
     max_workers: int,
     accum_writes: int,
     executor: Literal["threads", "processes"],
+    request_timeout: int,
     use_icechunk: bool = False,
     aws_credentials: tuple[
         str | None,
@@ -265,6 +282,8 @@ async def consume_to_store(
         buffer_size=buffer_size,
         max_workers=max_workers,
         executor=executor,
+        initializer=init_worker,
+        initargs=(request_timeout,),
     ):
         total_num += 1
 
