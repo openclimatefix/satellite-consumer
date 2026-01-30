@@ -18,7 +18,7 @@ from satpy.scene import Scene
 from satellite_consumer import models
 from satellite_consumer.exceptions import ValidationError
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("sat_consumer")
 
 
 def process_raw(

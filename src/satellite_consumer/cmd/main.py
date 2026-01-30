@@ -12,7 +12,7 @@ import sentry_sdk
 
 from satellite_consumer import consume, models
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("sat_consumer")
 
 
 def main() -> None:
@@ -22,6 +22,8 @@ def main() -> None:
     """
     conf_file = importlib.resources.files("satellite_consumer.cmd").joinpath("application.conf")
     conf: pyhocon.ConfigTree = pyhocon.ConfigFactory.parse_string(conf_file.read_text())
+
+    log.setLevel(logging.getLevelName(conf.get_string("consumer.loglevel").upper()))
 
     if conf.get_string("sentry.dsn") != "":
         sentry_sdk.init(

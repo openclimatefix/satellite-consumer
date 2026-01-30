@@ -22,7 +22,7 @@ from satellite_consumer.storage import get_fs
 if TYPE_CHECKING:
     from eumdac.collection import Collection, SearchResults
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("sat_consumer")
 
 
 def get_products_iterator(
