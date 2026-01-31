@@ -91,6 +91,7 @@ def _download_and_process(
     resolution_meters: int,
     crop_region_lonlat: tuple[float, float, float, float] | None,
     keep_raw: bool,
+    retries: int,
 ) -> xr.Dataset | Exception:
     """Wrapper of the download and process functions."""
     raw_filepaths: list[str] = []
@@ -107,6 +108,7 @@ def _download_and_process(
             folder=folder,
             filter_regex=filter_regex,
             nest_by_date=keep_raw,
+            retries=retries,
         )
 
         log.debug("processing %s", product._id)
@@ -194,7 +196,9 @@ async def consume_to_store(
         str | None,
         str | None,
     ] = (None, None, None, None),
+
     gcs_credentials: str | None = None,
+    retries: int = 6,
 ) -> None:
     """Consume satellite data into a zarr store."""
     # If the store already exists, open it and find its timestamps
@@ -241,6 +245,7 @@ async def consume_to_store(
         resolution_meters=resolution_meters,
         crop_region_lonlat=crop_region_lonlat,
         keep_raw=keep_raw,
+        retries=retries,
     )
 
     def _not_stored(product: eumdac.product.Product) -> bool:
