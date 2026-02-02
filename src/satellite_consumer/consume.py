@@ -133,7 +133,7 @@ def _download_and_process(
 
         t_end = time.time()
         log.debug(
-            f"Downloaded ({t_dl-t_start:.2f}s) and processed ({t_end-t_dl:.2f}s)"
+            f"Downloaded ({t_dl - t_start:.2f}s) and processed ({t_end - t_dl:.2f}s)"
             f" for timestamp {np.datetime_as_string(ds.time.values[0], unit='s')}"
         )
 
