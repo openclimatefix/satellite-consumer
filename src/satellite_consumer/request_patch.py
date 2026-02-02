@@ -1,4 +1,8 @@
-"""Patch for eumdac's _request function to make aragumehts configurable."""
+"""Patch for eumdac's _request function to make arguments configurable.
+
+This patch is required as the eumdac API (as of v3.1.1) does not allow the request call to be
+configured by the user. This works around the limitation.
+"""
 
 import logging
 from collections.abc import Callable
