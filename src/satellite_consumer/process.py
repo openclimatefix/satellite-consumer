@@ -22,8 +22,12 @@ from satellite_consumer.exceptions import ValidationError
 log = logging.getLogger("sat_consumer")
 
 
-def _dummy_add_scanline_acq_time(*args: tuple[Any, ...], **kwargs: object) -> None:
-    """Dummy function to patch satpy v0.59.0 for speed.
+def _dummy_add_scanline_acq_time(
+    self: NativeMSGFileHandler,
+    *args: object,
+    **kwargs: object,
+) -> None:
+    """Dummy function to patch satpy for speed.
 
     The private `NativeMSGFileHandler._add_scanline_acq_time()` method takes about 1 second to run
     per image, and is run each time the `scene.load()` method is called. This method adds the
@@ -33,8 +37,11 @@ def _dummy_add_scanline_acq_time(*args: tuple[Any, ...], **kwargs: object) -> No
     """
     pass
 
+
 # Patch the method to nullify it
-NativeMSGFileHandler._add_scanline_acq_time = _dummy_add_scanline_acq_time
+NativeMSGFileHandler._add_scanline_acq_time = (  # type: ignore[method-assign]
+    _dummy_add_scanline_acq_time
+)
 
 
 def process_raw(
