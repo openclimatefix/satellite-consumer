@@ -21,7 +21,10 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
 ]
 dependencies = [
-    "satpy[seviri-l1b-native,seviri-l1b-nc]>=0.54.0,<1.0.0",
+    # satpy is still unstable. Caution is advised when changing the satpy version to make sure we
+    # don't break compatibility with our archives. This has happened previosuly and is difficult to
+    # trace
+    "satpy[seviri-l1b-native,seviri-l1b-nc]==0.59.0",
     "pyhocon>=0.3.61",
     "xarray>=2025.11.0",
     "eumdac>=3.0.0",
