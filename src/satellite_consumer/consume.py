@@ -70,7 +70,6 @@ async def _buffered_apply(
         max_workers: The number of workers in the pool.
         executor: "threads" or "processes".
         initializer: Function that is called at the start of each worker process.
-        initargs: Arguments passed to the initializer
 
     Yields:
         The result of `func` applied to each item from `item_iter`, in the original order.
