@@ -115,7 +115,7 @@ def _download_and_process(
         return ValidationError(f"Product {product} qualityStatus is {product.qualityStatus}")
 
     try:
-        log.debug("downloading %s", product._id)
+        t_start = time.time()
         raw_filepaths = download_raw(
             product=product,
             folder=folder,
@@ -123,12 +123,18 @@ def _download_and_process(
             nest_by_date=keep_raw,
         )
 
-        log.debug("processing %s", product._id)
+        t_dl = time.time()
         ds = process_raw(
             paths=raw_filepaths,
             channels=channels,
             resolution_meters=resolution_meters,
             crop_region_lonlat=crop_region_lonlat,
+        )
+
+        t_end = time.time()
+        log.debug(
+            f"Downloaded ({t_dl - t_start:.2f}s) and processed ({t_end - t_dl:.2f}s)"
+            f" for timestamp {np.datetime_as_string(ds.time.values[0], unit='s')}"
         )
 
         return ds
@@ -288,14 +294,11 @@ async def consume_to_store(
         total_num += 1
 
         if isinstance(item, xr.Dataset):
-            log.debug(f"pulled image for timestamp {pd.Timestamp(item.time.item())}")
             results.append(item)
 
             # If we've reached the write block size, concat the datasets and write out
             if len(results) == accum_writes:
                 ds = xr.concat(results, dim="time") if accum_writes > 1 else results[0]
-
-                log.debug(f"saving last {accum_writes} accumulated images")
 
                 # Check the non-append coords match the coords already in the store
                 if store_ds is None:
@@ -355,8 +358,6 @@ async def consume_to_store(
     # Write out any remaining values
     if len(results) > 0:
         ds = xr.concat(results, dim="time") if accum_writes > 1 else results[0]
-
-        log.debug(f"saving last {accum_writes} accumulated images")
 
         storage.write_to_store(
             ds=ds,
