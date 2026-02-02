@@ -13,12 +13,35 @@ import pyproj
 import xarray as xr
 import yaml
 from pyresample.geometry import AreaDefinition
+from satpy.readers.seviri_l1b_native import NativeMSGFileHandler
 from satpy.scene import Scene
 
 from satellite_consumer import models
 from satellite_consumer.exceptions import ValidationError
 
 log = logging.getLogger("sat_consumer")
+
+
+def _dummy_add_scanline_acq_time(
+    self: NativeMSGFileHandler,
+    *args: object,
+    **kwargs: object,
+) -> None:
+    """Dummy function to patch satpy for speed.
+
+    The private `NativeMSGFileHandler._add_scanline_acq_time()` method takes about 1 second to run
+    per image, and is run each time the `scene.load()` method is called. This method adds the
+    `"acq_time"` variable to the dataset which we drop within `_map_scene_to_dataset()` anyway.
+    Also, nothing else in the processing pipeline depends on `"acq_time"` (as of satpy 0.59.0), so
+    we can safely remove this to gain a speed-up.
+    """
+    pass
+
+
+# Patch the method to nullify it
+NativeMSGFileHandler._add_scanline_acq_time = (  # type: ignore[method-assign]
+    _dummy_add_scanline_acq_time
+)
 
 
 def process_raw(
