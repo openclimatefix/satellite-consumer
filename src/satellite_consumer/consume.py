@@ -55,8 +55,7 @@ async def _buffered_apply(
     buffer_size: int,
     max_workers: int,
     executor: Literal["threads", "processes"],
-    initializer: Callable[[Any], None] | None = None,
-    initargs: tuple[Any, ...] | None = None,
+    initializer: Callable[[], None] | None = None,
 ) -> AsyncIterator[R]:
     """Asynchronously applies a synchronous function to items using a sliding window buffer.
 
@@ -80,7 +79,7 @@ async def _buffered_apply(
 
     ExecutorClass = ProcessPoolExecutor if executor == "processes" else ThreadPoolExecutor
 
-    with ExecutorClass(max_workers=max_workers, initializer=initializer, initargs=initargs) as pool:
+    with ExecutorClass(max_workers=max_workers, initializer=initializer) as pool:
         tasks: deque[asyncio.Future[R]] = deque()
 
         # Fill the buffer initially
@@ -260,6 +259,9 @@ async def consume_to_store(
         keep_raw=keep_raw,
     )
 
+    # This function is run in all worker processes
+    bound_initializer = partial(init_worker, request_timeout)
+
     def _not_stored(product: eumdac.product.Product) -> bool:
         rounded_time: dt.datetime = (
             pd.Timestamp(product.sensing_end)
@@ -282,8 +284,7 @@ async def consume_to_store(
         buffer_size=buffer_size,
         max_workers=max_workers,
         executor=executor,
-        initializer=init_worker,
-        initargs=(request_timeout,),
+        initializer=bound_initializer,
     ):
         total_num += 1
 

@@ -1,19 +1,22 @@
 """Patch for eumdac's _request function to make aragumehts configurable."""
 
+import logging
 from collections.abc import Callable
 from typing import Literal
 
 import requests
-from eumdac.request import RequestError, _pretty_print, _should_retry, logger
+from eumdac.request import RequestError, _pretty_print, _should_retry
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+
+log = logging.getLogger("sat_consumer")
 
 
 def construct_patched_request_function(
     max_retries: int,
     backoff_factor: float,
     timeout: int,
-) -> Callable:
+) -> Callable[..., requests.Response]:
     """Generates a configurable patch for eumdac's internal request handler."""
 
     def _request(
@@ -63,7 +66,7 @@ def construct_patched_request_function(
         try:
             while True:
                 if hasattr(session, method):
-                    logger.debug(_pretty_print(method, url, kwargs))
+                    log.debug(_pretty_print(method, url, kwargs))
                     response = getattr(session, method.lower())(url, **kwargs)
                     if _should_retry(response):
                         continue
@@ -71,7 +74,7 @@ def construct_patched_request_function(
                     raise RequestError(f"Operation not supported: {method}")
                 break
         except (ValueError, KeyError, TypeError) as e:
-            logger.error(f"Received unexpected response: {e}")
+            log.error(f"Received unexpected response: {e}")
         except requests.exceptions.RetryError:
             raise RequestError(  # noqa: B904
                 f"Maximum retries ({max_retries}) reached for {method.capitalize()} {url}"
