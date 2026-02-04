@@ -9,8 +9,8 @@ from collections.abc import Callable
 from typing import Literal
 
 import requests
-from eumdac.request import RequestError, _pretty_print, _should_retry
 from eumdac.logging import logger
+from eumdac.request import RequestError, _pretty_print, _should_retry
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
