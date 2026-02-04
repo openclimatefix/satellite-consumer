@@ -9,14 +9,13 @@ from collections.abc import Callable
 from typing import Literal
 
 import requests
+from eumdac.logging import logger
 from eumdac.request import RequestError, _pretty_print, _should_retry
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 # Silence retry warnings
 logging.getLogger("urllib3.connectionpool").setLevel(logging.ERROR)
-
-log = logging.getLogger("sat_consumer")
 
 
 def construct_patched_request_function(
@@ -73,7 +72,7 @@ def construct_patched_request_function(
         try:
             while True:
                 if hasattr(session, method):
-                    log.debug(_pretty_print(method, url, kwargs))
+                    logger.debug(_pretty_print(method, url, kwargs))
                     response = getattr(session, method.lower())(url, **kwargs)
                     if _should_retry(response):
                         continue
@@ -81,7 +80,7 @@ def construct_patched_request_function(
                     raise RequestError(f"Operation not supported: {method}")
                 break
         except (ValueError, KeyError, TypeError) as e:
-            log.error(f"Received unexpected response: {e}")
+            logger.error(f"Received unexpected response: {e}")
         except requests.exceptions.RetryError:
             raise RequestError(  # noqa: B904
                 f"Maximum retries ({max_retries}) reached for {method.capitalize()} {url}"
