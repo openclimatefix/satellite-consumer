@@ -83,23 +83,14 @@ def download_raw(
     fs.mkdirs(path=folder, exist_ok=True)
     # Filter to only product files we care about
     product_files: list[str] = [p for p in product.entries if re.search(filter_regex, p)]
-    rounded_time: dt.datetime = (
-        pd.Timestamp(product.sensing_end)
-        .round(f"{cadence_mins} min")
-        .to_pydatetime()
-        .astimezone(tz=dt.UTC)
-    )
 
+    rounded_time: pd.Timestamp = pd.Timestamp(product.sensing_end).round(f"{cadence_mins}min")
     save_folder: str = f"{folder}/{rounded_time.strftime('%Y/%m/%d')}" if nest_by_date else folder
     expected_files: list[str] = [f"{save_folder}/{name}" for name in product_files]
 
     try:
         if all(fs.exists(f) for f in expected_files):
-            log.debug(
-                "all files for product %s exist in %s, skipping",
-                product,
-                save_folder,
-            )
+            log.debug(f"all files for product {product} exist in {save_folder}, skipping")
             return expected_files
     except Exception as e:
         raise OSError(
@@ -109,40 +100,35 @@ def download_raw(
 
     # If saving raw files to S3, use a local temp directory to unzip the archives.
     # Otherwise handle the unzipping in the raw archive folder path.
-    with tempfile.TemporaryDirectory(
-        dir=folder if isinstance(fs, LocalFileSystem) else None,
-    ) as tmpdir:
+    local_dir: str | None = folder if isinstance(fs, LocalFileSystem) else None
+    with tempfile.TemporaryDirectory(dir=local_dir) as tmpdir:
         for i in range(retries):
             try:
                 # Copying to temp then putting seems to be quicker than copying to fs
-                with (
-                    product.open() as fsrc,
-                    tempfile.NamedTemporaryFile(dir=tmpdir, suffix=".zip") as fdst,
-                ):
+                tmp_zip_path: str = f"{tmpdir}/{product._id}.zip"
+                with product.open() as fsrc, open(tmp_zip_path, mode="wb") as fdst:
                     shutil.copyfileobj(fsrc, fdst, length=1024 * 1024)
-
-                    # Make sure the file is flushed to disk before unzipping
                     fdst.flush()
-                    shutil.unpack_archive(fdst.name, tmpdir, "zip")
 
-                    for file in product_files:
-                        save_path: str = f"{save_folder}/{file}"
-                        fs.put(f"{tmpdir}/{file}", save_path)
-                        if os.stat(f"{tmpdir}/{file}").st_size != fs.info(save_path).get("size", 0):
-                            raise DownloadError(
-                                f"Downloaded file size mismatch for '{save_path}'. "
-                                f"Expected {os.stat(f'{tmpdir}/{file}').st_size}, "
-                                f"got {fs.info(save_path).get('size', 0)}.",
-                            )
+                shutil.unpack_archive(tmp_zip_path, tmpdir, "zip")
+
+                for file in product_files:
+                    tmp_path: str = f"{tmpdir}/{file}"
+                    save_path: str = f"{save_folder}/{file}"
+                    fs.put(tmp_path, save_path)
+                    if os.stat(tmp_path).st_size != fs.info(save_path).get("size", 0):
+                        raise DownloadError(
+                            f"Downloaded file size mismatch for '{save_path}'. "
+                            f"Expected {os.stat(tmp_path).st_size}, "
+                            f"got {fs.info(save_path).get('size', 0)}.",
+                        )
                 break
             except Exception as e:
                 log.debug(
                     f"error downloading product '{product._id}' (attempt {i}/{retries}): '{e}'",
                 )
                 if i + 1 == retries:
-                    raise DownloadError(
-                        f"Failed to download output '{product._id}': '{e}'",
-                    ) from e
+                    raise DownloadError(f"Failed to download output '{product._id}': '{e}'") from e
 
     return expected_files
 
