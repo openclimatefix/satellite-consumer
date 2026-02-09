@@ -298,7 +298,9 @@ async def consume_to_store(
 
             # If we've reached the write block size, concat the datasets and write out
             if len(results) == accum_writes:
-                ds = xr.concat(results, dim="time", join="exact") if accum_writes > 1 else results[0]
+                ds = (
+                    xr.concat(results, dim="time", join="exact") if accum_writes > 1 else results[0]
+                )
 
                 # Check the non-append coords match the coords already in the store
                 if store_ds is None:
