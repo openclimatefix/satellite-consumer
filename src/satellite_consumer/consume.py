@@ -239,7 +239,7 @@ async def consume_to_store(
         )
 
     # Optionally set the start datetime to the last datetime in the store
-    if jump_to_latest and store_ds is not None:
+    if jump_to_latest and (store_ds is not None) and (existing_times[-1] > dt_range[0]):
         start = existing_times[-1]
         log.info(f"skipping to end of store: {start}")
     else:

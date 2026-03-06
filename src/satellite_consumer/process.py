@@ -83,6 +83,13 @@ def process_raw(
             calibration=[c.representation for c in channels],
         )
 
+    except ValueError as e:
+        # There seem to be corrupted (short) files in the EUMETSAT Data Store archive
+        # Catch this error for the shorter than expected files
+        if "buffer is smaller than requested size" in str(e):
+            raise ValidationError(f"Truncated satellite file(s) {paths} detected: {e}") from e
+        raise e
+
     except Exception as e:
         raise OSError(f"Error reading paths as satpy Scene: {e}") from e
 
