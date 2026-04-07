@@ -49,7 +49,7 @@ T = TypeVar("T")  # Type of the input
 R = TypeVar("R")  # Type of the return
 
 
-async def _buffered_apply(
+async def _buffered_apply[T, R](
     item_iter: Iterator[T],
     func: Callable[[T], R],
     buffer_size: int,
