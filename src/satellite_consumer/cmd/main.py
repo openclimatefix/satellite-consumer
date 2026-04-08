@@ -99,8 +99,8 @@ def main() -> None:
             aws_credentials=(
                 conf.get_string("credentials.aws.access_key_id", None),
                 conf.get_string("credentials.aws.secret_access_key", None),
-                conf.get_string("credentials.aws.endpoint_url", None),
                 conf.get_string("credentials.aws.region", None),
+                conf.get_string("credentials.aws.endpoint_url", None),
             ),
             gcs_credentials=conf.get_string("credentials.gcs.application_credentials", None),
             encoding=conf.get_config(f"satellites.{sat}.encoding"),
