@@ -39,6 +39,13 @@ def main() -> None:
         dt.datetime.fromisoformat(conf.get_string("consumer.start_timestamp")),
         dt.datetime.fromisoformat(conf.get_string("consumer.end_timestamp")),
     )
+    for ts in dt_range:
+        if ts.tzinfo is None:
+            raise ValueError(f"Input timestamp '{ts}' must be timezone-aware")
+    dt_range = (
+        dt_range[0].astimezone(tz=dt.UTC),
+        dt_range[1].astimezone(tz=dt.UTC),
+    )
 
     sensor: str = conf.get_string(f"satellites.{sat}.sensor")
     resolution: int = conf.get_int("consumer.resolution_meters")

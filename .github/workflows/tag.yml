@@ -34,5 +34,4 @@ jobs:
           GIT_API_TAGGING: false
           MAJOR_STRING_TOKEN: "BREAKING CHANGE"
           MINOR_STRING_TOKEN: "feat("
-          PATCH_STRING_TOKEN: "fix("
-          DEFAULT_BUMP: none
+          DEFAULT_BUMP: patch

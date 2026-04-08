@@ -272,7 +272,7 @@ async def consume_to_store(
             pd.Timestamp(product.sensing_end)
             .round(f"{cadence_mins} min")
             .to_pydatetime()
-            .astimezone(tz=dt.UTC)
+            .replace(tzinfo=dt.UTC)  # EUMETSAT files are UTC without an explicit timezone
         )
         return rounded_time not in existing_times
 
