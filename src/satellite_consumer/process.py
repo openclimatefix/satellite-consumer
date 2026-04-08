@@ -181,8 +181,6 @@ def _map_scene_to_dataset(
             y_geostationary=slice(bottom, top),
         )
 
-        log.info(str(ds.data_vars["data"].attrs))
-
     return ds
 
 
