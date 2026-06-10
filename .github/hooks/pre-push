@@ -1,0 +1,19 @@
+#!/bin/sh
+
+echo "Running pre-push checks..."
+
+# Ensure in repo root
+REPO_ROOT=$(git rev-parse --show-toplevel)
+cd "$REPO_ROOT" || exit 1
+
+echo " * Checking linting..."
+# Run linting checks (exit code 0 indicates nothing to fix)
+make lint.dryrun &> /dev/null
+if [ ! $? -eq 0 ]; then
+	  make lint &> /dev/null
+		echo "ERROR: Linting/typechecking failed. Files may have been reformatted."
+		echo "       Please stage and commit these changes before pushing, and ensure typesafety."
+		echo "       (hint: 'git commit -am \"chore(repo): Code formatting\"')"
+		exit 1
+fi
+

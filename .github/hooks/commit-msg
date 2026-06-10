@@ -1,0 +1,17 @@
+#!/bin/sh
+
+# Allows for standard conventional commits OR git's auto-squash prefixes.
+commit_regex="^((fixup|squash|amend)!|(feat|fix|docs|style|refactor|perf|test|chore)!?(\(.+\))?:) .+$"
+
+if ! grep -iqE "$commit_regex" "$1"; then
+  echo "Aborting commit." >&2
+  echo "Commit messages should follow the conventional commit format or use a git autosquash prefix." >&2
+  echo "" >&2
+  echo "Conventional format: 'type(scope): message'" >&2
+  echo "Allowed types: feat, fix, docs, style, refactor, perf, test, chore" >&2
+  echo "See https://www.conventionalcommits.org/en/v1.0.0/#summary" >&2
+  echo "" >&2
+  echo "Autosquash prefixes: 'fixup!', 'squash!', 'amend!'" >&2
+  echo "Example: 'fixup! feat(user): add new login button'" >&2
+  exit 1
+fi

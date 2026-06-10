@@ -1,178 +1,127 @@
 """Entrypoint to the satellite consumer."""
 
-import argparse
+import asyncio
 import datetime as dt
-import os
-import sys
-import traceback
+import importlib.metadata
+import importlib.resources
+import logging
+import time
 
-from loguru import logger as log
+import pyhocon
+import sentry_sdk
 
-from satellite_consumer.config import (
-    SATELLITE_METADATA,
-    Command,
-    ConsumeCommandOptions,
-    ExtractLatestCommandOptions,
-    SatelliteConsumerConfig,
-)
-from satellite_consumer.run import run
+from satellite_consumer import consume, models
+
+log = logging.getLogger("sat_consumer")
 
 
-def cli_entrypoint() -> None:
-    """Handle the program using CLI arguments.
+def main() -> None:
+    """Entrypoint to the consumer.
 
-    Maps the provided CLI arguments to an appropriate Config object.
+    Parse configuration from environment and run consumer acording to it.
     """
-    parser = argparse.ArgumentParser(description="Satellite consumer")
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    conf_file = importlib.resources.files("satellite_consumer.cmd").joinpath("application.conf")
+    conf: pyhocon.ConfigTree = pyhocon.ConfigFactory.parse_string(conf_file.read_text())
 
-    consume_parser = subparsers.add_parser(
-        "consume",
-        help="Consume satellite data for a given time",
-    )
-    consume_parser.add_argument("satellite", choices=list(SATELLITE_METADATA.keys()))
-    consume_parser.add_argument(
-        "--time",
-        "-t",
-        type=dt.datetime.fromisoformat,
-        required=False,
-        help="Time to consume (YYYY-MM-DDTHH:MM:SS)",
-        default=dt.datetime.now(tz=dt.UTC),
-    )
-    window_ex_group = consume_parser.add_mutually_exclusive_group(required=False)
-    window_ex_group.add_argument(
-        "--window-mins",
-        type=int,
-        help="Window size in minutes",
-        default=0,
-    )
-    window_ex_group.add_argument(
-        "--window-months",
-        type=int,
-        help="Window size in months",
-        default=0,
-    )
-    consume_parser.add_argument("--validate", action="store_true")
-    consume_parser.add_argument("--resolution", type=int, default=3000)
-    consume_parser.add_argument("--rescale", action="store_true")
-    consume_parser.add_argument("--workdir", type=str, default="/mnt/disks/sat")
-    consume_parser.add_argument("--num-workers", type=int, default=1)
-    consume_parser.add_argument("--eumetsat-key", type=str, required=True)
-    consume_parser.add_argument("--eumetsat-secret", type=str, required=True)
-    consume_parser.add_argument("--icechunk", action="store_true")
-    consume_parser.add_argument("--crop-region", type=str, default="")
+    log.setLevel(logging.getLevelName(conf.get_string("consumer.loglevel").upper()))
 
-    extractlatest_parser = subparsers.add_parser(
-        "extractlatest",
-        help="Extract the latest windown of data from an existing scan store.",
+    if conf.get_string("sentry.dsn") != "":
+        sentry_sdk.init(
+            dsn=conf.get_string("sentry.dsn"),
+            environment=conf.get_string("sentry.environment"),
+            traces_sample_rate=1,
+        )
+        sentry_sdk.set_tag("app_name", "satellite_consumer")
+        sentry_sdk.set_tag("app_version", importlib.metadata.version("satellite_consumer"))
+
+    sat: str = conf.get_string("consumer.satellite")
+    dt_range: tuple[dt.datetime, dt.datetime] = (
+        dt.datetime.fromisoformat(conf.get_string("consumer.start_timestamp")),
+        dt.datetime.fromisoformat(conf.get_string("consumer.end_timestamp")),
     )
-    extractlatest_parser.add_argument("satellite", choices=list(SATELLITE_METADATA.keys()))
-    extractlatest_parser.add_argument(
-        "--window-mins",
-        type=int,
-        help="Merge window size in minutes",
-        default=210,
-    )
-    extractlatest_parser.add_argument("--workdir", type=str, default="/mnt/disks/sat")
-    extractlatest_parser.add_argument("--resolution", type=int, default=3000)
-    extractlatest_parser.add_argument("--crop-region", type=str, default="")
-
-    args = parser.parse_args()
-
-    os.environ["EUMETSAT_CONSUMER_KEY"] = args.eumetsat_key
-    os.environ["EUMETSAT_CONSUMER_SECRET"] = args.eumetsat_secret
-
-    command_opts: ConsumeCommandOptions | ExtractLatestCommandOptions
-    command = Command(args.command.lower())
-    match command:
-        case Command.CONSUME:
-            command_opts = ConsumeCommandOptions(
-                satellite=args.satellite,
-                time=args.time,
-                window_mins=args.window_mins,
-                window_months=args.window_months,
-                validate=args.validate,
-                resolution=args.resolution,
-                rescale=args.rescale,
-                workdir=args.workdir,
-                icechunk=args.icechunk,
-                crop_region=args.crop_region.lower(),
-            )
-        case Command.EXTRACTLATEST:
-            command_opts = ExtractLatestCommandOptions(
-                satellite=args.satellite,
-                window_mins=args.window_mins,
-                workdir=args.workdir,
-                resolution=args.resolution,
-            )
-
-    config: SatelliteConsumerConfig = SatelliteConsumerConfig(
-        command=command,
-        command_options=command_opts,
+    for ts in dt_range:
+        if ts.tzinfo is None:
+            raise ValueError(f"Input timestamp '{ts}' must be timezone-aware")
+    dt_range = (
+        dt_range[0].astimezone(tz=dt.UTC),
+        dt_range[1].astimezone(tz=dt.UTC),
     )
 
-    try:
-        run(config)
-        sys.exit(0)
-    except Exception as e:
-        tb: str = traceback.format_exc()
-        log.error(f"Error: {e}", traceback=tb)
-        sys.exit(1)
+    sensor: str = conf.get_string(f"satellites.{sat}.sensor")
+    resolution: int = conf.get_int("consumer.resolution_meters")
+    channels: list[models.SpectralChannel] = [
+        models.SpectralChannel(
+            name=ch,
+            representation=conf.get_string(f"sensors.{sensor}.channels.{ch}.repr"),
+            satpy_index=conf.get_int(f"sensors.{sensor}.channels.{ch}.satpy_idx"),
+        )
+        for ch in conf.get_config(f"sensors.{sensor}.channels")
+        if resolution in conf.get_list(f"sensors.{sensor}.channels.{ch}.res")
+    ]
+    if len(channels) == 0:
+        raise ValueError(
+            f"No channels found for satellite {sat} at resolution {resolution!s} meters",
+        )
 
+    # Get the lon-lat crop bounds from the region string
+    crop_region_lonlat: tuple[float, float, float, float] | None = None
+    crop_region: str = conf.get_string("consumer.crop_region")
+    if crop_region != "":
+        crop_region_lonlat = (
+            conf.get_float(f"regions.{crop_region}.left"),
+            conf.get_float(f"regions.{crop_region}.bottom"),
+            conf.get_float(f"regions.{crop_region}.right"),
+            conf.get_float(f"regions.{crop_region}.top"),
+        )
 
-def env_entrypoint() -> None:
-    """Handle the program using environment variables.
+    prog_start = time.time()
 
-    Maps the environemnt variables to an appropriate Config object.
-    """
-    try:
-        command = Command(os.environ["SATCONS_COMMAND"])
-        command_opts: ConsumeCommandOptions | ExtractLatestCommandOptions
-        match command:
-            case Command.CONSUME:
-                if os.getenv("SATCONS_TIME") is None:
-                    t: dt.datetime = dt.datetime.now(tz=dt.UTC)
-                else:
-                    t = dt.datetime.fromisoformat(os.environ["SATCONS_TIME"])
-
-                command_opts = ConsumeCommandOptions(
-                    satellite=os.environ["SATCONS_SATELLITE"],
-                    time=t,
-                    window_mins=int(os.getenv("SATCONS_WINDOW_MINS", default="0")),
-                    window_months=int(os.getenv("SATCONS_WINDOW_MONTHS", default="0")),
-                    validate=os.getenv("SATCONS_VALIDATE", "false").lower() == "true",
-                    resolution=int(os.getenv("SATCONS_RESOLUTION", default="3000")),
-                    rescale=os.getenv("SATCONS_RESCALE", "false").lower() == "true",
-                    workdir=os.getenv("SATCONS_WORKDIR", "/mnt/disks/sat"),
-                    num_workers=int(os.getenv("SATCONS_NUM_WORKERS", default="1")),
-                    icechunk=os.getenv("SATCONS_ICECHUNK", "false").lower() == "true",
-                    crop_region=os.getenv("SATCONS_CROP_REGION", "").lower(),
-                )
-
-            case Command.EXTRACTLATEST:
-                command_opts = ExtractLatestCommandOptions(
-                    satellite=os.environ["SATCONS_SATELLITE"],
-                    window_mins=int(os.getenv("SATCONS_WINDOW_MINS", default="210")),
-                    workdir=os.getenv("SATCONS_WORKDIR", "/mnt/disks/sat"),
-                    resolution=int(os.getenv("SATCONS_RESOLUTION", default="3000")),
-                    crop_region=os.getenv("SATCONS_CROP_REGION", "").lower(),
-                )
-
-    except KeyError as e:
-        log.error(f"Missing environment variable: {e}")
-        return
-    except Exception as e:
-        raise e
-
-    config: SatelliteConsumerConfig = SatelliteConsumerConfig(
-        command=command,
-        command_options=command_opts,
+    log.info(
+        "sat consumer %s starting for %s from %s to %s",
+        importlib.metadata.version("satellite_consumer"),
+        sat,
+        dt_range[0].isoformat(),
+        dt_range[1].isoformat(),
     )
 
-    try:
-        run(config)
-        sys.exit(0)
-    except Exception as e:
-        tb: str = traceback.format_exc()
-        log.error(f"Error: {e}", traceback=tb)
-        sys.exit(1)
+    asyncio.run(
+        consume.consume_to_store(
+            dt_range=dt_range,
+            cadence_mins=conf.get_int(f"satellites.{sat}.cadence_mins"),
+            product_id=conf.get_string(f"satellites.{sat}.product_id"),
+            filter_regex=conf.get_string(f"satellites.{sat}.file_filter_regex"),
+            raw_zarr_paths=(
+                conf.get_string("consumer.raw_path"),
+                conf.get_string("consumer.zarr_path"),
+            ),
+            keep_raw=conf.get_bool("consumer.keep_raw"),
+            channels=channels,
+            resolution_meters=resolution,
+            crop_region_lonlat=crop_region_lonlat,
+            eumetsat_credentials=(
+                conf.get_string("credentials.eumetsat.key"),
+                conf.get_string("credentials.eumetsat.secret"),
+            ),
+            use_icechunk=conf.get_bool("consumer.use_icechunk"),
+            aws_credentials=(
+                conf.get_string("credentials.aws.access_key_id", None),
+                conf.get_string("credentials.aws.secret_access_key", None),
+                conf.get_string("credentials.aws.region", None),
+                conf.get_string("credentials.aws.endpoint_url", None),
+            ),
+            gcs_credentials=conf.get_string("credentials.gcs.application_credentials", None),
+            encoding=conf.get_config(f"satellites.{sat}.encoding"),
+            buffer_size=conf.get_int("consumer.buffer_size"),
+            max_workers=conf.get_int("consumer.max_workers"),
+            accum_writes=conf.get_int("consumer.accum_writes"),
+            executor=conf.get_string("consumer.executor"),
+            jump_to_latest=conf.get_bool("consumer.jump_to_latest"),
+            request_timeout=conf.get_int("consumer.request_timeout"),
+        ),
+    )
+
+    log.info(f"sat consumer finished in {time.time() - prog_start!s}")
+
+
+if __name__ == "__main__":
+    main()

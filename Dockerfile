@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y git
 # * pyproject.toml: Project configuration
 WORKDIR /opt/app
 COPY pyproject.toml /opt/app/pyproject.toml
+COPY uv.lock /opt/app/uv.lock
 
 # Make UV behave in a container-orientated way
 # * Compile bytecode to reduce startup time
