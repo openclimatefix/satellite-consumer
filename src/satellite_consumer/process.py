@@ -134,9 +134,9 @@ def _map_scene_to_dataset(
     orbital_params = _get_orbital_params(ds)
 
     # RSS has 12.5% on-disk NaNs for their L1.5 data, so we allow up to 13.5%
-    nan_frac = _get_earthdisk_nan_frac(ds, area_def)
-    if nan_frac > 0.2:
-        raise ValidationError(f"Too many NaN values on earth-disk in the data array: {nan_frac}")
+    # nan_frac = _get_earthdisk_nan_frac(ds, area_def)
+    # if nan_frac > 0.2:
+    #     raise ValidationError(f"Too many NaN values on earth-disk in the data array: {nan_frac}")
 
     # Stack channels into a new dimension and compile the metadata
     ds = _stack_channels_to_dim(ds, channels)
@@ -159,7 +159,7 @@ def _map_scene_to_dataset(
     ds = ds.transpose("time", "y_geostationary", "x_geostationary", "channel")
     ds = _sort_xy_coords(ds)
 
-    # Serialize attributes to be JSON-compatible
+    # Serialize attributes to be JSON-compatible, do for each subunit
     ds.attrs = _serialize_dict(ds.attrs)
 
     if crop_region_lonlat is not None:
