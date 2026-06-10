@@ -24,7 +24,7 @@ dependencies = [
     # satpy is still unstable. Caution is advised when changing the satpy version to make sure we
     # don't break compatibility with our archives. This has happened previosuly and is difficult to
     # trace
-    "satpy[seviri-l1b-native,seviri-l1b-nc]==0.59.0",
+    "satpy[seviri-l1b-native,seviri-l1b-nc]>=0.60.0",
     "pyhocon>=0.3.61",
     "xarray>=2025.11.0",
     "eumdac>=3.0.0",
@@ -36,8 +36,7 @@ dependencies = [
     "pyyaml>=6.0.2",
     "requests>=2.32.3",
     "s3fs>=2025.2.0",
-    "icechunk>=1.0.0",
-    "zarr>=3.1.5",
+    "icechunk>=2.0.0",
     "hdf5plugin>=5.1.0",
     "sentry-sdk>=2.33.2",
     "asyncio",
@@ -171,23 +170,12 @@ satellite-consumer = { path = ".", editable = true }
 
 [tool.pixi.environments]
 default = { solve-group = "default" }
-dev = { features = ["dev"], solve-group = "default" }
 
 [tool.pixi.tasks]
 
 [tool.pixi.dependencies]
-python = "3.12.*"
-netcdf4 = "*"
-h5netcdf = "*"
-pyproj = "*"
-zarr = "*"
-icechunk = "*"
-xarray = "*"
-pyresample = "*"
-hdf5plugin = "*"
-fsspec = "*"
-s3fs = "*"
-gcsfs = "*"
-requests = "*"
-ruff = ">=0.12.7,<0.13"
-pyspectral = ">=0.13.6,<0.14"
+pyproj = ">=3.7.2,<4"
+h5netcdf = ">=1.8.1,<2"
+netcdf4 = ">=1.7.4,<2"
+pykdtree = ">=1.4.3,<2"
+
