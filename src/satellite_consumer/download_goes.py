@@ -7,11 +7,14 @@ from collections.abc import Iterator
 import fsspec
 import pandas as pd
 import s3fs
-from loguru import logger as log
 
 from satellite_consumer.config import SatelliteMetadata
 from satellite_consumer.exceptions import DownloadError
 from satellite_consumer.storage import get_fs
+import logging
+
+
+log = logging.getLogger("sat_consumer")
 
 HISTORY_RANGE = {
     "goes16": (
