@@ -49,6 +49,7 @@ def process_raw(
     channels: list[models.SpectralChannel],
     resolution_meters: int,
     crop_region_lonlat: tuple[float, float, float, float] | None = None,
+    satellite: str = "seviri"
 ) -> xr.Dataset:
     """Process a set of raw files into an xarray DataArray.
 
@@ -58,6 +59,7 @@ def process_raw(
         resolution_meters: Desired spatial resolution in meters.
         crop_region_lonlat: Optional tuple defining the lon-lat coordinate
             region to crop to, in the form (lon_min, lat_min, lon_max, lat_max).
+        satellite: The satellite type, one of 'seviri', 'goes', 'himawari', or 'gk2a'.
     """
     try:
         # Meteosat 3rd gen don't output .nat files, and so requires a different loader
@@ -71,6 +73,17 @@ def process_raw(
                 "calib_mode": "nominal",
                 "include_raw_metadata": True,
             }
+        elif satellite == "goes":
+            loader: str = "abi_l1b"
+        elif satellite == "himawari":
+            loader: str = "ahi_hsd"
+        elif satellite == "gk2a":
+            loader: str = "ami_l1b"
+        else:
+            raise ValueError(
+                f"Unsupported satellite: {satellite}. Supported satellites are:"
+                f" 'seviri', 'goes', 'himawari', 'gk2a'.",
+            )
 
         scene: Scene = Scene(
             filenames={loader: paths},  # type:ignore
@@ -133,12 +146,8 @@ def _map_scene_to_dataset(
     cal_slope, cal_offset = _get_calib_coefficients(ds, channels)
     orbital_params = _get_orbital_params(ds)
 
-    # RSS has 12.5% on-disk NaNs for their L1.5 data, so we allow up to 13.5%
-    # nan_frac = _get_earthdisk_nan_frac(ds, area_def)
-    # if nan_frac > 0.2:
-    #     raise ValidationError(f"Too many NaN values on earth-disk in the data array: {nan_frac}")
-
     # Stack channels into a new dimension and compile the metadata
+    # TODO Change this so each channel is its own dataset, downstream changes too
     ds = _stack_channels_to_dim(ds, channels)
 
     ds = ds.expand_dims({"time": [time]})

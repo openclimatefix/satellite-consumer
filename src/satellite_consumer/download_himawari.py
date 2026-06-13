@@ -1,6 +1,7 @@
 """Functions for interfacing with EUMETSAT's API and data."""
 
 import datetime as dt
+import logging
 import re
 from collections.abc import Iterator
 
@@ -11,8 +12,6 @@ import s3fs
 from satellite_consumer.config import SatelliteMetadata
 from satellite_consumer.exceptions import DownloadError
 from satellite_consumer.storage import get_fs
-import logging
-
 
 log = logging.getLogger("sat_consumer")
 

@@ -1,6 +1,7 @@
 """Functions for interfacing with EUMETSAT's API and data."""
 
 import datetime as dt
+import logging
 import re
 from collections.abc import Iterator
 
@@ -11,8 +12,6 @@ import s3fs
 from satellite_consumer.config import SatelliteMetadata
 from satellite_consumer.exceptions import DownloadError
 from satellite_consumer.storage import get_fs
-import logging
-
 
 log = logging.getLogger("sat_consumer")
 
@@ -51,7 +50,7 @@ def get_timestamp_from_filename(filename: str) -> dt.datetime:
     if not match:
         raise ValueError(f"Filename '{filename}' does not contain a valid timestamp.")
 
-    start_str, end_str = match.groups()
+    start_str, _ = match.groups()
     start_time = dt.datetime.strptime(start_str[:-1], "%Y%j%H%M%S").replace(tzinfo=dt.UTC)
     return start_time
 
