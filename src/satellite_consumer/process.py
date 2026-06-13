@@ -147,7 +147,6 @@ def _map_scene_to_dataset(
     orbital_params = _get_orbital_params(ds)
 
     # Stack channels into a new dimension and compile the metadata
-    # TODO Change this so each channel is its own dataset, downstream changes too
     ds = _stack_channels_to_dim(ds, channels)
 
     ds = ds.expand_dims({"time": [time]})
@@ -165,7 +164,7 @@ def _map_scene_to_dataset(
         ds.coords[coord].attrs["coordinate_reference_system"] = "geostationary"
 
     # Make sure dimensions and coordinates are in expected order
-    ds = ds.transpose("time", "y_geostationary", "x_geostationary", "channel")
+    ds = ds.transpose("time", "y_geostationary", "x_geostationary")
     ds = _sort_xy_coords(ds)
 
     # Serialize attributes to be JSON-compatible, do for each subunit
@@ -224,14 +223,14 @@ def _stack_channels_to_dim(ds: xr.Dataset, channels: list[models.SpectralChannel
             k: v for k, v in ds[channel.name].attrs.items() if k in channel_attrs
         }
 
-    ds = (
-        ds.to_dataarray(name="data", dim="channel")
-        .to_dataset(promote_attrs=True)
-        .sel(channel=[c.name for c in channels])
-    )
+    #ds = (
+    #    ds.to_dataarray(name="data", dim="channel")
+    #    .to_dataset(promote_attrs=True)
+    #    .sel(channel=[c.name for c in channels])
+    #)
 
     # Replace the attrs with the compiled version
-    ds.data_vars["data"].attrs.clear()
+    #ds.data_vars["data"].attrs.clear()
     ds.attrs = attrs
 
     return ds

@@ -23,6 +23,9 @@ from zarr.errors import UnstableSpecificationWarning
 
 from satellite_consumer import models, storage
 from satellite_consumer.download_eumetsat import download_raw, get_products_iterator
+from satellite_consumer.download_goes import download_raw_goes, get_products_iterator_goes
+from satellite_consumer.download_himawari import download_raw_himawari, get_products_iterator_himawari
+from satellite_consumer.download_gk2a import download_raw_gk2a, get_products_iterator_gk2a
 from satellite_consumer.exceptions import DownloadError, ValidationError
 from satellite_consumer.process import process_raw
 from satellite_consumer.request_patch import construct_patched_request_function
@@ -105,9 +108,23 @@ def _download_and_process(
     resolution_meters: int,
     crop_region_lonlat: tuple[float, float, float, float] | None,
     keep_raw: bool,
+    satellite: str = "seviri",
 ) -> xr.Dataset | Exception:
     """Wrapper of the download and process functions."""
     raw_filepaths: list[str] = []
+
+    # Choose downloader nad processor based on the satellite
+    if satellite == "seviri":
+        downloader = download_raw
+    elif satellite == "goes":
+        downloader = download_raw_goes
+    elif satellite == "himawari":
+        downloader = download_raw_himawari
+    elif satellite == "gk2a":
+        downloader = download_raw_gk2a
+    else:
+        raise ValueError(f"Unknown satellite {satellite}")
+
 
     # Calling `product.qualityStatus` makes an http request which can be slow. This filter is  done
     # inside this function so that it can be run on a worker and so avoid stalling the main process
@@ -116,7 +133,7 @@ def _download_and_process(
 
     try:
         t_start = time.time()
-        raw_filepaths = download_raw(
+        raw_filepaths = downloader(
             product=product,
             folder=folder,
             filter_regex=filter_regex,
@@ -129,6 +146,7 @@ def _download_and_process(
             channels=channels,
             resolution_meters=resolution_meters,
             crop_region_lonlat=crop_region_lonlat,
+            satellite=satellite
         )
 
         t_end = time.time()
@@ -216,6 +234,7 @@ async def consume_to_store(
         str | None,
     ] = (None, None, None, None),
     gcs_credentials: str | None = None,
+    satellite: str = "seviri",
 ) -> None:
     """Consume satellite data into a zarr store."""
     # If the store already exists, open it and find its timestamps
@@ -245,7 +264,18 @@ async def consume_to_store(
     else:
         start = dt_range[0]
 
-    product_iter = get_products_iterator(
+    if satellite == "seviri":
+        prod_iter = get_products_iterator
+    elif satellite == "goes":
+        prod_iter = get_products_iterator_goes
+    elif satellite == "himawari":
+        prod_iter = get_products_iterator_himawari
+    elif satellite == "gk2a":
+        prod_iter = get_products_iterator_gk2a
+    else:
+        raise ValueError(f"Unknown satellite {satellite}")
+
+    product_iter = prod_iter(
         product_id=product_id,
         cadence_mins=cadence_mins,
         start=start,
