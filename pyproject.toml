@@ -24,7 +24,7 @@ dependencies = [
     # satpy is still unstable. Caution is advised when changing the satpy version to make sure we
     # don't break compatibility with our archives. This has happened previosuly and is difficult to
     # trace
-    "satpy[seviri-l1b-native,seviri-l1b-nc]>=0.60.0",
+    "satpy[all]>=0.60.0",
     "pyhocon>=0.3.61",
     "xarray>=2025.11.0",
     "eumdac>=3.0.0",
