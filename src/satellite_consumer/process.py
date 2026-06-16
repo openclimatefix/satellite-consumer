@@ -63,19 +63,20 @@ def process_raw(
     """
     try:
         # Meteosat 3rd gen don't output .nat files, and so requires a different loader
-        loader: str = "fci_l1c_nc"
-        reader_kwargs: dict[str, Any] = {}
-        if paths[0].endswith(".nat"):
-            loader = "seviri_l1b_native"
-            # Nominal calibration represents raw integer counts to radiance via slope and intercept
-            # Include flag surfaces calibration values
-            reader_kwargs = {
-                "calib_mode": "nominal",
-                "include_raw_metadata": True,
-            }
-        elif satellite == "goes":
+        if satellite == "seviri" or satellite == "odegree-12" or satellite == "odegree-12-highres":
+            loader: str = "fci_l1c_nc"
+            reader_kwargs: dict[str, Any] = {}
+            if paths[0].endswith(".nat"):
+                loader = "seviri_l1b_native"
+                # Nominal calibration represents raw integer counts to radiance via slope and intercept
+                # Include flag surfaces calibration values
+                reader_kwargs = {
+                    "calib_mode": "nominal",
+                    "include_raw_metadata": True,
+                }
+        elif satellite == "goes" or satellite == "goes-east" or satellite == "goes-west":
             loader: str = "abi_l1b"
-        elif satellite == "himawari":
+        elif satellite == "himawari" or satellite == "himawari-8" or satellite == "himawari-9":
             loader: str = "ahi_hsd"
         elif satellite == "gk2a":
             loader: str = "ami_l1b"
@@ -84,7 +85,7 @@ def process_raw(
                 f"Unsupported satellite: {satellite}. Supported satellites are:"
                 f" 'seviri', 'goes', 'himawari', 'gk2a'.",
             )
-
+        print(f"Loading {len(paths)} files with loader {loader} and reader_kwargs {reader_kwargs}")
         scene: Scene = Scene(
             filenames={loader: paths},  # type:ignore
             reader_kwargs=reader_kwargs,
@@ -138,12 +139,13 @@ def _map_scene_to_dataset(
             .astype(np.float32)
             .load()
         )
-
+    #print(ds)
     # Extract values from attributes before we overwrite them
     time = pd.Timestamp(ds.attrs["time_parameters"]["nominal_end_time"]).as_unit("ns")
+    start_time = pd.Timestamp(ds.attrs["time_parameters"]["nominal_start_time"]).as_unit("ns")
     platform_name: str = ds.attrs["platform_name"]
     area_def: AreaDefinition = ds.attrs["area"]
-    cal_slope, cal_offset = _get_calib_coefficients(ds, channels)
+    #cal_slope, cal_offset = _get_calib_coefficients(ds, channels)
     orbital_params = _get_orbital_params(ds)
 
     # Stack channels into a new dimension and compile the metadata
@@ -153,8 +155,9 @@ def _map_scene_to_dataset(
 
     ds = ds.assign(
         instrument=("time", np.array([platform_name]).astype("<U26")),
-        cal_slope=(["time", "channel"], [cal_slope]),
-        cal_offset=(["time", "channel"], [cal_offset]),
+        #cal_slope=(["time",], [cal_slope]),
+        #cal_offset=(["time",], [cal_offset]),
+        start_time=("time", [start_time]),
         **{k: ("time", [v]) for k, v in orbital_params.items()},  # type: ignore
     )
 
@@ -232,6 +235,9 @@ def _stack_channels_to_dim(ds: xr.Dataset, channels: list[models.SpectralChannel
     # Replace the attrs with the compiled version
     #ds.data_vars["data"].attrs.clear()
     ds.attrs = attrs
+    # Clear attrs from each of the data variables, since they are now in the top-level attrs
+    for channel in channels:
+        ds[channel.name].attrs.clear()
 
     return ds
 

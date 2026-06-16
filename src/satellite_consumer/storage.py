@@ -62,7 +62,6 @@ def _sanitize_encoding(
                 continue
             else:
                 sanitized_data[key] = _sanitize_encoding(ds=ds, dims=dims, data=value)
-
         return sanitized_data
     return data
 
@@ -88,12 +87,15 @@ def write_to_store(
 
     if isinstance(dst, icechunk.repository.Repository):
         session = dst.writable_session(branch="main")
+        sanitized_encoding = _sanitize_encoding(ds=ds, dims=dims, data=encoding)
+        # Only keep keys that are in data_vars or coords of the dataset
+        sanitized_encoding = {k: v for k, v in sanitized_encoding.items() if k in ds.data_vars or k in ds.coords}
         if write_new:
             to_icechunk(
                 obj=ds,
                 session=session,
                 mode="w-",
-                encoding=_sanitize_encoding(ds=ds, dims=dims, data=encoding),
+                encoding=sanitized_encoding,
             )
             commit_message = "initial commit"
         else:
@@ -210,7 +212,18 @@ def get_icechunk_repo(
     storage_config: icechunk.Storage
     repo: icechunk.Repository
 
+    print(result.group("protocol"), result.group("bucket"), result.group("prefix")) if result else print("No match")
+
     # Make Icechunk storage config according to the given path
+    storage_config = icechunk.s3_storage(
+        bucket="us-west-2.opendata.source.coop",
+        prefix="bkr/geo/mtg_2000m.icechunk",
+        access_key_id=aws_access_key_id,
+        secret_access_key=aws_secret_access_key,
+        region=aws_region_name,
+        endpoint_url=aws_endpoint_url,
+    )
+    """
     if result:
         match (result.group("protocol"), result.group("bucket"), result.group("prefix")):
             case ("s3", bucket, prefix):
@@ -236,7 +249,7 @@ def get_icechunk_repo(
         # Try to do a local store
         log.debug("path=%s, initializing local filesystem backend", path)
         storage_config = icechunk.local_filesystem_storage(path=path)
-
+    """
     if icechunk.Repository.exists(storage=storage_config):
         # Return existing store and the times in it
         log.debug("path=%s, using existing icechunk store", path)

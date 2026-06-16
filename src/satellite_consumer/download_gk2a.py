@@ -109,7 +109,7 @@ def get_products_for_date_range_gk2a(
 
 
 def get_products_iterator_gk2a(
-    sat_metadata: SatelliteMetadata,
+    sat_metadata,
     start: dt.datetime,
     end: dt.datetime,
     missing_product_threshold: float = 0.1,

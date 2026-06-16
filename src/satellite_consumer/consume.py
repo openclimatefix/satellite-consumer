@@ -264,11 +264,11 @@ async def consume_to_store(
     else:
         start = dt_range[0]
 
-    if satellite == "seviri":
+    if satellite == "seviri" or satellite == "odegree-12" or satellite == "odegree-12-highres":
         prod_iter = get_products_iterator
-    elif satellite == "goes":
+    elif satellite == "goes" or satellite == "goes-east" or satellite == "goes-west":
         prod_iter = get_products_iterator_goes
-    elif satellite == "himawari":
+    elif satellite == "himawari" or satellite == "himawari-8" or satellite == "himawari-9":
         prod_iter = get_products_iterator_himawari
     elif satellite == "gk2a":
         prod_iter = get_products_iterator_gk2a
