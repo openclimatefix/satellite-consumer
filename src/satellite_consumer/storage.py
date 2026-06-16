@@ -217,7 +217,7 @@ def get_icechunk_repo(
     # Make Icechunk storage config according to the given path
     storage_config = icechunk.s3_storage(
         bucket="us-west-2.opendata.source.coop",
-        prefix="bkr/geo/mtg_2000m.icechunk",
+        prefix=f"bkr/geo/{path.split('/')[-1]}",
         access_key_id=aws_access_key_id,
         secret_access_key=aws_secret_access_key,
         region=aws_region_name,
