@@ -29,6 +29,7 @@ from satellite_consumer.download_gk2a import download_raw_gk2a, get_products_ite
 from satellite_consumer.exceptions import DownloadError, ValidationError
 from satellite_consumer.process import process_raw
 from satellite_consumer.request_patch import construct_patched_request_function
+from satellite_consumer.config import SatelliteMetadata, SATELLITE_METADATA
 
 if TYPE_CHECKING:
     import icechunk.repository
@@ -264,7 +265,7 @@ async def consume_to_store(
     else:
         start = dt_range[0]
 
-    if satellite == "seviri" or satellite == "odegree-12" or satellite == "odegree-12-highres":
+    if satellite == "seviri" or satellite == "odegree-12" or satellite == "odegree-12-highres" or satellite == "iodc":
         prod_iter = get_products_iterator
     elif satellite == "goes" or satellite == "goes-east" or satellite == "goes-west":
         prod_iter = get_products_iterator_goes
@@ -275,13 +276,25 @@ async def consume_to_store(
     else:
         raise ValueError(f"Unknown satellite {satellite}")
 
-    product_iter = prod_iter(
-        product_id=product_id,
-        cadence_mins=cadence_mins,
-        start=start,
-        end=dt_range[1],
-        credentials=eumetsat_credentials,
-    )
+    if satellite not in ["seviri", "odegree-12", "odegree-12-highres", "iodc"]:
+        product_iter = prod_iter(
+            sat_metadata=SATELLITE_METADATA[satellite],
+            cadence_mins=cadence_mins,
+            credentials=eumetsat_credentials,
+            product_id=product_id,
+            start=start,
+            end=dt_range[1],
+            resolution_meters=resolution_meters,
+        )
+    else:
+        product_iter = prod_iter(
+            product_id=product_id,
+            cadence_mins=cadence_mins,
+            start=start,
+            end=dt_range[1],
+            credentials=eumetsat_credentials,
+        )
+
 
     # This function will be applied to all products
     bound_func = partial(

@@ -117,9 +117,11 @@ def get_products_for_date_range_himawari(
 
 def get_products_iterator_himawari(
     sat_metadata: SatelliteMetadata,
+    cadence_mins: int,
+    credentials: tuple[str, str],
+    product_id: str,
     start: dt.datetime,
     end: dt.datetime,
-    missing_product_threshold: float = 0.1,
     resolution_meters: int = 2000,
 ) -> Iterator[str]:
     """Get an iterator over the products for a given satellite in a given time range.
@@ -130,7 +132,6 @@ def get_products_iterator_himawari(
         sat_metadata: Metadata for the satellite to search for.
         start: Start time of the search.
         end: End time of the search.
-        missing_product_threshold: Percentage of missing products allowed without error.
         resolution_meters: Resolution of the products in meters.
 
     Returns:
@@ -153,14 +154,6 @@ def get_products_iterator_himawari(
         start_day_of_year = start.timetuple().tm_yday
         end_year = end.year
         end_day_of_year = end.timetuple().tm_yday
-        log.debug(
-            "Searching for products in S3 buckets",
-            product_id=sat_metadata.product_id,
-            start_year=start_year,
-            start_day_of_year=start_day_of_year,
-            end_year=end_year,
-            end_day_of_year=end_day_of_year,
-        )
         # Search depending on the start date of the satellite
         if start < dt.datetime(2022, 11, 4, tzinfo=dt.UTC) and end < dt.datetime(
             2022, 11, 4, tzinfo=dt.UTC):  # Only Himawari8

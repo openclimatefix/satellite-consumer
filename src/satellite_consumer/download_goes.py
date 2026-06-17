@@ -141,6 +141,9 @@ def get_products_for_date_range_goes(
 
 def get_products_iterator_goes(
     sat_metadata: SatelliteMetadata,
+        cadence_mins: int,
+        credentials: tuple[str, str],
+        product_id: str,
     start: dt.datetime,
     end: dt.datetime,
     missing_product_threshold: float = 0.1,
