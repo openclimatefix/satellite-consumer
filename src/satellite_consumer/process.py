@@ -138,9 +138,14 @@ def _map_scene_to_dataset(
             .astype(np.float32)
             .load()
         )
-    time = pd.Timestamp(ds.attrs["time_parameters"]["nominal_end_time"]).as_unit("ns")
-    obs_start_time = pd.Timestamp(ds.attrs["time_parameters"]["observation_start_time"]).as_unit("ns")
-    obs_end_time = pd.Timestamp(ds.attrs["time_parameters"]["observation_end_time"]).as_unit("ns")
+    if "time_parameters" in ds.attrs:
+        time = pd.Timestamp(ds.attrs["time_parameters"]["nominal_end_time"]).as_unit("ns")
+        obs_start_time = pd.Timestamp(ds.attrs["time_parameters"]["observation_start_time"]).as_unit("ns")
+        obs_end_time = pd.Timestamp(ds.attrs["time_parameters"]["observation_end_time"]).as_unit("ns")
+    else:
+        time = pd.Timestamp(ds.attrs["end_time"]).as_unit("ns")
+        obs_start_time = pd.Timestamp(ds.attrs["start_time"]).as_unit("ns")
+        obs_end_time = pd.Timestamp(ds.attrs["end_time"]).as_unit("ns")
     platform_name: str = ds.attrs["platform_name"]
     area_def: AreaDefinition = ds.attrs["area"]
     #cal_slope, cal_offset = _get_calib_coefficients(ds, channels)
@@ -269,7 +274,16 @@ def _get_orbital_params(ds: xr.Dataset) -> dict[str, float]:
         "projection_latitude",
         "projection_altitude",
     ]
-    return {k: float(ds.attrs["orbital_parameters"][k]) for k in keys}
+    if "satellite_actual_longitude" not in ds.attrs["orbital_parameters"]:
+        keys = [
+            "satellite_nominal_longitude",
+            "satellite_nominal_latitude",
+            "satellite_nominal_altitude",
+            "projection_longitude",
+            "projection_latitude",
+            "projection_altitude",
+        ]
+    return {k.replace("nominal", "actual"): float(ds.attrs["orbital_parameters"][k]) for k in keys}
 
 
 def _get_earthdisk_nan_frac(
