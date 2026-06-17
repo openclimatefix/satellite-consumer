@@ -212,12 +212,6 @@ def get_products_iterator_himawari(
             f"No products found for {sat_metadata.product_id} "
             f"in the given time range '{start!s}-{end!s}.",
         )
-    if (1 - len(search_results) / expected_products_count) > missing_product_threshold:
-        raise DownloadError(
-            f"Threshold for missing products exceeded: "
-            f"found {len(search_results)}/{expected_products_count} products "
-            f"for {sat_metadata.product_id}. ",
-        )
     log.info(
         f"Found {len(search_results)}/{expected_products_count} products "
         f"for {sat_metadata.product_id} ",

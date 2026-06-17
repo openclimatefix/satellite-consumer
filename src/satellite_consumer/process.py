@@ -275,6 +275,7 @@ def _get_orbital_params(ds: xr.Dataset) -> dict[str, float]:
         "projection_altitude",
     ]
     if "satellite_actual_longitude" not in ds.attrs["orbital_parameters"]:
+        # Some satellites (i.e. GOES) only have nominal values, so we use those instead.
         keys = [
             "satellite_nominal_longitude",
             "satellite_nominal_latitude",
