@@ -118,7 +118,7 @@ def _download_and_process(
     raw_filepaths: list[str] = []
 
     # Choose downloader nad processor based on the satellite
-    if satellite == "seviri" or satellite == "odegree-12" or satellite == "odegree-12-highres" or satellite == "iodc":
+    if satellite == "seviri" or satellite == "odegree-12" or satellite == "odegree-12-highres" or satellite == "iodc" or satellite == "odegree":
         downloader = download_raw
     elif satellite == "goes" or satellite == "goes-east" or satellite == "goes-west":
         downloader = download_raw_goes
@@ -268,7 +268,7 @@ async def consume_to_store(
     else:
         start = dt_range[0]
 
-    if satellite == "seviri" or satellite == "odegree-12" or satellite == "odegree-12-highres" or satellite == "iodc":
+    if satellite == "seviri" or satellite == "odegree-12" or satellite == "odegree-12-highres" or satellite == "iodc" or satellite == "odegree":
         prod_iter = get_products_iterator
     elif satellite == "goes" or satellite == "goes-east" or satellite == "goes-west":
         prod_iter = get_products_iterator_goes
@@ -282,7 +282,7 @@ async def consume_to_store(
     else:
         raise ValueError(f"Unknown satellite {satellite}")
 
-    if satellite not in ["seviri", "odegree-12", "odegree-12-highres", "iodc"]:
+    if satellite not in ["seviri", "odegree-12", "odegree-12-highres", "iodc", "odegree"]:
         product_iter = prod_iter(
             sat_metadata=SATELLITE_METADATA[satellite],
             cadence_mins=cadence_mins,

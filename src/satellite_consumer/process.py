@@ -64,7 +64,7 @@ def process_raw(
     try:
         # Meteosat 3rd gen don't output .nat files, and so requires a different loader
         reader_kwargs: dict[str, Any] = {}
-        if satellite == "seviri" or satellite == "odegree-12" or satellite == "odegree-12-highres":
+        if satellite == "seviri" or satellite == "odegree-12" or satellite == "odegree-12-highres" or satellite == "iodc" or satellite == "odegree":
             loader: str = "fci_l1c_nc"
             if paths[0].endswith(".nat"):
                 loader = "seviri_l1b_native"
@@ -73,6 +73,7 @@ def process_raw(
                 reader_kwargs = {
                     "calib_mode": "nominal",
                     "include_raw_metadata": True,
+                    "fill_disk": True
                 }
         elif satellite == "goes" or satellite == "goes-east" or satellite == "goes-west":
             loader: str = "abi_l1b"
@@ -92,7 +93,7 @@ def process_raw(
         scene.load(  # type: ignore
             wishlist=[c.name for c in channels],
             # The resolution arg has to be "*" for 3000m, for some reason
-            resolution=resolution_meters if resolution_meters < 3000 else "*",
+            resolution=resolution_meters if resolution_meters < 3000 and "HRV" not in [c.name for c in channels] else "*",
             calibration=[c.representation for c in channels],
         )
 
