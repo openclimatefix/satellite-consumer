@@ -17,7 +17,7 @@ from satpy.readers.seviri_l1b_native import NativeMSGFileHandler
 from satpy.scene import Scene
 
 from satellite_consumer import models
-from satellite_consumer.exceptions import ValidationError
+from satellite_consumer.exceptions import ValidationError, DownloadError
 
 log = logging.getLogger("sat_consumer")
 
@@ -105,7 +105,7 @@ def process_raw(
         raise e
 
     except Exception as e:
-        raise OSError(f"Error reading paths as satpy Scene: {e}") from e
+        raise DownloadError(f"Error reading paths as satpy Scene: {e}") from e
 
     ds: xr.Dataset = _map_scene_to_dataset(
         scene=scene,
