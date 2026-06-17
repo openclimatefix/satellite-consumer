@@ -115,9 +115,9 @@ def _download_and_process(
     raw_filepaths: list[str] = []
 
     # Choose downloader nad processor based on the satellite
-    if satellite == "seviri":
+    if satellite == "seviri" or satellite == "odegree-12" or satellite == "odegree-12-highres" or satellite == "iodc":
         downloader = download_raw
-    elif satellite == "goes":
+    elif satellite == "goes" or satellite == "goes-east" or satellite == "goes-west":
         downloader = download_raw_goes
     elif satellite == "himawari":
         downloader = download_raw_himawari
@@ -129,8 +129,8 @@ def _download_and_process(
 
     # Calling `product.qualityStatus` makes an http request which can be slow. This filter is  done
     # inside this function so that it can be run on a worker and so avoid stalling the main process
-    if product.qualityStatus != "NOMINAL":
-        return ValidationError(f"Product {product} qualityStatus is {product.qualityStatus}")
+    #if product.qualityStatus != "NOMINAL":
+    #    return ValidationError(f"Product {product} qualityStatus is {product.qualityStatus}")
 
     try:
         t_start = time.time()
@@ -269,10 +269,16 @@ async def consume_to_store(
         prod_iter = get_products_iterator
     elif satellite == "goes" or satellite == "goes-east" or satellite == "goes-west":
         prod_iter = get_products_iterator_goes
+        from src.satellite_consumer.download_goes import get_timestamp_from_filename as goes_timestamp_from_filename
+        timestamp_from_filename = goes_timestamp_from_filename
     elif satellite == "himawari" or satellite == "himawari-8" or satellite == "himawari-9":
+        from src.satellite_consumer.download_himawari import get_timestamp_from_filename as himawari_timestamp_from_filename
         prod_iter = get_products_iterator_himawari
+        timestamp_from_filename = himawari_timestamp_from_filename
     elif satellite == "gk2a":
+        from src.satellite_consumer.download_gk2a import get_timestamp_from_filename as gk2a_timestamp_from_filename
         prod_iter = get_products_iterator_gk2a
+        timestamp_from_filename = gk2a_timestamp_from_filename
     else:
         raise ValueError(f"Unknown satellite {satellite}")
 
@@ -310,13 +316,22 @@ async def consume_to_store(
     # This function is run in all worker processes
     bound_initializer = partial(init_worker, request_timeout)
 
-    def _not_stored(product: eumdac.product.Product) -> bool:
-        rounded_time: dt.datetime = (
-            pd.Timestamp(product.sensing_end)
-            .round(f"{cadence_mins} min")
-            .to_pydatetime()
-            .replace(tzinfo=dt.UTC)  # EUMETSAT files are UTC without an explicit timezone
-        )
+    def _not_stored(product: eumdac.product.Product | list[str]) -> bool:
+        # TODO Generalize to non-EUMDAC ones, so need times from the other iterators, product is list of lists
+        if isinstance(product, eumdac.product.Product):
+            rounded_time: dt.datetime = (
+                pd.Timestamp(product.sensing_end)
+                .round(f"{cadence_mins} min")
+                .to_pydatetime()
+                .replace(tzinfo=dt.UTC)  # EUMETSAT files are UTC without an explicit timezone
+            )
+        elif isinstance(product, list):
+            rounded_time = (
+                pd.Timestamp(timestamp_from_filename(product[0]))
+                .round(f"{cadence_mins} min")
+                .to_pydatetime()
+                .replace(tzinfo=dt.UTC)
+            )
         return rounded_time not in existing_times
 
     # Iterate through all products in search
