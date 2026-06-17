@@ -30,6 +30,9 @@ from satellite_consumer.exceptions import DownloadError, ValidationError
 from satellite_consumer.process import process_raw
 from satellite_consumer.request_patch import construct_patched_request_function
 from satellite_consumer.config import SatelliteMetadata, SATELLITE_METADATA
+from satellite_consumer.download_gk2a import get_timestamp_from_filename as gk2a_timestamp_from_filename
+from satellite_consumer.download_himawari import get_timestamp_from_filename as himawari_timestamp_from_filename
+from satellite_consumer.download_goes import get_timestamp_from_filename as goes_timestamp_from_filename
 
 if TYPE_CHECKING:
     import icechunk.repository
@@ -269,14 +272,11 @@ async def consume_to_store(
         prod_iter = get_products_iterator
     elif satellite == "goes" or satellite == "goes-east" or satellite == "goes-west":
         prod_iter = get_products_iterator_goes
-        from src.satellite_consumer.download_goes import get_timestamp_from_filename as goes_timestamp_from_filename
         timestamp_from_filename = goes_timestamp_from_filename
     elif satellite == "himawari" or satellite == "himawari-8" or satellite == "himawari-9":
-        from src.satellite_consumer.download_himawari import get_timestamp_from_filename as himawari_timestamp_from_filename
         prod_iter = get_products_iterator_himawari
         timestamp_from_filename = himawari_timestamp_from_filename
     elif satellite == "gk2a":
-        from src.satellite_consumer.download_gk2a import get_timestamp_from_filename as gk2a_timestamp_from_filename
         prod_iter = get_products_iterator_gk2a
         timestamp_from_filename = gk2a_timestamp_from_filename
     else:
