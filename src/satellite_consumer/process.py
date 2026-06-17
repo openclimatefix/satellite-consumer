@@ -266,6 +266,13 @@ def _get_calib_coefficients(
 
 def _get_orbital_params(ds: xr.Dataset) -> dict[str, float]:
     """Extract orbital parameters from the dataset attributes."""
+    # These might be in the channel attributes, but we want them at the top level for easier access
+    if "orbital_parameters" not in ds.attrs:
+        # Go through data vars to get the orbital parameters from the first channel that has them
+        for var in ds.data_vars:
+            if "orbital_parameters" in ds[var].attrs:
+                ds.attrs["orbital_parameters"] = ds[var].attrs["orbital_parameters"]
+                break
     keys = [
         "satellite_actual_longitude",
         "satellite_actual_latitude",
