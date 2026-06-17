@@ -211,6 +211,15 @@ def check_coords(ds: xr.Dataset, store_ds: xr.Dataset, skip_dims: list[str]) -> 
     ):
         raise ValueError(f"Non-appending dimensions do not match existing store Found: {[d for d in ds.dims if d not in skip_dims]} Required: {[d for d in store_ds.dims if d not in skip_dims]}")
 
+def force_coords(ds: xr.Dataset, store_ds: xr.Dataset, skip_dims: list[str]) -> xr.Dataset:
+    """Force the dimensions of the two datasets to be identical."""
+    if not ds[[d for d in ds.dims if d not in skip_dims]].equals(
+        store_ds[[d for d in store_ds.dims if d not in skip_dims]],
+    ):
+        for dim in ds.dims:
+            if dim not in store_ds.dims and dim not in skip_dims:
+                ds[dim] = store_ds[dim]
+    return ds
 
 async def consume_to_store(
     dt_range: tuple[dt.datetime, dt.datetime],
@@ -367,7 +376,7 @@ async def consume_to_store(
                 else:
                     write_new_store = False
                     try:
-                        check_coords(ds, store_ds, skip_dims=["time"])
+                        force_coords(ds, store_ds, skip_dims=["time"])
                     except ValueError as e:
                         log.error("Non-append dimensions do not match existing store: %s", e)
                         continue
