@@ -311,6 +311,7 @@ async def consume_to_store(
         resolution_meters=resolution_meters,
         crop_region_lonlat=crop_region_lonlat,
         keep_raw=keep_raw,
+        satellite=satellite
     )
 
     # This function is run in all worker processes
