@@ -163,8 +163,8 @@ def _map_scene_to_dataset(
         #cal_offset=(["time",], [cal_offset]),
         observation_start_time=("time", [obs_start_time]),
         observation_end_time=("time", [obs_end_time]),
-        x_geostationary_coordinates=("time", [ds["x"].values]),
-        y_geostationary_coordinates=("time", [ds["y"].values]),
+        x_geostationary_coordinates=(["time","x"], [ds["x"].values]),
+        y_geostationary_coordinates=(["time","y"], [ds["y"].values]),
         **{k: ("time", [v]) for k, v in orbital_params.items()},  # type: ignore
     )
 

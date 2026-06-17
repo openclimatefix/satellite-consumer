@@ -85,12 +85,13 @@ def write_to_store(
             "Ensure process step outputs dimensions in the order specified here.",
         )
     # Check time does not exist in ds
-    if "time" in ds.dims and ds["time"].values[0] in get_existing_dataset(dst=dst).coords["time"].values:
-        log.debug(
-            "Skipping dataset with time that already exists in store",
-            time=ds["time"].values[0],
-        )
-        return
+    if not write_new:
+        if "time" in ds.dims and ds["time"].values[0] in get_existing_dataset(dst=dst).coords["time"].values:
+            log.debug(
+                "Skipping dataset with time that already exists in store",
+                time=ds["time"].values[0],
+            )
+            return
 
     if isinstance(dst, icechunk.repository.Repository):
         session = dst.writable_session(branch="main")
