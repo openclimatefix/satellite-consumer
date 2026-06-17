@@ -138,10 +138,9 @@ def _map_scene_to_dataset(
             .astype(np.float32)
             .load()
         )
-    #print(ds)
-    # Extract values from attributes before we overwrite them
     time = pd.Timestamp(ds.attrs["time_parameters"]["nominal_end_time"]).as_unit("ns")
-    start_time = pd.Timestamp(ds.attrs["time_parameters"]["nominal_start_time"]).as_unit("ns")
+    obs_start_time = pd.Timestamp(ds.attrs["time_parameters"]["observation_start_time"]).as_unit("ns")
+    obs_end_time = pd.Timestamp(ds.attrs["time_parameters"]["observation_end_time"]).as_unit("ns")
     platform_name: str = ds.attrs["platform_name"]
     area_def: AreaDefinition = ds.attrs["area"]
     #cal_slope, cal_offset = _get_calib_coefficients(ds, channels)
@@ -156,7 +155,8 @@ def _map_scene_to_dataset(
         instrument=("time", np.array([platform_name]).astype("<U26")),
         #cal_slope=(["time",], [cal_slope]),
         #cal_offset=(["time",], [cal_offset]),
-        start_time=("time", [start_time]),
+        observation_start_time=("time", [obs_start_time]),
+        observation_end_time=("time", [obs_end_time]),
         **{k: ("time", [v]) for k, v in orbital_params.items()},  # type: ignore
     )
 
