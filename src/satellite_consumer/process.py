@@ -85,7 +85,6 @@ def process_raw(
                 f"Unsupported satellite: {satellite}. Supported satellites are:"
                 f" 'seviri', 'goes', 'himawari', 'gk2a'.",
             )
-        print(f"Loading {len(paths)} files with loader {loader} and reader_kwargs {reader_kwargs}")
         scene: Scene = Scene(
             filenames={loader: paths},  # type:ignore
             reader_kwargs=reader_kwargs,
