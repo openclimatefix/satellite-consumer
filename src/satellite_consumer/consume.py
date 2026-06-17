@@ -23,9 +23,16 @@ from zarr.errors import UnstableSpecificationWarning
 
 from satellite_consumer import models, storage
 from satellite_consumer.download_eumetsat import download_raw, get_products_iterator
+from satellite_consumer.download_goes import download_raw_goes, get_products_iterator_goes
+from satellite_consumer.download_himawari import download_raw_himawari, get_products_iterator_himawari
+from satellite_consumer.download_gk2a import download_raw_gk2a, get_products_iterator_gk2a
 from satellite_consumer.exceptions import DownloadError, ValidationError
 from satellite_consumer.process import process_raw
 from satellite_consumer.request_patch import construct_patched_request_function
+from satellite_consumer.config import SatelliteMetadata, SATELLITE_METADATA
+from satellite_consumer.download_gk2a import get_timestamp_from_filename as gk2a_timestamp_from_filename
+from satellite_consumer.download_himawari import get_timestamp_from_filename as himawari_timestamp_from_filename
+from satellite_consumer.download_goes import get_timestamp_from_filename as goes_timestamp_from_filename
 
 if TYPE_CHECKING:
     import icechunk.repository
@@ -105,18 +112,32 @@ def _download_and_process(
     resolution_meters: int,
     crop_region_lonlat: tuple[float, float, float, float] | None,
     keep_raw: bool,
+    satellite: str = "seviri",
 ) -> xr.Dataset | Exception:
     """Wrapper of the download and process functions."""
     raw_filepaths: list[str] = []
 
+    # Choose downloader nad processor based on the satellite
+    if satellite == "seviri" or satellite == "odegree-12" or satellite == "odegree-12-highres" or satellite == "iodc":
+        downloader = download_raw
+    elif satellite == "goes" or satellite == "goes-east" or satellite == "goes-west":
+        downloader = download_raw_goes
+    elif satellite == "himawari":
+        downloader = download_raw_himawari
+    elif satellite == "gk2a":
+        downloader = download_raw_gk2a
+    else:
+        raise ValueError(f"Unknown satellite {satellite}")
+
+
     # Calling `product.qualityStatus` makes an http request which can be slow. This filter is  done
     # inside this function so that it can be run on a worker and so avoid stalling the main process
-    if product.qualityStatus != "NOMINAL":
-        return ValidationError(f"Product {product} qualityStatus is {product.qualityStatus}")
+    #if product.qualityStatus != "NOMINAL":
+    #    return ValidationError(f"Product {product} qualityStatus is {product.qualityStatus}")
 
     try:
         t_start = time.time()
-        raw_filepaths = download_raw(
+        raw_filepaths = downloader(
             product=product,
             folder=folder,
             filter_regex=filter_regex,
@@ -129,6 +150,7 @@ def _download_and_process(
             channels=channels,
             resolution_meters=resolution_meters,
             crop_region_lonlat=crop_region_lonlat,
+            satellite=satellite
         )
 
         t_end = time.time()
@@ -216,6 +238,7 @@ async def consume_to_store(
         str | None,
     ] = (None, None, None, None),
     gcs_credentials: str | None = None,
+    satellite: str = "seviri",
 ) -> None:
     """Consume satellite data into a zarr store."""
     # If the store already exists, open it and find its timestamps
@@ -245,13 +268,39 @@ async def consume_to_store(
     else:
         start = dt_range[0]
 
-    product_iter = get_products_iterator(
-        product_id=product_id,
-        cadence_mins=cadence_mins,
-        start=start,
-        end=dt_range[1],
-        credentials=eumetsat_credentials,
-    )
+    if satellite == "seviri" or satellite == "odegree-12" or satellite == "odegree-12-highres" or satellite == "iodc":
+        prod_iter = get_products_iterator
+    elif satellite == "goes" or satellite == "goes-east" or satellite == "goes-west":
+        prod_iter = get_products_iterator_goes
+        timestamp_from_filename = goes_timestamp_from_filename
+    elif satellite == "himawari" or satellite == "himawari-8" or satellite == "himawari-9":
+        prod_iter = get_products_iterator_himawari
+        timestamp_from_filename = himawari_timestamp_from_filename
+    elif satellite == "gk2a":
+        prod_iter = get_products_iterator_gk2a
+        timestamp_from_filename = gk2a_timestamp_from_filename
+    else:
+        raise ValueError(f"Unknown satellite {satellite}")
+
+    if satellite not in ["seviri", "odegree-12", "odegree-12-highres", "iodc"]:
+        product_iter = prod_iter(
+            sat_metadata=SATELLITE_METADATA[satellite],
+            cadence_mins=cadence_mins,
+            credentials=eumetsat_credentials,
+            product_id=product_id,
+            start=start,
+            end=dt_range[1],
+            resolution_meters=resolution_meters,
+        )
+    else:
+        product_iter = prod_iter(
+            product_id=product_id,
+            cadence_mins=cadence_mins,
+            start=start,
+            end=dt_range[1],
+            credentials=eumetsat_credentials,
+        )
+
 
     # This function will be applied to all products
     bound_func = partial(
@@ -262,18 +311,27 @@ async def consume_to_store(
         resolution_meters=resolution_meters,
         crop_region_lonlat=crop_region_lonlat,
         keep_raw=keep_raw,
+        satellite=satellite
     )
 
     # This function is run in all worker processes
     bound_initializer = partial(init_worker, request_timeout)
 
-    def _not_stored(product: eumdac.product.Product) -> bool:
-        rounded_time: dt.datetime = (
-            pd.Timestamp(product.sensing_end)
-            .round(f"{cadence_mins} min")
-            .to_pydatetime()
-            .replace(tzinfo=dt.UTC)  # EUMETSAT files are UTC without an explicit timezone
-        )
+    def _not_stored(product: eumdac.product.Product | list[str]) -> bool:
+        if isinstance(product, eumdac.product.Product):
+            rounded_time: dt.datetime = (
+                pd.Timestamp(product.sensing_end)
+                .round(f"{cadence_mins} min")
+                .to_pydatetime()
+                .replace(tzinfo=dt.UTC)  # EUMETSAT files are UTC without an explicit timezone
+            )
+        elif isinstance(product, list):
+            rounded_time = (
+                pd.Timestamp(timestamp_from_filename(product[0]))
+                .round(f"{cadence_mins} min")
+                .to_pydatetime()
+                .replace(tzinfo=dt.UTC)
+            )
         return rounded_time not in existing_times
 
     # Iterate through all products in search

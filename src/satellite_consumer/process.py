@@ -49,6 +49,7 @@ def process_raw(
     channels: list[models.SpectralChannel],
     resolution_meters: int,
     crop_region_lonlat: tuple[float, float, float, float] | None = None,
+    satellite: str = "seviri"
 ) -> xr.Dataset:
     """Process a set of raw files into an xarray DataArray.
 
@@ -58,20 +59,32 @@ def process_raw(
         resolution_meters: Desired spatial resolution in meters.
         crop_region_lonlat: Optional tuple defining the lon-lat coordinate
             region to crop to, in the form (lon_min, lat_min, lon_max, lat_max).
+        satellite: The satellite type, one of 'seviri', 'goes', 'himawari', or 'gk2a'.
     """
     try:
         # Meteosat 3rd gen don't output .nat files, and so requires a different loader
-        loader: str = "fci_l1c_nc"
         reader_kwargs: dict[str, Any] = {}
-        if paths[0].endswith(".nat"):
-            loader = "seviri_l1b_native"
-            # Nominal calibration represents raw integer counts to radiance via slope and intercept
-            # Include flag surfaces calibration values
-            reader_kwargs = {
-                "calib_mode": "nominal",
-                "include_raw_metadata": True,
-            }
-
+        if satellite == "seviri" or satellite == "odegree-12" or satellite == "odegree-12-highres":
+            loader: str = "fci_l1c_nc"
+            if paths[0].endswith(".nat"):
+                loader = "seviri_l1b_native"
+                # Nominal calibration represents raw integer counts to radiance via slope and intercept
+                # Include flag surfaces calibration values
+                reader_kwargs = {
+                    "calib_mode": "nominal",
+                    "include_raw_metadata": True,
+                }
+        elif satellite == "goes" or satellite == "goes-east" or satellite == "goes-west":
+            loader: str = "abi_l1b"
+        elif satellite == "himawari" or satellite == "himawari-8" or satellite == "himawari-9":
+            loader: str = "ahi_hsd"
+        elif satellite == "gk2a":
+            loader: str = "ami_l1b"
+        else:
+            raise ValueError(
+                f"Unsupported satellite: {satellite}. Supported satellites are:"
+                f" 'seviri', 'goes', 'himawari', 'gk2a'.",
+            )
         scene: Scene = Scene(
             filenames={loader: paths},  # type:ignore
             reader_kwargs=reader_kwargs,
@@ -125,18 +138,18 @@ def _map_scene_to_dataset(
             .astype(np.float32)
             .load()
         )
-
-    # Extract values from attributes before we overwrite them
-    time = pd.Timestamp(ds.attrs["time_parameters"]["nominal_end_time"]).as_unit("ns")
+    if "time_parameters" in ds.attrs:
+        time = pd.Timestamp(ds.attrs["time_parameters"]["nominal_end_time"]).as_unit("ns")
+        obs_start_time = pd.Timestamp(ds.attrs["time_parameters"]["observation_start_time"]).as_unit("ns")
+        obs_end_time = pd.Timestamp(ds.attrs["time_parameters"]["observation_end_time"]).as_unit("ns")
+    else:
+        time = pd.Timestamp(ds.attrs["end_time"]).as_unit("ns")
+        obs_start_time = pd.Timestamp(ds.attrs["start_time"]).as_unit("ns")
+        obs_end_time = pd.Timestamp(ds.attrs["end_time"]).as_unit("ns")
     platform_name: str = ds.attrs["platform_name"]
     area_def: AreaDefinition = ds.attrs["area"]
-    cal_slope, cal_offset = _get_calib_coefficients(ds, channels)
+    #cal_slope, cal_offset = _get_calib_coefficients(ds, channels)
     orbital_params = _get_orbital_params(ds)
-
-    # RSS has 12.5% on-disk NaNs for their L1.5 data, so we allow up to 13.5%
-    nan_frac = _get_earthdisk_nan_frac(ds, area_def)
-    if nan_frac > 0.2:
-        raise ValidationError(f"Too many NaN values on earth-disk in the data array: {nan_frac}")
 
     # Stack channels into a new dimension and compile the metadata
     ds = _stack_channels_to_dim(ds, channels)
@@ -145,8 +158,10 @@ def _map_scene_to_dataset(
 
     ds = ds.assign(
         instrument=("time", np.array([platform_name]).astype("<U26")),
-        cal_slope=(["time", "channel"], [cal_slope]),
-        cal_offset=(["time", "channel"], [cal_offset]),
+        #cal_slope=(["time",], [cal_slope]),
+        #cal_offset=(["time",], [cal_offset]),
+        observation_start_time=("time", [obs_start_time]),
+        observation_end_time=("time", [obs_end_time]),
         **{k: ("time", [v]) for k, v in orbital_params.items()},  # type: ignore
     )
 
@@ -156,10 +171,10 @@ def _map_scene_to_dataset(
         ds.coords[coord].attrs["coordinate_reference_system"] = "geostationary"
 
     # Make sure dimensions and coordinates are in expected order
-    ds = ds.transpose("time", "y_geostationary", "x_geostationary", "channel")
+    ds = ds.transpose("time", "y_geostationary", "x_geostationary")
     ds = _sort_xy_coords(ds)
 
-    # Serialize attributes to be JSON-compatible
+    # Serialize attributes to be JSON-compatible, do for each subunit
     ds.attrs = _serialize_dict(ds.attrs)
 
     if crop_region_lonlat is not None:
@@ -215,15 +230,18 @@ def _stack_channels_to_dim(ds: xr.Dataset, channels: list[models.SpectralChannel
             k: v for k, v in ds[channel.name].attrs.items() if k in channel_attrs
         }
 
-    ds = (
-        ds.to_dataarray(name="data", dim="channel")
-        .to_dataset(promote_attrs=True)
-        .sel(channel=[c.name for c in channels])
-    )
+    #ds = (
+    #    ds.to_dataarray(name="data", dim="channel")
+    #    .to_dataset(promote_attrs=True)
+    #    .sel(channel=[c.name for c in channels])
+    #)
 
     # Replace the attrs with the compiled version
-    ds.data_vars["data"].attrs.clear()
+    #ds.data_vars["data"].attrs.clear()
     ds.attrs = attrs
+    # Clear attrs from each of the data variables, since they are now in the top-level attrs
+    for channel in channels:
+        ds[channel.name].attrs.clear()
 
     return ds
 
@@ -248,6 +266,13 @@ def _get_calib_coefficients(
 
 def _get_orbital_params(ds: xr.Dataset) -> dict[str, float]:
     """Extract orbital parameters from the dataset attributes."""
+    # These might be in the channel attributes, but we want them at the top level for easier access
+    if "orbital_parameters" not in ds.attrs:
+        # Go through data vars to get the orbital parameters from the first channel that has them
+        for var in ds.data_vars:
+            if "orbital_parameters" in ds[var].attrs:
+                ds.attrs["orbital_parameters"] = ds[var].attrs["orbital_parameters"]
+                break
     keys = [
         "satellite_actual_longitude",
         "satellite_actual_latitude",
@@ -256,7 +281,17 @@ def _get_orbital_params(ds: xr.Dataset) -> dict[str, float]:
         "projection_latitude",
         "projection_altitude",
     ]
-    return {k: float(ds.attrs["orbital_parameters"][k]) for k in keys}
+    if "satellite_actual_longitude" not in ds.attrs["orbital_parameters"]:
+        # Some satellites (i.e. GOES) only have nominal values, so we use those instead.
+        keys = [
+            "satellite_nominal_longitude",
+            "satellite_nominal_latitude",
+            "satellite_nominal_altitude",
+            "projection_longitude",
+            "projection_latitude",
+            "projection_altitude",
+        ]
+    return {k.replace("nominal", "actual"): float(ds.attrs["orbital_parameters"][k]) for k in keys}
 
 
 def _get_earthdisk_nan_frac(
