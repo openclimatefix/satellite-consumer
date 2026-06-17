@@ -318,7 +318,6 @@ async def consume_to_store(
     bound_initializer = partial(init_worker, request_timeout)
 
     def _not_stored(product: eumdac.product.Product | list[str]) -> bool:
-        # TODO Generalize to non-EUMDAC ones, so need times from the other iterators, product is list of lists
         if isinstance(product, eumdac.product.Product):
             rounded_time: dt.datetime = (
                 pd.Timestamp(product.sensing_end)
