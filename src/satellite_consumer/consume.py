@@ -209,7 +209,7 @@ def check_coords(ds: xr.Dataset, store_ds: xr.Dataset, skip_dims: list[str]) -> 
     if not ds[[d for d in ds.dims if d not in skip_dims]].equals(
         store_ds[[d for d in store_ds.dims if d not in skip_dims]],
     ):
-        raise ValueError(f"Non-appending dimensions do not match existing store Found: {ds.dims} Required: {store_ds.dims}")
+        raise ValueError(f"Non-appending dimensions do not match existing store Found: {[d for d in ds.dims if d not in skip_dims]} Required: {[d for d in store_ds.dims if d not in skip_dims]}")
 
 
 async def consume_to_store(
@@ -370,7 +370,7 @@ async def consume_to_store(
                         check_coords(ds, store_ds, skip_dims=["time"])
                     except ValueError as e:
                         log.error("Non-append dimensions do not match existing store: %s", e)
-                        return
+                        continue
 
                 storage.write_to_store(
                     ds=ds,
