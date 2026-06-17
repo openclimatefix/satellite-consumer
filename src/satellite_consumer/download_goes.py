@@ -310,6 +310,7 @@ def download_raw_goes(
     product: list[str],
     folder: str,
     filter_regex: str,
+    nest_by_date: bool = True,
     retries: int = 6,
     existing_times: list[dt.datetime] | None = None,
 ) -> list[str]:
