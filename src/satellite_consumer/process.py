@@ -102,7 +102,7 @@ def process_raw(
         # Catch this error for the shorter than expected files
         if "buffer is smaller than requested size" in str(e):
             raise ValidationError(f"Truncated satellite file(s) {paths} detected: {e}") from e
-        raise e
+        raise DownloadError(f"Error reading paths as satpy Scene: {e}") from e
 
     except Exception as e:
         raise DownloadError(f"Error reading paths as satpy Scene: {e}") from e
