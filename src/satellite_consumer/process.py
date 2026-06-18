@@ -17,7 +17,7 @@ from satpy.readers.seviri_l1b_native import NativeMSGFileHandler
 from satpy.scene import Scene
 
 from satellite_consumer import models
-from satellite_consumer.exceptions import ValidationError, DownloadError
+from satellite_consumer.exceptions import DownloadError, ValidationError
 
 log = logging.getLogger("sat_consumer")
 

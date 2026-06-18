@@ -22,17 +22,26 @@ import xarray as xr
 from zarr.errors import UnstableSpecificationWarning
 
 from satellite_consumer import models, storage
+from satellite_consumer.config import SATELLITE_METADATA
 from satellite_consumer.download_eumetsat import download_raw, get_products_iterator
-from satellite_consumer.download_goes import download_raw_goes, get_products_iterator_goes
-from satellite_consumer.download_himawari import download_raw_himawari, get_products_iterator_himawari
 from satellite_consumer.download_gk2a import download_raw_gk2a, get_products_iterator_gk2a
+from satellite_consumer.download_gk2a import (
+    get_timestamp_from_filename as gk2a_timestamp_from_filename,
+)
+from satellite_consumer.download_goes import download_raw_goes, get_products_iterator_goes
+from satellite_consumer.download_goes import (
+    get_timestamp_from_filename as goes_timestamp_from_filename,
+)
+from satellite_consumer.download_himawari import (
+    download_raw_himawari,
+    get_products_iterator_himawari,
+)
+from satellite_consumer.download_himawari import (
+    get_timestamp_from_filename as himawari_timestamp_from_filename,
+)
 from satellite_consumer.exceptions import DownloadError, ValidationError
 from satellite_consumer.process import process_raw
 from satellite_consumer.request_patch import construct_patched_request_function
-from satellite_consumer.config import SatelliteMetadata, SATELLITE_METADATA
-from satellite_consumer.download_gk2a import get_timestamp_from_filename as gk2a_timestamp_from_filename
-from satellite_consumer.download_himawari import get_timestamp_from_filename as himawari_timestamp_from_filename
-from satellite_consumer.download_goes import get_timestamp_from_filename as goes_timestamp_from_filename
 
 if TYPE_CHECKING:
     import icechunk.repository

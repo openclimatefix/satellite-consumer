@@ -2,11 +2,11 @@
 
 import dataclasses
 import datetime as dt
+import logging
 from enum import StrEnum, auto
 
 import numpy as np
 import pandas as pd
-import logging
 
 log = logging.getLogger("sat_consumer")
 

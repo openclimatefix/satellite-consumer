@@ -9,7 +9,6 @@ import fsspec
 import pandas as pd
 import s3fs
 
-from satellite_consumer.config import SatelliteMetadata
 from satellite_consumer.exceptions import DownloadError
 from satellite_consumer.storage import get_fs
 

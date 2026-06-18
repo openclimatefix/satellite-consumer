@@ -24,32 +24,32 @@ dependencies = [
     # satpy is still unstable. Caution is advised when changing the satpy version to make sure we
     # don't break compatibility with our archives. This has happened previosuly and is difficult to
     # trace
-    "satpy[all]>=0.60.0",
-    "pyhocon>=0.3.61",
-    "xarray>=2025.11.0",
-    "eumdac>=3.0.0",
-    "fsspec>=2025.2.0",
-    "gcsfs>=2025.2.0",
-    "pandas>=3.0.0,<4.0.0",
-    "pyproj>=3.7.2",
-    "pyresample>=1.32.0",
-    "pyyaml>=6.0.2",
-    "requests>=2.32.3",
-    "s3fs>=2025.2.0",
-    "icechunk>=2.0.0",
-    "hdf5plugin>=5.1.0",
-    "sentry-sdk>=2.33.2",
-    "asyncio",
+    "satpy[all]>=0.60.0,<0.61",
+    "pyhocon>=0.3.63,<0.4",
+    "xarray",
+    "eumdac>=3.1.1,<4",
+    "fsspec",
+    "gcsfs>=2026.6.0,<2027",
+    "pandas",
+    "pyproj",
+    "pyresample>=1.35.0,<2",
+    "pyyaml",
+    "requests",
+    "s3fs>=2026.6.0,<2027",
+    "icechunk>=2.0.6,<3",
+    "hdf5plugin>=6.0.0,<7",
+    "sentry-sdk>=2.63.0,<3",
+    "asyncio>=4.0.0,<5",
 ]
 
 [dependency-groups]
 dev = [
     # Testing
     "unittest-xml-reporting",
-    "moto[s3,server] == 5.0.28",
+    "moto[s3,server]",
     # Linting and type checking
     "mypy",
-    "ruff >= 0.9.2",
+    "ruff",
     "types-pyyaml",
     "types-requests",
     "pandas-stubs",
@@ -57,7 +57,7 @@ dev = [
     "python-lsp-server",
     "pylsp-mypy",
     "python-lsp-ruff",
-    "ty>=0.0.1a8",
+    "ty",
 ]
 
 [project.scripts]
@@ -186,4 +186,6 @@ rasterio = ">=1.5.0,<2"
 pyarrow = ">=24.0.0,<25"
 numba = ">=0.65.1,<0.66"
 pygrib = ">=2.1.8,<3"
+sqlite = ">=3.53.2,<4"
+libsqlite = ">=3.53.2,<4"
 
