@@ -1,6 +1,7 @@
 """Functions for interfacing with EUMETSAT's API and data."""
 
 import datetime as dt
+import itertools
 import logging
 import re
 from collections.abc import Iterator
@@ -10,7 +11,6 @@ import pandas as pd
 import s3fs
 
 from satellite_consumer.config import SatelliteMetadata
-from satellite_consumer.exceptions import DownloadError
 from satellite_consumer.storage import get_fs
 
 log = logging.getLogger("sat_consumer")
@@ -61,8 +61,8 @@ def get_products_for_date_range_goes(
     start: dt.datetime,
     end: dt.datetime,
     channels: list[str] | None = None,
-) -> list[str]:
-    """Get a list of product files for a given date range from an S3 bucket.
+) -> Iterator[list[str]]:
+    """Lazily yield product file groups for a given date range from an S3 bucket.
 
     Args:
         bucket: The S3 bucket to search in.
@@ -71,39 +71,30 @@ def get_products_for_date_range_goes(
         end: End time of the search.
         channels: The channels to search for.
 
-    Returns:
-        List of product file paths.
+    Yields:
+        List of product file paths for each unique start time.
     """
     fs = s3fs.S3FileSystem(anon=True)
     start = start.replace(tzinfo=dt.UTC)
     end = end.replace(tzinfo=dt.UTC)
-    start_year = start.year
-    start_day_of_year = start.timetuple().tm_yday
-    end_year = end.year
-    end_day_of_year = end.timetuple().tm_yday
-    product_id = product_id
 
     log.debug(
         "Searching for products in S3 buckets",
         product_id=product_id,
-        start_year=start_year,
-        start_day_of_year=start_day_of_year,
-        end_year=end_year,
-        end_day_of_year=end_day_of_year,
+        start=start.isoformat(),
+        end=end.isoformat(),
     )
-    products = []
+    found_any = False
     for date in pd.date_range(start, end, freq="h"):
         if "goes16" in bucket:
             if date >= dt.datetime(2025, 1, 1, tzinfo=dt.UTC):
                 product_id = "ABI-L1b-RadF"
             else:
-                # Use the Reproc data
                 product_id = "ABI-L1b-RadF-Reproc"
         if "goes17" in bucket:
             if date >= dt.datetime(2023, 1, 1, tzinfo=dt.UTC):
                 product_id = "ABI-L1b-RadF"
             else:
-                # Use the Reproc data
                 product_id = "ABI-L1b-RadF-Reproc"
         if "goes18" in bucket or "goes19" in bucket:
             product_id = "ABI-L1b-RadF"
@@ -118,25 +109,22 @@ def get_products_for_date_range_goes(
             results = [r for r in results if any(channel + "_" in r for channel in channels)]
         if not results or len(results) < len(channels): # One file per channel
             continue
+        found_any = True
         # Combine by start time
         start_times = [get_timestamp_from_filename(f.split("/")[-1]) for f in results]
-        # Make it a dictionary for the product, no need it as a list, but list of lists would work
         unique_start_times = sorted(set(start_times))
         start_lists = [[] for _ in range(len(unique_start_times))]
         for result in results:
             start_time = get_timestamp_from_filename(result.split("/")[-1])
-            # Find the index of the start time in the unique list
             index = unique_start_times.index(start_time)
             start_lists[index].append(result)
-        products.extend(start_lists)
-    if not products:
+        yield from start_lists
+    if not found_any:
         log.warning(
             f"No products found for {product_id} in {bucket} "
             f"between {start.year}-{start.month:02d}-{start.day:02d} "
             f"and {end.year}-{end.month:02d}-{end.day:02d}.",
         )
-
-    return products
 
 
 def get_products_iterator_goes(
@@ -148,10 +136,8 @@ def get_products_iterator_goes(
     end: dt.datetime,
     missing_product_threshold: float = 0.1,
     resolution_meters: int = 2000,
-) -> Iterator[str]:
-    """Get an iterator over the products for a given satellite in a given time range.
-
-    Checks that the number of products returned matches the expected number of products.
+) -> Iterator[list[str]]:
+    """Get a lazy iterator over the products for a given satellite in a given time range.
 
     Args:
         sat_metadata: Metadata for the satellite to search for.
@@ -161,7 +147,7 @@ def get_products_iterator_goes(
         resolution_meters: Resolution of the products to search for.
 
     Returns:
-        Tuple of the iterator over the products and the total number of products found.
+        Iterator over product file groups.
     """
     log.info(
         f"Searching for products between {start!s} and {end!s} for {sat_metadata.product_id}",
@@ -169,141 +155,100 @@ def get_products_iterator_goes(
     cnames: list[str] = [
         c.name for c in sat_metadata.channels if resolution_meters in c.resolution_meters
     ]
-    expected_products_count = int((end - start) / dt.timedelta(minutes=sat_metadata.cadence_mins))
-    try:
-        # Search S3 bucket for the products for the time period, both for each of the
-        # two GOES satellites covered by the metadata.
-        start = start.replace(tzinfo=dt.UTC)
-        end = end.replace(tzinfo=dt.UTC)
-        start_year = start.year
-        start_day_of_year = start.timetuple().tm_yday
-        end_year = end.year
-        end_day_of_year = end.timetuple().tm_yday
-        log.debug(
-            "Searching for products in S3 buckets",
-            product_id=sat_metadata.product_id,
-            start_year=start_year,
-            start_day_of_year=start_day_of_year,
-            end_year=end_year,
-            end_day_of_year=end_day_of_year,
-        )
+    start = start.replace(tzinfo=dt.UTC)
+    end = end.replace(tzinfo=dt.UTC)
 
-        if "goes-east" in sat_metadata.region.lower():
-            # Search both GOES-East satellite buckets for the data
-            if start < HISTORY_RANGE["goes16"][1] and end < HISTORY_RANGE["goes16"][1]:
-                # Only GOES-16
-                search_results = get_products_for_date_range_goes(
-                    "noaa-goes16",
-                    sat_metadata.product_id,
-                    start,
-                    end,
-                    channels=cnames,
-                )
-            elif start >= HISTORY_RANGE["goes16"][1] and end >= HISTORY_RANGE["goes16"][1]:
-                # Only GOES-19
-                search_results = get_products_for_date_range_goes(
-                    "noaa-goes19",
-                    sat_metadata.product_id,
-                    start,
-                    end,
-                    channels=cnames,
-                )
-            else:
-                # Both GOES-16 and GOES-19
-                # Only look before the cutoff date for GOES-16 and after for GOES-19
-                goes_16_end = (
-                    HISTORY_RANGE["goes16"][1] if HISTORY_RANGE["goes16"][1] < end else end
-                )
-                goes_19_start = (
-                    HISTORY_RANGE["goes19"][0] if HISTORY_RANGE["goes19"][0] > start else start
-                )
-                search_results = get_products_for_date_range_goes(
+    if "goes-east" in sat_metadata.region.lower():
+        if start < HISTORY_RANGE["goes16"][1] and end < HISTORY_RANGE["goes16"][1]:
+            # Only GOES-16
+            return get_products_for_date_range_goes(
+                "noaa-goes16",
+                sat_metadata.product_id,
+                start,
+                end,
+                channels=cnames,
+            )
+        elif start >= HISTORY_RANGE["goes16"][1] and end >= HISTORY_RANGE["goes16"][1]:
+            # Only GOES-19
+            return get_products_for_date_range_goes(
+                "noaa-goes19",
+                sat_metadata.product_id,
+                start,
+                end,
+                channels=cnames,
+            )
+        else:
+            # Both GOES-16 and GOES-19
+            goes_16_end = (
+                HISTORY_RANGE["goes16"][1] if HISTORY_RANGE["goes16"][1] < end else end
+            )
+            goes_19_start = (
+                HISTORY_RANGE["goes19"][0] if HISTORY_RANGE["goes19"][0] > start else start
+            )
+            return itertools.chain(
+                get_products_for_date_range_goes(
                     "noaa-goes16",
                     sat_metadata.product_id,
                     start,
                     goes_16_end,
                     channels=cnames,
-                )
-                search_results.extend(
-                    get_products_for_date_range_goes(
-                        "noaa-goes19",
-                        sat_metadata.product_id,
-                        goes_19_start,
-                        end,
-                        channels=cnames,
-                    ),
-                )
-            # Do it by initialization time, so we can combine the individual files to a product
+                ),
+                get_products_for_date_range_goes(
+                    "noaa-goes19",
+                    sat_metadata.product_id,
+                    goes_19_start,
+                    end,
+                    channels=cnames,
+                ),
+            )
+    else:
+        if "goes-west" not in sat_metadata.region.lower():
+            raise ValueError(
+                f"Unknown region '{sat_metadata.region}' "
+                f"for satellite {sat_metadata.product_id}."
+                "Expected 'goes-east' or 'goes-west'.",
+            )
+        if start < HISTORY_RANGE["goes17"][1] and end < HISTORY_RANGE["goes17"][1]:
+            # Only GOES-17
+            return get_products_for_date_range_goes(
+                "noaa-goes17",
+                sat_metadata.product_id,
+                start,
+                end,
+                channels=cnames,
+            )
+        elif start >= HISTORY_RANGE["goes17"][1] and end >= HISTORY_RANGE["goes17"][1]:
+            # Only GOES-18
+            return get_products_for_date_range_goes(
+                "noaa-goes18",
+                sat_metadata.product_id,
+                start,
+                end,
+                channels=cnames,
+            )
         else:
-            if "goes-west" not in sat_metadata.region.lower():
-                raise ValueError(
-                    f"Unknown region '{sat_metadata.region}' "
-                    f"for satellite {sat_metadata.product_id}."
-                    "Expected 'goes-east' or 'goes-west'.",
-                )
-            if start < HISTORY_RANGE["goes17"][1] and end < HISTORY_RANGE["goes17"][1]:
-                # Only GOES-17
-                search_results = get_products_for_date_range_goes(
-                    "noaa-goes17",
-                    sat_metadata.product_id,
-                    start,
-                    end,
-                    channels=cnames,
-                )
-            elif start >= HISTORY_RANGE["goes17"][1] and end >= HISTORY_RANGE["goes17"][1]:
-                # Only GOES-18
-                search_results = get_products_for_date_range_goes(
-                    "noaa-goes18",
-                    sat_metadata.product_id,
-                    start,
-                    end,
-                    channels=cnames,
-                )
-            else:
-                # Search the single GOES-West bucket for the data
-                goes_17_end = (
-                    HISTORY_RANGE["goes17"][1] if HISTORY_RANGE["goes17"][1] < end else end
-                )
-                goes_18_start = (
-                    HISTORY_RANGE["goes18"][0] if HISTORY_RANGE["goes18"][0] > start else start
-                )
-                search_results = get_products_for_date_range_goes(
+            goes_17_end = (
+                HISTORY_RANGE["goes17"][1] if HISTORY_RANGE["goes17"][1] < end else end
+            )
+            goes_18_start = (
+                HISTORY_RANGE["goes18"][0] if HISTORY_RANGE["goes18"][0] > start else start
+            )
+            return itertools.chain(
+                get_products_for_date_range_goes(
                     "noaa-goes17",
                     sat_metadata.product_id,
                     start,
                     goes_17_end,
                     channels=cnames,
-                )
-                search_results.extend(
-                    get_products_for_date_range_goes(
-                        "noaa-goes18",
-                        sat_metadata.product_id,
-                        goes_18_start,
-                        end,
-                        channels=cnames,
-                    ),
-                )
-
-    except Exception as e:
-        raise DownloadError(
-            f"Error searching for products for '{sat_metadata.product_id}': '{e}'",
-        ) from e
-    if len(search_results) == 0:
-        raise DownloadError(
-            f"No products found for {sat_metadata.product_id} "
-            f"in the given time range '{start!s}-{end!s}.",
-        )
-    if (1 - len(search_results) / expected_products_count) > missing_product_threshold:
-        raise DownloadError(
-            f"Threshold for missing products exceeded: "
-            f"found {len(search_results)}/{expected_products_count} products "
-            f"for {sat_metadata.product_id}. ",
-        )
-    log.info(
-        f"Found {len(search_results)}/{expected_products_count} products "
-        f"for {sat_metadata.product_id} ",
-    )
-    return search_results.__iter__()
+                ),
+                get_products_for_date_range_goes(
+                    "noaa-goes18",
+                    sat_metadata.product_id,
+                    goes_18_start,
+                    end,
+                    channels=cnames,
+                ),
+            )
 
 
 def download_raw_goes(
@@ -347,7 +292,7 @@ def download_raw_goes(
     if existing_times is not None:
         rounded_time = (
             pd.Timestamp(get_timestamp_from_filename(raw_files[0]))
-            .round("5min")
+            .floor("10min")
             .to_pydatetime()
             .replace(tzinfo=dt.UTC)
         )

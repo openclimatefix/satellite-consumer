@@ -273,15 +273,16 @@ async def consume_to_store(
 
     store_ds = storage.get_existing_dataset(dst)
     if store_ds is None:
-        existing_times = []
+        existing_times: set[dt.datetime] = set()
     else:
-        existing_times = (
-            pd.to_datetime(store_ds.coords["time"].values, utc=True).to_pydatetime().tolist()
+        existing_times = set(
+            pd.Timestamp(t).floor(f"{cadence_mins}min").to_pydatetime().replace(tzinfo=dt.UTC)
+            for t in pd.to_datetime(store_ds.coords["time"].values, utc=True)
         )
 
     # Optionally set the start datetime to the last datetime in the store
-    if jump_to_latest and (store_ds is not None) and (existing_times[-1] > dt_range[0]):
-        start = existing_times[-1]
+    if jump_to_latest and existing_times and (max(existing_times) > dt_range[0]):
+        start = max(existing_times)
         log.info(f"skipping to end of store: {start}")
     else:
         start = dt_range[0]
@@ -339,14 +340,14 @@ async def consume_to_store(
         if isinstance(product, eumdac.product.Product):
             rounded_time: dt.datetime = (
                 pd.Timestamp(product.sensing_end)
-                .round(f"{cadence_mins} min")
+                .floor(f"{cadence_mins}min")
                 .to_pydatetime()
                 .replace(tzinfo=dt.UTC)  # EUMETSAT files are UTC without an explicit timezone
             )
         elif isinstance(product, list):
             rounded_time = (
                 pd.Timestamp(timestamp_from_filename(product[0]))
-                .round(f"{cadence_mins} min")
+                .floor(f"{cadence_mins}min")
                 .to_pydatetime()
                 .replace(tzinfo=dt.UTC)
             )
