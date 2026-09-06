@@ -274,8 +274,14 @@ async def consume_to_store(
     gcs_credentials: str | None = None,
     satellite: str = "seviri",
     s3_listing_cache_dir: str | None = None,
+    low_memory: bool = False,
 ) -> None:
     """Consume satellite data into a zarr store."""
+    if low_memory:
+        buffer_size = 1
+        max_workers = 1
+        accum_writes = 1
+        log.info("Low memory mode: buffer_size=1, max_workers=1, accum_writes=1")
     # If the store already exists, open it and find its timestamps
     dst: str | icechunk.repository.Repository = raw_zarr_paths[1]
     if use_icechunk:
