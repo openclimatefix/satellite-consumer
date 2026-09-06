@@ -11,8 +11,7 @@ import pandas as pd
 import s3fs
 
 from satellite_consumer.config import SatelliteMetadata
-from satellite_consumer.listing_cache import load_cache, save_cache
-from satellite_consumer.storage import get_fs
+from satellite_consumer.storage import get_fs, load_listing_cache, save_listing_cache
 
 log = logging.getLogger("sat_consumer")
 
@@ -71,7 +70,7 @@ def get_products_for_date_range_himawari(
 
     cache: dict[str, list[str]] = {}
     if cache_dir is not None:
-        cache = load_cache(cache_dir, bucket, product_id)
+        cache = load_listing_cache(cache_dir, bucket, product_id)
 
     log.debug(
         "Searching for products in S3 buckets",
@@ -96,7 +95,7 @@ def get_products_for_date_range_himawari(
             )
             if cache_dir is not None:
                 cache[cache_key] = results
-                save_cache(cache_dir, bucket, product_id, cache)
+                save_listing_cache(cache_dir, bucket, product_id, cache)
 
         if channels is not None:
             results = [r for r in results if any("_" + channel + "_" in r for channel in channels)]

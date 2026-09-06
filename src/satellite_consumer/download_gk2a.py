@@ -9,8 +9,7 @@ import fsspec
 import pandas as pd
 import s3fs
 
-from satellite_consumer.listing_cache import load_cache, save_cache
-from satellite_consumer.storage import get_fs
+from satellite_consumer.storage import get_fs, load_listing_cache, save_listing_cache
 
 log = logging.getLogger("sat_consumer")
 
@@ -62,7 +61,7 @@ def get_products_for_date_range_gk2a(
 
     cache: dict[str, list[str]] = {}
     if cache_dir is not None:
-        cache = load_cache(cache_dir, bucket, product_id)
+        cache = load_listing_cache(cache_dir, bucket, product_id)
 
     log.debug(
         "Searching for products in S3 buckets",
@@ -88,7 +87,7 @@ def get_products_for_date_range_gk2a(
             )
             if cache_dir is not None:
                 cache[cache_key] = results
-                save_cache(cache_dir, bucket, product_id, cache)
+                save_listing_cache(cache_dir, bucket, product_id, cache)
 
         # Filter out non-channel files
         if channels is not None:
