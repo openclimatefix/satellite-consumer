@@ -139,6 +139,15 @@ def _map_scene_to_dataset(
             .astype(np.float32)
             .load()
         )
+
+    # Skip timestamps where any requested channel is missing
+    missing = [c.name for c in channels if c.name not in ds.data_vars]
+    if missing:
+        raise ValidationError(
+            f"Missing channels {missing} from dataset. "
+            f"Available variables: {list(ds.data_vars)}",
+        )
+
     if "time_parameters" in ds.attrs:
         time = pd.Timestamp(ds.attrs["time_parameters"]["nominal_end_time"]).as_unit("ns")
         obs_start_time = pd.Timestamp(ds.attrs["time_parameters"]["observation_start_time"]).as_unit("ns")
