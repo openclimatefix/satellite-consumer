@@ -11,6 +11,7 @@ import pandas as pd
 import s3fs
 
 from satellite_consumer.config import SatelliteMetadata
+from satellite_consumer.listing_cache import load_cache, save_cache
 from satellite_consumer.storage import get_fs
 
 log = logging.getLogger("sat_consumer")
@@ -51,6 +52,7 @@ def get_products_for_date_range_himawari(
     start: dt.datetime,
     end: dt.datetime,
     channels: list[str] | None = None,
+    cache_dir: str | None = None,
 ) -> Iterator[list[str]]:
     """Lazily yield product file groups for a given date range from an S3 bucket.
 
@@ -60,11 +62,16 @@ def get_products_for_date_range_himawari(
         start: Start time of the search.
         end: End time of the search.
         channels: List of channels to filter the products by.
+        cache_dir: Optional directory to cache S3 listing results to disk.
 
     Yields:
         List of product file paths for each unique start time.
     """
     fs = s3fs.S3FileSystem(anon=True)
+
+    cache: dict[str, list[str]] = {}
+    if cache_dir is not None:
+        cache = load_cache(cache_dir, bucket, product_id)
 
     log.debug(
         "Searching for products in S3 buckets",
@@ -74,13 +81,23 @@ def get_products_for_date_range_himawari(
     )
     found_any = False
     for date in pd.date_range(start, end, freq="D"):
-        log.debug(
-            f"Searching for products in S3 bucket: {(f's3://{bucket}/{product_id}/{date.year}/{date.month:02d}/{date.day:02d}/{date.hour:02d}{date.minute:02d}/*.bz2',)}",
-            date=date.strftime("%Y-%m-%d %H:%M"),
-        )
-        results = fs.glob(
-            f"s3://{bucket}/{product_id}/{date.year}/{date.month:02d}/{date.day:02d}/*/*.bz2",
-        )
+        cache_key = f"{date.year}{date.month:02d}{date.day:02d}"
+
+        if cache_key in cache:
+            results = cache[cache_key]
+        else:
+            log.debug(
+                "Searching for products in S3 bucket: "
+                f"{(f's3://{bucket}/{product_id}/{date.year}/{date.month:02d}/{date.day:02d}/{date.hour:02d}{date.minute:02d}/*.bz2',)}",
+                date=date.strftime("%Y-%m-%d %H:%M"),
+            )
+            results = fs.glob(
+                f"s3://{bucket}/{product_id}/{date.year}/{date.month:02d}/{date.day:02d}/*/*.bz2",
+            )
+            if cache_dir is not None:
+                cache[cache_key] = results
+                save_cache(cache_dir, bucket, product_id, cache)
+
         if channels is not None:
             results = [r for r in results if any("_" + channel + "_" in r for channel in channels)]
         if not results:
@@ -111,6 +128,7 @@ def get_products_iterator_himawari(
     start: dt.datetime,
     end: dt.datetime,
     resolution_meters: int = 2000,
+    cache_dir: str | None = None,
 ) -> Iterator[list[str]]:
     """Get a lazy iterator over the products for a given satellite in a given time range.
 
@@ -119,6 +137,7 @@ def get_products_iterator_himawari(
         start: Start time of the search.
         end: End time of the search.
         resolution_meters: Resolution of the products in meters.
+        cache_dir: Optional directory to cache S3 listing results to disk.
 
     Returns:
         Iterator over product file groups.
@@ -141,6 +160,7 @@ def get_products_iterator_himawari(
             start,
             end,
             channels=cnames,
+            cache_dir=cache_dir,
         )
     elif start >= himawari_cutoff and end >= himawari_cutoff:
         # Only Himawari9
@@ -150,6 +170,7 @@ def get_products_iterator_himawari(
             start,
             end,
             channels=cnames,
+            cache_dir=cache_dir,
         )
     else:
         # Both Himawari8 and Himawari9
@@ -162,6 +183,7 @@ def get_products_iterator_himawari(
                 start,
                 himawari8_end,
                 channels=cnames,
+                cache_dir=cache_dir,
             ),
             get_products_for_date_range_himawari(
                 "noaa-himawari9",
@@ -169,6 +191,7 @@ def get_products_iterator_himawari(
                 himawari9_start,
                 end,
                 channels=cnames,
+                cache_dir=cache_dir,
             ),
         )
 

@@ -11,6 +11,7 @@ import pandas as pd
 import s3fs
 
 from satellite_consumer.config import SatelliteMetadata
+from satellite_consumer.listing_cache import load_cache, save_cache
 from satellite_consumer.storage import get_fs
 
 log = logging.getLogger("sat_consumer")
@@ -61,6 +62,7 @@ def get_products_for_date_range_goes(
     start: dt.datetime,
     end: dt.datetime,
     channels: list[str] | None = None,
+    cache_dir: str | None = None,
 ) -> Iterator[list[str]]:
     """Lazily yield product file groups for a given date range from an S3 bucket.
 
@@ -70,6 +72,7 @@ def get_products_for_date_range_goes(
         start: Start time of the search.
         end: End time of the search.
         channels: The channels to search for.
+        cache_dir: Optional directory to cache S3 listing results to disk.
 
     Yields:
         List of product file paths for each unique start time.
@@ -77,6 +80,10 @@ def get_products_for_date_range_goes(
     fs = s3fs.S3FileSystem(anon=True)
     start = start.replace(tzinfo=dt.UTC)
     end = end.replace(tzinfo=dt.UTC)
+
+    cache: dict[str, list[str]] = {}
+    if cache_dir is not None:
+        cache = load_cache(cache_dir, bucket, product_id)
 
     log.debug(
         "Searching for products in S3 buckets",
@@ -98,12 +105,28 @@ def get_products_for_date_range_goes(
                 product_id = "ABI-L1b-RadF-Reproc"
         if "goes18" in bucket or "goes19" in bucket:
             product_id = "ABI-L1b-RadF"
-        log.debug(
-            f"Searching for products for date in bucket: s3://{bucket}/{product_id}/{date.year}/{date.timetuple().tm_yday:03d}/{date.hour:02d}/*.nc",
+
+        cache_key = (
+            f"{bucket}_{product_id}_{date.year}"
+            f"_{date.timetuple().tm_yday:03d}_{date.hour:02d}"
         )
-        results = fs.glob(
-            f"s3://{bucket}/{product_id}/{date.year}/{date.timetuple().tm_yday:03d}/{date.hour:02d}/*.nc",
-        )
+
+        if cache_key in cache:
+            results = cache[cache_key]
+        else:
+            log.debug(
+                "Searching for products for date in bucket: "
+                f"s3://{bucket}/{product_id}/{date.year}"
+                f"/{date.timetuple().tm_yday:03d}/{date.hour:02d}/*.nc",
+            )
+            results = fs.glob(
+                f"s3://{bucket}/{product_id}/{date.year}"
+                f"/{date.timetuple().tm_yday:03d}/{date.hour:02d}/*.nc",
+            )
+            if cache_dir is not None:
+                cache[cache_key] = results
+                save_cache(cache_dir, bucket, product_id, cache)
+
         # Filter out non-channel files
         if channels is not None:
             results = [r for r in results if any(channel + "_" in r for channel in channels)]
@@ -136,6 +159,7 @@ def get_products_iterator_goes(
     end: dt.datetime,
     missing_product_threshold: float = 0.1,
     resolution_meters: int = 2000,
+    cache_dir: str | None = None,
 ) -> Iterator[list[str]]:
     """Get a lazy iterator over the products for a given satellite in a given time range.
 
@@ -145,6 +169,7 @@ def get_products_iterator_goes(
         end: End time of the search.
         missing_product_threshold: Percentage of missing products allowed without error.
         resolution_meters: Resolution of the products to search for.
+        cache_dir: Optional directory to cache S3 listing results to disk.
 
     Returns:
         Iterator over product file groups.
@@ -167,6 +192,7 @@ def get_products_iterator_goes(
                 start,
                 end,
                 channels=cnames,
+                cache_dir=cache_dir,
             )
         elif start >= HISTORY_RANGE["goes16"][1] and end >= HISTORY_RANGE["goes16"][1]:
             # Only GOES-19
@@ -176,6 +202,7 @@ def get_products_iterator_goes(
                 start,
                 end,
                 channels=cnames,
+                cache_dir=cache_dir,
             )
         else:
             # Both GOES-16 and GOES-19
@@ -192,6 +219,7 @@ def get_products_iterator_goes(
                     start,
                     goes_16_end,
                     channels=cnames,
+                    cache_dir=cache_dir,
                 ),
                 get_products_for_date_range_goes(
                     "noaa-goes19",
@@ -199,6 +227,7 @@ def get_products_iterator_goes(
                     goes_19_start,
                     end,
                     channels=cnames,
+                    cache_dir=cache_dir,
                 ),
             )
     else:
@@ -216,6 +245,7 @@ def get_products_iterator_goes(
                 start,
                 end,
                 channels=cnames,
+                cache_dir=cache_dir,
             )
         elif start >= HISTORY_RANGE["goes17"][1] and end >= HISTORY_RANGE["goes17"][1]:
             # Only GOES-18
@@ -225,6 +255,7 @@ def get_products_iterator_goes(
                 start,
                 end,
                 channels=cnames,
+                cache_dir=cache_dir,
             )
         else:
             goes_17_end = (
@@ -240,6 +271,7 @@ def get_products_iterator_goes(
                     start,
                     goes_17_end,
                     channels=cnames,
+                    cache_dir=cache_dir,
                 ),
                 get_products_for_date_range_goes(
                     "noaa-goes18",
@@ -247,6 +279,7 @@ def get_products_iterator_goes(
                     goes_18_start,
                     end,
                     channels=cnames,
+                    cache_dir=cache_dir,
                 ),
             )
 

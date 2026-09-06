@@ -6,6 +6,8 @@ Consolidates the old cli_downloader, backfill_hrv and backfill_nonhrv scripts.
 import asyncio
 import datetime as dt
 import logging
+import shutil
+import tempfile
 import time
 import warnings
 from collections import deque
@@ -125,6 +127,7 @@ def _download_and_process(
 ) -> xr.Dataset | Exception:
     """Wrapper of the download and process functions."""
     raw_filepaths: list[str] = []
+    himawari_tmpdir: str | None = None
 
     # Choose downloader nad processor based on the satellite
     if satellite == "seviri" or satellite == "odegree-12" or satellite == "odegree-12-highres" or satellite == "iodc" or satellite == "odegree" or satellite == "rss":
@@ -153,6 +156,13 @@ def _download_and_process(
             nest_by_date=keep_raw,
         )
 
+        # For Himawari, satpy decompresses .bz2 files to a temp dir.
+        # Override satpy's tmp_dir to use a local folder instead of /tmp.
+        if satellite == "himawari":
+            import satpy as _satpy
+            himawari_tmpdir = tempfile.mkdtemp(dir=".")
+            _satpy.config.set(tmp_dir=himawari_tmpdir)
+
         t_dl = time.time()
         ds = process_raw(
             paths=raw_filepaths,
@@ -174,6 +184,12 @@ def _download_and_process(
         return e
 
     finally:
+        # Cleanup Himawari decompression temp dir
+        if himawari_tmpdir is not None:
+            try:
+                shutil.rmtree(himawari_tmpdir)
+            except Exception:
+                log.warning(f"failed to clean up temp dir {himawari_tmpdir}")
         # Cleanup files
         if not keep_raw and raw_filepaths:
             try:
@@ -257,6 +273,7 @@ async def consume_to_store(
     ] = (None, None, None, None),
     gcs_credentials: str | None = None,
     satellite: str = "seviri",
+    s3_listing_cache_dir: str | None = None,
 ) -> None:
     """Consume satellite data into a zarr store."""
     # If the store already exists, open it and find its timestamps
@@ -310,6 +327,7 @@ async def consume_to_store(
             start=start,
             end=dt_range[1],
             resolution_meters=resolution_meters,
+            cache_dir=s3_listing_cache_dir,
         )
     else:
         product_iter = prod_iter(
