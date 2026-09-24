@@ -215,23 +215,16 @@ def get_icechunk_repo(
         aws_endpoint_url: AWS endpoint URL for S3 access.
         gcs_token: GCS token for GCS access.
     """
+    # Bucket names may contain dots (e.g. us-west-2.opendata.source.coop), so the
+    # bucket group has to allow them.
     result = re.match(
-        r"^(?P<protocol>[\w]{2,6}):\/\/(?P<bucket>[\w-]+)\/(?P<prefix>[\w.\/-]+)$",
+        r"^(?P<protocol>[\w]{2,6}):\/\/(?P<bucket>[\w.-]+)\/(?P<prefix>[\w.\/-]+)$",
         path,
     )
     storage_config: icechunk.Storage
     repo: icechunk.Repository
 
     # Make Icechunk storage config according to the given path
-    storage_config = icechunk.s3_storage(
-        bucket="us-west-2.opendata.source.coop",
-        prefix=f"bkr/geo/{path.split('/')[-1]}",
-        access_key_id=aws_access_key_id,
-        secret_access_key=aws_secret_access_key,
-        region=aws_region_name,
-        endpoint_url=aws_endpoint_url,
-    )
-    """
     if result:
         match (result.group("protocol"), result.group("bucket"), result.group("prefix")):
             case ("s3", bucket, prefix):
@@ -244,7 +237,7 @@ def get_icechunk_repo(
                     region=aws_region_name,
                     endpoint_url=aws_endpoint_url,
                 )
-            case ("gcs", bucket, prefix):
+            case ("gs" | "gcs", bucket, prefix):
                 log.debug("bucket=%s, prefix=%s, initializing GCS backend", bucket, prefix)
                 storage_config = icechunk.gcs_storage(
                     bucket=bucket,
@@ -257,7 +250,7 @@ def get_icechunk_repo(
         # Try to do a local store
         log.debug("path=%s, initializing local filesystem backend", path)
         storage_config = icechunk.local_filesystem_storage(path=path)
-    """
+
     if icechunk.Repository.exists(storage=storage_config):
         # Return existing store and the times in it
         log.debug("path=%s, using existing icechunk store", path)
