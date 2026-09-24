@@ -118,8 +118,9 @@ def main() -> None:
             jump_to_latest=conf.get_bool("consumer.jump_to_latest"),
             request_timeout=conf.get_int("consumer.request_timeout"),
             satellite=sat,
+            source=conf.get_string(f"satellites.{sat}.source"),
             s3_listing_cache_dir=conf.get_string("consumer.s3_listing_cache_dir") or None,
-            low_memory=conf.get_bool("consumer.low_memory")
+            low_memory=conf.get_bool("consumer.low_memory"),
         ),
     )
 

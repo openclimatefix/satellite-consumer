@@ -49,7 +49,7 @@ def process_raw(
     channels: list[models.SpectralChannel],
     resolution_meters: int,
     crop_region_lonlat: tuple[float, float, float, float] | None = None,
-    satellite: str = "seviri"
+    source: str = "eumetsat",
 ) -> xr.Dataset:
     """Process a set of raw files into an xarray DataArray.
 
@@ -59,33 +59,37 @@ def process_raw(
         resolution_meters: Desired spatial resolution in meters.
         crop_region_lonlat: Optional tuple defining the lon-lat coordinate
             region to crop to, in the form (lon_min, lat_min, lon_max, lat_max).
-        satellite: The satellite type, one of 'seviri', 'goes', 'himawari', or 'gk2a'.
+        source: The source the data is served from, as declared by the satellite's
+            `source` key in `application.conf`. One of 'eumetsat', 'goes',
+            'himawari', or 'gk2a'.
     """
     try:
         # Meteosat 3rd gen don't output .nat files, and so requires a different loader
         reader_kwargs: dict[str, Any] = {}
-        if satellite == "seviri" or satellite == "odegree-12" or satellite == "odegree-12-highres" or satellite == "iodc" or satellite == "odegree" or satellite == "rss":
-            loader: str = "fci_l1c_nc"
-            if paths[0].endswith(".nat"):
-                loader = "seviri_l1b_native"
-                # Nominal calibration represents raw integer counts to radiance via slope and intercept
-                # Include flag surfaces calibration values
-                reader_kwargs = {
-                    "calib_mode": "nominal",
-                    "include_raw_metadata": True,
-                    "fill_disk": True
-                }
-        elif satellite == "goes" or satellite == "goes-east" or satellite == "goes-west":
-            loader: str = "abi_l1b"
-        elif satellite == "himawari" or satellite == "himawari-8" or satellite == "himawari-9":
-            loader: str = "ahi_hsd"
-        elif satellite == "gk2a":
-            loader: str = "ami_l1b"
-        else:
-            raise ValueError(
-                f"Unsupported satellite: {satellite}. Supported satellites are:"
-                f" 'seviri', 'goes', 'himawari', 'gk2a'.",
-            )
+        loader: str
+        match source:
+            case "eumetsat":
+                loader = "fci_l1c_nc"
+                if paths[0].endswith(".nat"):
+                    loader = "seviri_l1b_native"
+                    # Nominal calibration represents raw integer counts to radiance via slope and
+                    # intercept. Include flag surfaces calibration values
+                    reader_kwargs = {
+                        "calib_mode": "nominal",
+                        "include_raw_metadata": True,
+                        "fill_disk": True
+                    }
+            case "goes":
+                loader = "abi_l1b"
+            case "himawari":
+                loader = "ahi_hsd"
+            case "gk2a":
+                loader = "ami_l1b"
+            case _:
+                raise ValueError(
+                    f"Unsupported source: {source}. Supported sources are:"
+                    f" 'eumetsat', 'goes', 'himawari', 'gk2a'.",
+                )
         scene: Scene = Scene(
             filenames={loader: paths},  # type:ignore
             reader_kwargs=reader_kwargs,

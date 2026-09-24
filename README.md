@@ -56,8 +56,10 @@ see `cmd/application.conf.
 
 Currently the consumer is built to the specific data requirements of Open Climate Fix.
 However, adding a new satellite in the from EUMETSAT shouldn't be too hard, provided it uses
-the same `seviri_l1b_native` format and sensor channels - just update the available satellites
-in `config.py`.
+the same `seviri_l1b_native` format and sensor channels - just add it to the `satellites` block
+in `cmd/application.conf`, referencing an existing entry in the `sensors` block (or adding a new
+one). Each satellite declares the `source` its data is served from, which selects the download
+and processing path used for it.
 
 ## Development
 

@@ -9,6 +9,7 @@ import fsspec
 import pandas as pd
 import s3fs
 
+from satellite_consumer import models
 from satellite_consumer.storage import get_fs, load_listing_cache, save_listing_cache
 
 log = logging.getLogger("sat_consumer")
@@ -115,40 +116,31 @@ def get_products_for_date_range_gk2a(
 
 
 def get_products_iterator_gk2a(
-    sat_metadata,
-        cadence_mins: int,
-        credentials: tuple[str, str],
-        product_id: str,
+    product_id: str,
     start: dt.datetime,
     end: dt.datetime,
-    missing_product_threshold: float = 0.1,
-    resolution_meters: int = 2000,
+    channels: list[models.SpectralChannel],
     cache_dir: str | None = None,
 ) -> Iterator[list[str]]:
     """Get a lazy iterator over the products for a given satellite in a given time range.
 
     Args:
-        sat_metadata: Metadata for the satellite to search for.
+        product_id: The product ID to search for.
         start: Start time of the search.
         end: End time of the search.
-        missing_product_threshold: Percentage of missing products allowed without error.
-        resolution_meters: Resolution of the products to search for.
+        channels: The channels to search for.
         cache_dir: Optional directory to cache S3 listing results to disk.
 
     Returns:
         Iterator over product file groups.
     """
-    log.info(
-        f"Searching for products between {start!s} and {end!s} for {sat_metadata.product_id}",
-    )
-    cnames: list[str] = [
-        c.name for c in sat_metadata.channels if resolution_meters in c.resolution_meters
-    ]
+    log.info(f"Searching for products between {start!s} and {end!s} for {product_id}")
+    cnames: list[str] = [c.name for c in channels]
     start = start.replace(tzinfo=dt.UTC)
     end = end.replace(tzinfo=dt.UTC)
     return get_products_for_date_range_gk2a(
         "noaa-gk2a-pds",
-        sat_metadata.product_id,
+        product_id,
         start,
         end,
         channels=cnames,

@@ -24,7 +24,6 @@ import xarray as xr
 from zarr.errors import UnstableSpecificationWarning
 
 from satellite_consumer import models, storage
-from satellite_consumer.config import SATELLITE_METADATA
 from satellite_consumer.download_eumetsat import download_raw, get_products_iterator
 from satellite_consumer.download_gk2a import download_raw_gk2a, get_products_iterator_gk2a
 from satellite_consumer.download_gk2a import (
@@ -50,6 +49,21 @@ if TYPE_CHECKING:
 
 warnings.simplefilter(action="ignore", category=UnstableSpecificationWarning)
 log = logging.getLogger("sat_consumer")
+
+# Each satellite in `application.conf` declares the source its data is served from,
+# which determines how its products are searched for and downloaded.
+DOWNLOADERS: dict[str, Callable[..., list[str]]] = {
+    "eumetsat": download_raw,
+    "goes": download_raw_goes,
+    "himawari": download_raw_himawari,
+    "gk2a": download_raw_gk2a,
+}
+
+TIMESTAMP_PARSERS: dict[str, Callable[[str], dt.datetime]] = {
+    "goes": goes_timestamp_from_filename,
+    "himawari": himawari_timestamp_from_filename,
+    "gk2a": gk2a_timestamp_from_filename,
+}
 
 
 def init_worker(timeout: int) -> None:
@@ -123,24 +137,16 @@ def _download_and_process(
     resolution_meters: int,
     crop_region_lonlat: tuple[float, float, float, float] | None,
     keep_raw: bool,
-    satellite: str = "seviri",
+    source: str = "eumetsat",
 ) -> xr.Dataset | Exception:
     """Wrapper of the download and process functions."""
     raw_filepaths: list[str] = []
     himawari_tmpdir: str | None = None
 
-    # Choose downloader nad processor based on the satellite
-    if satellite == "seviri" or satellite == "odegree-12" or satellite == "odegree-12-highres" or satellite == "iodc" or satellite == "odegree" or satellite == "rss":
-        downloader = download_raw
-    elif satellite == "goes" or satellite == "goes-east" or satellite == "goes-west":
-        downloader = download_raw_goes
-    elif satellite == "himawari":
-        downloader = download_raw_himawari
-    elif satellite == "gk2a":
-        downloader = download_raw_gk2a
-    else:
-        raise ValueError(f"Unknown satellite {satellite}")
-
+    # Choose the downloader based on the data source the satellite is served from
+    downloader = DOWNLOADERS.get(source)
+    if downloader is None:
+        raise ValueError(f"Unknown source {source}. Expected one of {list(DOWNLOADERS)}")
 
     # Calling `product.qualityStatus` makes an http request which can be slow. This filter is  done
     # inside this function so that it can be run on a worker and so avoid stalling the main process
@@ -158,7 +164,7 @@ def _download_and_process(
 
         # For Himawari, satpy decompresses .bz2 files to a temp dir.
         # Override satpy's tmp_dir to use a local folder instead of /tmp.
-        if satellite == "himawari":
+        if source == "himawari":
             import satpy as _satpy
             himawari_tmpdir = tempfile.mkdtemp(dir=".")
             _satpy.config.set(tmp_dir=himawari_tmpdir)
@@ -169,7 +175,7 @@ def _download_and_process(
             channels=channels,
             resolution_meters=resolution_meters,
             crop_region_lonlat=crop_region_lonlat,
-            satellite=satellite
+            source=source,
         )
 
         t_end = time.time()
@@ -272,7 +278,8 @@ async def consume_to_store(
         str | None,
     ] = (None, None, None, None),
     gcs_credentials: str | None = None,
-    satellite: str = "seviri",
+    satellite: str = "odegree",
+    source: str = "eumetsat",
     s3_listing_cache_dir: str | None = None,
     low_memory: bool = False,
 ) -> None:
@@ -310,39 +317,47 @@ async def consume_to_store(
     else:
         start = dt_range[0]
 
-    if satellite == "seviri" or satellite == "odegree-12" or satellite == "odegree-12-highres" or satellite == "iodc" or satellite == "odegree" or satellite == "rss":
-        prod_iter = get_products_iterator
-    elif satellite == "goes" or satellite == "goes-east" or satellite == "goes-west":
-        prod_iter = get_products_iterator_goes
-        timestamp_from_filename = goes_timestamp_from_filename
-    elif satellite == "himawari" or satellite == "himawari-8" or satellite == "himawari-9":
-        prod_iter = get_products_iterator_himawari
-        timestamp_from_filename = himawari_timestamp_from_filename
-    elif satellite == "gk2a":
-        prod_iter = get_products_iterator_gk2a
-        timestamp_from_filename = gk2a_timestamp_from_filename
-    else:
-        raise ValueError(f"Unknown satellite {satellite}")
-
-    if satellite not in ["seviri", "odegree-12", "odegree-12-highres", "iodc", "odegree", "rss"]:
-        product_iter = prod_iter(
-            sat_metadata=SATELLITE_METADATA[satellite],
-            cadence_mins=cadence_mins,
-            credentials=eumetsat_credentials,
-            product_id=product_id,
-            start=start,
-            end=dt_range[1],
-            resolution_meters=resolution_meters,
-            cache_dir=s3_listing_cache_dir,
-        )
-    else:
-        product_iter = prod_iter(
-            product_id=product_id,
-            cadence_mins=cadence_mins,
-            start=start,
-            end=dt_range[1],
-            credentials=eumetsat_credentials,
-        )
+    # The source the satellite is served from determines how its products are searched for.
+    # EUMETSAT products come from the Data Store as `Product` objects, whereas the other
+    # sources are searched for on S3 and so come as groups of object paths.
+    timestamp_from_filename = TIMESTAMP_PARSERS.get(source)
+    product_iter: Iterator[eumdac.product.Product] | Iterator[list[str]]
+    match source:
+        case "eumetsat":
+            product_iter = get_products_iterator(
+                product_id=product_id,
+                cadence_mins=cadence_mins,
+                start=start,
+                end=dt_range[1],
+                credentials=eumetsat_credentials,
+            )
+        case "goes":
+            product_iter = get_products_iterator_goes(
+                product_id=product_id,
+                start=start,
+                end=dt_range[1],
+                channels=channels,
+                satellite=satellite,
+                cache_dir=s3_listing_cache_dir,
+            )
+        case "himawari":
+            product_iter = get_products_iterator_himawari(
+                product_id=product_id,
+                start=start,
+                end=dt_range[1],
+                channels=channels,
+                cache_dir=s3_listing_cache_dir,
+            )
+        case "gk2a":
+            product_iter = get_products_iterator_gk2a(
+                product_id=product_id,
+                start=start,
+                end=dt_range[1],
+                channels=channels,
+                cache_dir=s3_listing_cache_dir,
+            )
+        case _:
+            raise ValueError(f"Unknown source {source}. Expected one of {list(DOWNLOADERS)}")
 
 
     # This function will be applied to all products
@@ -354,7 +369,7 @@ async def consume_to_store(
         resolution_meters=resolution_meters,
         crop_region_lonlat=crop_region_lonlat,
         keep_raw=keep_raw,
-        satellite=satellite
+        source=source,
     )
 
     # This function is run in all worker processes
@@ -368,13 +383,15 @@ async def consume_to_store(
                 .to_pydatetime()
                 .replace(tzinfo=dt.UTC)  # EUMETSAT files are UTC without an explicit timezone
             )
-        elif isinstance(product, list):
+        elif isinstance(product, list) and timestamp_from_filename is not None:
             rounded_time = (
                 pd.Timestamp(timestamp_from_filename(product[0]))
                 .floor(f"{cadence_mins}min")
                 .to_pydatetime()
                 .replace(tzinfo=dt.UTC)
             )
+        else:
+            raise TypeError(f"Unexpected product type {type(product)} for source {source}")
         return rounded_time not in existing_times
 
     # Iterate through all products in search
@@ -385,7 +402,7 @@ async def consume_to_store(
     t_last: float = 0
     get_iter_time_ema = EMA()
     async for item in _buffered_apply(
-        filter(_not_stored, product_iter),
+        (p for p in product_iter if _not_stored(p)),
         bound_func,
         buffer_size=buffer_size,
         max_workers=max_workers,

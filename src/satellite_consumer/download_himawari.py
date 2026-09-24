@@ -10,7 +10,7 @@ import fsspec
 import pandas as pd
 import s3fs
 
-from satellite_consumer.config import SatelliteMetadata
+from satellite_consumer import models
 from satellite_consumer.storage import get_fs, load_listing_cache, save_listing_cache
 
 log = logging.getLogger("sat_consumer")
@@ -120,33 +120,26 @@ def get_products_for_date_range_himawari(
 
 
 def get_products_iterator_himawari(
-    sat_metadata: SatelliteMetadata,
-    cadence_mins: int,
-    credentials: tuple[str, str],
     product_id: str,
     start: dt.datetime,
     end: dt.datetime,
-    resolution_meters: int = 2000,
+    channels: list[models.SpectralChannel],
     cache_dir: str | None = None,
 ) -> Iterator[list[str]]:
     """Get a lazy iterator over the products for a given satellite in a given time range.
 
     Args:
-        sat_metadata: Metadata for the satellite to search for.
+        product_id: The product ID to search for.
         start: Start time of the search.
         end: End time of the search.
-        resolution_meters: Resolution of the products in meters.
+        channels: The channels to search for.
         cache_dir: Optional directory to cache S3 listing results to disk.
 
     Returns:
         Iterator over product file groups.
     """
-    log.info(
-        f"Searching for products between {start!s} and {end!s} for {sat_metadata.product_id}",
-    )
-    cnames: list[str] = [
-        c.name for c in sat_metadata.channels if resolution_meters in c.resolution_meters
-    ]
+    log.info(f"Searching for products between {start!s} and {end!s} for {product_id}")
+    cnames: list[str] = [c.name for c in channels]
     start = start.replace(tzinfo=dt.UTC)
     end = end.replace(tzinfo=dt.UTC)
     himawari_cutoff = dt.datetime(2022, 11, 4, tzinfo=dt.UTC)
@@ -155,7 +148,7 @@ def get_products_iterator_himawari(
         # Only Himawari8
         return get_products_for_date_range_himawari(
             "noaa-himawari8",
-            sat_metadata.product_id,
+            product_id,
             start,
             end,
             channels=cnames,
@@ -165,7 +158,7 @@ def get_products_iterator_himawari(
         # Only Himawari9
         return get_products_for_date_range_himawari(
             "noaa-himawari9",
-            sat_metadata.product_id,
+            product_id,
             start,
             end,
             channels=cnames,
@@ -178,7 +171,7 @@ def get_products_iterator_himawari(
         return itertools.chain(
             get_products_for_date_range_himawari(
                 "noaa-himawari8",
-                sat_metadata.product_id,
+                product_id,
                 start,
                 himawari8_end,
                 channels=cnames,
@@ -186,7 +179,7 @@ def get_products_iterator_himawari(
             ),
             get_products_for_date_range_himawari(
                 "noaa-himawari9",
-                sat_metadata.product_id,
+                product_id,
                 himawari9_start,
                 end,
                 channels=cnames,
