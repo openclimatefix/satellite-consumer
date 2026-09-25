@@ -10,7 +10,7 @@ import pandas as pd
 import s3fs
 
 from satellite_consumer import models
-from satellite_consumer.storage import get_fs, load_listing_cache, save_listing_cache
+from satellite_consumer.storage import ListingCache, get_fs
 
 log = logging.getLogger("sat_consumer")
 
@@ -60,9 +60,7 @@ def get_products_for_date_range_gk2a(
     start = start.replace(tzinfo=dt.UTC)
     end = end.replace(tzinfo=dt.UTC)
 
-    cache: dict[str, list[str]] = {}
-    if cache_dir is not None:
-        cache = load_listing_cache(cache_dir, bucket, product_id)
+    cache = ListingCache(cache_dir, bucket, product_id)
 
     log.debug(
         "Searching for products in S3 buckets",
@@ -71,42 +69,39 @@ def get_products_for_date_range_gk2a(
         end=end.isoformat(),
     )
     found_any = False
-    for date in pd.date_range(start, end, freq="h"):
-        cache_key = f"{date.year}{date.month:02d}{date.day:02d}{date.hour:02d}"
+    try:
+        for date in pd.date_range(start, end, freq="h"):
+            cache_key = f"{date.year}{date.month:02d}{date.day:02d}{date.hour:02d}"
 
-        if cache_key in cache:
-            results = cache[cache_key]
-        else:
-            log.debug(
-                "Searching for products for date in bucket: "
+            pattern = (
                 f"s3://{bucket}/{product_id}/{date.year}{date.month:02d}"
-                f"/{date.day:02d}/{date.hour:02d}/*.nc",
+                f"/{date.day:02d}/{date.hour:02d}/*.nc"
             )
-            results = fs.glob(
-                f"s3://{bucket}/{product_id}/{date.year}{date.month:02d}"
-                f"/{date.day:02d}/{date.hour:02d}/*.nc",
-            )
-            if cache_dir is not None:
-                cache[cache_key] = results
-                save_listing_cache(cache_dir, bucket, product_id, cache)
+            log.debug(f"Searching for products for date in bucket: {pattern}")
+            # The prefix is the hour's, so the period listed ends with it.
+            hour_end = date.floor("h").to_pydatetime() + dt.timedelta(hours=1)
+            results = cache.glob(fs, pattern, cache_key, hour_end)
 
-        # Filter out non-channel files
-        if channels is not None:
-            results = [
-                r for r in results if any(channel.lower() + "_" in r for channel in channels)
-            ]
-        if not results:
-            continue
-        found_any = True
-        # Combine by start time
-        start_times = [get_timestamp_from_filename(f.split("/")[-1]) for f in results]
-        unique_start_times = sorted(set(start_times))
-        start_lists = [[] for _ in range(len(unique_start_times))]
-        for result in results:
-            start_time = get_timestamp_from_filename(result.split("/")[-1])
-            index = unique_start_times.index(start_time)
-            start_lists[index].append(result)
-        yield from start_lists
+            # Filter out non-channel files
+            if channels is not None:
+                results = [
+                    r for r in results if any(channel.lower() + "_" in r for channel in channels)
+                ]
+            if not results:
+                continue
+            found_any = True
+            # Combine by start time
+            start_times = [get_timestamp_from_filename(f.split("/")[-1]) for f in results]
+            unique_start_times = sorted(set(start_times))
+            start_lists = [[] for _ in range(len(unique_start_times))]
+            for result in results:
+                start_time = get_timestamp_from_filename(result.split("/")[-1])
+                index = unique_start_times.index(start_time)
+                start_lists[index].append(result)
+            yield from start_lists
+    finally:
+        # Also when the consumer stops iterating early.
+        cache.flush()
     if not found_any:
         log.warning(
             f"No products found for {product_id} in {bucket} "

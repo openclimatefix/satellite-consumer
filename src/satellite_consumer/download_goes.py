@@ -11,7 +11,7 @@ import pandas as pd
 import s3fs
 
 from satellite_consumer import models
-from satellite_consumer.storage import get_fs, load_listing_cache, save_listing_cache
+from satellite_consumer.storage import ListingCache, get_fs
 
 log = logging.getLogger("sat_consumer")
 
@@ -80,9 +80,7 @@ def get_products_for_date_range_goes(
     start = start.replace(tzinfo=dt.UTC)
     end = end.replace(tzinfo=dt.UTC)
 
-    cache: dict[str, list[str]] = {}
-    if cache_dir is not None:
-        cache = load_listing_cache(cache_dir, bucket, product_id)
+    cache = ListingCache(cache_dir, bucket, product_id)
 
     log.debug(
         "Searching for products in S3 buckets",
@@ -91,56 +89,53 @@ def get_products_for_date_range_goes(
         end=end.isoformat(),
     )
     found_any = False
-    for date in pd.date_range(start, end, freq="h"):
-        if "goes16" in bucket:
-            if date >= dt.datetime(2025, 1, 1, tzinfo=dt.UTC):
+    try:
+        for date in pd.date_range(start, end, freq="h"):
+            if "goes16" in bucket:
+                if date >= dt.datetime(2025, 1, 1, tzinfo=dt.UTC):
+                    product_id = "ABI-L1b-RadF"
+                else:
+                    product_id = "ABI-L1b-RadF-Reproc"
+            if "goes17" in bucket:
+                if date >= dt.datetime(2023, 1, 1, tzinfo=dt.UTC):
+                    product_id = "ABI-L1b-RadF"
+                else:
+                    product_id = "ABI-L1b-RadF-Reproc"
+            if "goes18" in bucket or "goes19" in bucket:
                 product_id = "ABI-L1b-RadF"
-            else:
-                product_id = "ABI-L1b-RadF-Reproc"
-        if "goes17" in bucket:
-            if date >= dt.datetime(2023, 1, 1, tzinfo=dt.UTC):
-                product_id = "ABI-L1b-RadF"
-            else:
-                product_id = "ABI-L1b-RadF-Reproc"
-        if "goes18" in bucket or "goes19" in bucket:
-            product_id = "ABI-L1b-RadF"
 
-        cache_key = (
-            f"{bucket}_{product_id}_{date.year}"
-            f"_{date.timetuple().tm_yday:03d}_{date.hour:02d}"
-        )
-
-        if cache_key in cache:
-            results = cache[cache_key]
-        else:
-            log.debug(
-                "Searching for products for date in bucket: "
-                f"s3://{bucket}/{product_id}/{date.year}"
-                f"/{date.timetuple().tm_yday:03d}/{date.hour:02d}/*.nc",
+            cache_key = (
+                f"{bucket}_{product_id}_{date.year}"
+                f"_{date.timetuple().tm_yday:03d}_{date.hour:02d}"
             )
-            results = fs.glob(
-                f"s3://{bucket}/{product_id}/{date.year}"
-                f"/{date.timetuple().tm_yday:03d}/{date.hour:02d}/*.nc",
-            )
-            if cache_dir is not None:
-                cache[cache_key] = results
-                save_listing_cache(cache_dir, bucket, product_id, cache)
 
-        # Filter out non-channel files
-        if channels is not None:
-            results = [r for r in results if any(channel + "_" in r for channel in channels)]
-        if not results or len(results) < len(channels): # One file per channel
-            continue
-        found_any = True
-        # Combine by start time
-        start_times = [get_timestamp_from_filename(f.split("/")[-1]) for f in results]
-        unique_start_times = sorted(set(start_times))
-        start_lists = [[] for _ in range(len(unique_start_times))]
-        for result in results:
-            start_time = get_timestamp_from_filename(result.split("/")[-1])
-            index = unique_start_times.index(start_time)
-            start_lists[index].append(result)
-        yield from start_lists
+            pattern = (
+                f"s3://{bucket}/{product_id}/{date.year}"
+                f"/{date.timetuple().tm_yday:03d}/{date.hour:02d}/*.nc"
+            )
+            log.debug(f"Searching for products for date in bucket: {pattern}")
+            # The prefix is the hour's, so the period listed ends with it.
+            hour_end = date.floor("h").to_pydatetime() + dt.timedelta(hours=1)
+            results = cache.glob(fs, pattern, cache_key, hour_end)
+
+            # Filter out non-channel files
+            if channels is not None:
+                results = [r for r in results if any(channel + "_" in r for channel in channels)]
+            if not results or len(results) < len(channels): # One file per channel
+                continue
+            found_any = True
+            # Combine by start time
+            start_times = [get_timestamp_from_filename(f.split("/")[-1]) for f in results]
+            unique_start_times = sorted(set(start_times))
+            start_lists = [[] for _ in range(len(unique_start_times))]
+            for result in results:
+                start_time = get_timestamp_from_filename(result.split("/")[-1])
+                index = unique_start_times.index(start_time)
+                start_lists[index].append(result)
+            yield from start_lists
+    finally:
+        # Also when the consumer stops iterating early.
+        cache.flush()
     if not found_any:
         log.warning(
             f"No products found for {product_id} in {bucket} "

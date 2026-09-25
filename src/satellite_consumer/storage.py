@@ -1,9 +1,12 @@
 """Storage module for reading and writing data to disk."""
 
+import contextlib
+import datetime as dt
 import json
 import logging
 import os
 import re
+import tempfile
 from typing import Any, TypeVar, overload
 
 import fsspec
@@ -262,32 +265,120 @@ def get_icechunk_repo(
     return repo
 
 
+#: A listing is cached only for a period that ended at least this long ago. A
+#: newer one may still be filling - scans reach the buckets late, and some are
+#: reprocessed - so it is listed afresh every time and never written to the
+#: cache, where it would otherwise be served incomplete once it aged past this.
+LISTING_CACHE_MAX_AGE = dt.timedelta(days=7)
+
+#: New entries are written to disk every this many, as well as at the end.
+LISTING_CACHE_FLUSH_EVERY = 24
+
+
 def _listing_cache_path(cache_dir: str, bucket: str, product_id: str) -> str:
     """Get the path to the S3 listing cache file for a given bucket and product ID."""
     safe_product = product_id.replace("/", "_").replace("\\", "_")
     return os.path.join(cache_dir, f"{bucket}_{safe_product}.json")
 
 
-def load_listing_cache(cache_dir: str, bucket: str, product_id: str) -> dict[str, list[str]]:
-    """Load the S3 listing cache from disk, or return empty dict if missing."""
-    path = _listing_cache_path(cache_dir, bucket, product_id)
-    if os.path.exists(path):
-        with open(path) as f:
-            cache = json.load(f)
-        log.debug("Loaded S3 listing cache with %d entries from %s", len(cache), path)
-        return cache
-    return {}
+class ListingCache:
+    """S3 listing results on disk, for periods old enough not to change.
 
+    Keyed by whatever names one listed period (an hour's or a day's prefix).
+    Several consumers may share a cache file - two resolutions of one
+    satellite, say - so writes go to a temporary file and are renamed into
+    place, after merging in whatever the file gained since it was read.
 
-def save_listing_cache(
-    cache_dir: str,
-    bucket: str,
-    product_id: str,
-    cache: dict[str, list[str]],
-) -> None:
-    """Save the S3 listing cache to disk."""
-    os.makedirs(cache_dir, exist_ok=True)
-    path = _listing_cache_path(cache_dir, bucket, product_id)
-    with open(path, "w") as f:
-        json.dump(cache, f)
-    log.debug("Saved S3 listing cache with %d entries to %s", len(cache), path)
+    Args:
+        cache_dir: Directory holding the cache files; None disables caching.
+        bucket: The S3 bucket listed.
+        product_id: The product listed.
+        now: The time the week is counted back from; the current time if None.
+    """
+
+    def __init__(
+        self,
+        cache_dir: str | None,
+        bucket: str,
+        product_id: str,
+        now: dt.datetime | None = None,
+    ) -> None:
+        """Read the cache file, if there is one."""
+        self.path = (
+            None if cache_dir is None else _listing_cache_path(cache_dir, bucket, product_id)
+        )
+        self.cutoff = (now or dt.datetime.now(tz=dt.UTC)) - LISTING_CACHE_MAX_AGE
+        self._entries: dict[str, list[str]] = self._read() if self.path else {}
+        self._pending: dict[str, list[str]] = {}
+
+    def _read(self) -> dict[str, list[str]]:
+        if self.path is None or not os.path.exists(self.path):
+            return {}
+        try:
+            with open(self.path) as f:
+                entries: dict[str, list[str]] = json.load(f)
+        except (OSError, ValueError) as e:
+            # A cache is only ever a shortcut: a bad one costs a relisting.
+            log.warning("Ignoring unreadable S3 listing cache %s: %s", self.path, e)
+            return {}
+        log.debug("Loaded S3 listing cache with %d entries from %s", len(entries), self.path)
+        return entries
+
+    def cacheable(self, period_end: dt.datetime) -> bool:
+        """Whether a period ending at *period_end* is old enough to cache.
+
+        A naive *period_end* is taken as UTC, as every bucket names its times.
+        """
+        if period_end.tzinfo is None:
+            period_end = period_end.replace(tzinfo=dt.UTC)
+        return self.path is not None and period_end <= self.cutoff
+
+    def get(self, key: str, period_end: dt.datetime) -> list[str] | None:
+        """The cached listing for *key*, or None if it must be listed afresh."""
+        if not self.cacheable(period_end):
+            return None
+        return self._entries.get(key)
+
+    def put(self, key: str, period_end: dt.datetime, results: list[str]) -> None:
+        """Remember a listing, if its period is old enough to keep."""
+        if not self.cacheable(period_end):
+            return
+        self._entries[key] = results
+        self._pending[key] = results
+        if len(self._pending) >= LISTING_CACHE_FLUSH_EVERY:
+            self.flush()
+
+    def flush(self) -> None:
+        """Write any new entries to disk, merged with what is there now."""
+        if self.path is None or not self._pending:
+            return
+        merged = self._read()
+        merged.update(self._pending)
+        directory = os.path.dirname(self.path) or "."
+        os.makedirs(directory, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=directory, prefix=".listing-", suffix=".json")
+        try:
+            with os.fdopen(fd, "w") as f:
+                json.dump(merged, f)
+            os.replace(tmp, self.path)
+        except BaseException:
+            with contextlib.suppress(OSError):
+                os.unlink(tmp)
+            raise
+        log.debug("Saved S3 listing cache with %d entries to %s", len(merged), self.path)
+        self._entries.update(merged)
+        self._pending = {}
+
+    def glob(
+        self,
+        fs: s3fs.S3FileSystem,
+        pattern: str,
+        key: str,
+        period_end: dt.datetime,
+    ) -> list[str]:
+        """``fs.glob(pattern)``, from the cache when the period is old enough."""
+        results = self.get(key, period_end)
+        if results is None:
+            results = fs.glob(pattern)
+            self.put(key, period_end, results)
+        return results
