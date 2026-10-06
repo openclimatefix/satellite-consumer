@@ -121,7 +121,7 @@ def _gk2a_name(pattern: str) -> str:
 
 def _himawari_name(pattern: str) -> str:
     year, month, day = re.search(r"/(\d{4})/(\d{2})/(\d{2})/", pattern).groups()
-    return f"HS_H09_{year}{month}{day}_0000_B01_FLDK_R10_S0110.DAT.bz2"
+    return f"HS_H09_{year}{month}{day}_1200_B01_FLDK_R10_S0101.DAT.bz2"
 
 
 class TestTheDownloadersCache(unittest.TestCase):

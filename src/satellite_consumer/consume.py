@@ -390,6 +390,10 @@ async def consume_to_store(
                 .to_pydatetime()
                 .replace(tzinfo=dt.UTC)
             )
+            if source == "himawari":
+                # Himawari names its files by the scan's start, but the store's time is
+                # the scan's nominal end (see `_map_scene_to_dataset`): one cadence later.
+                rounded_time += dt.timedelta(minutes=cadence_mins)
         else:
             raise TypeError(f"Unexpected product type {type(product)} for source {source}")
         return rounded_time not in existing_times
@@ -412,6 +416,27 @@ async def consume_to_store(
         total_num += 1
 
         if isinstance(item, xr.Dataset):
+            # A scan assembled to another grid than the store's (say from segments that
+            # did not all arrive) cannot be appended: skip it rather than fail the run.
+            grid = {d: n for d, n in item.sizes.items() if d != "time"}
+            expected = (
+                {d: n for d, n in store_ds.sizes.items() if d != "time"}
+                if store_ds is not None
+                else (
+                    {d: n for d, n in results[0].sizes.items() if d != "time"}
+                    if results
+                    else grid
+                )
+            )
+            if grid != expected:
+                log.error(
+                    "skipping %s: its grid %s does not match the store's %s",
+                    np.datetime_as_string(item.time.values[0], unit="m"),
+                    grid,
+                    expected,
+                )
+                num_errs += 1
+                continue
             results.append(item)
 
             # If we've reached the write block size, concat the datasets and write out

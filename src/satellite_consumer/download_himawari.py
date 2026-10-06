@@ -15,6 +15,11 @@ from satellite_consumer.storage import ListingCache, get_fs
 
 log = logging.getLogger("sat_consumer")
 
+#: How long after its start a scan's segments may still be arriving on S3.
+#: NOAA uploads a full disk's segments over roughly 10-15 minutes after the
+#: scan starts; a scan still incomplete after this is taken to stay so.
+UPLOAD_GRACE = dt.timedelta(hours=1)
+
 
 def get_timestamp_from_filename(filename: str) -> dt.datetime:
     """Extract timestamp from a filename.
@@ -45,6 +50,46 @@ def get_timestamp_from_filename(filename: str) -> dt.datetime:
     return start_time
 
 
+_SEGMENT_RE = re.compile(r"_B(\d{2})_\w+_S(\d{2})(\d{2})\.DAT")
+
+
+def missing_segments(files: list[str], channels: list[str] | None) -> dict[str, list[int]]:
+    """The segments each channel of one scan still lacks.
+
+    A full disk is split into segments (``..._S0310.DAT.bz2`` is segment 3 of
+    10), and NOAA uploads them over several minutes after the scan. A scan
+    listed while it is still arriving has some channels with fewer segments
+    than others; satpy pads each channel's missing segments with areas whose
+    y coordinates do not quite match the other channels', so the merged
+    dataset gets nearly twice the rows.
+
+    Args:
+        files: The paths of one scan's segment files.
+        channels: The channels the scan must have, or None for those present.
+
+    Returns:
+        Each channel lacking a segment, with the segment numbers it lacks.
+    """
+    found: dict[str, set[int]] = {}
+    totals: dict[str, int] = {}
+    for f in files:
+        match = _SEGMENT_RE.search(f.split("/")[-1])
+        if match is None:
+            continue
+        band, segment, total = match.groups()
+        found.setdefault("B" + band, set()).add(int(segment))
+        totals["B" + band] = int(total)
+    missing: dict[str, list[int]] = {}
+    for channel in channels if channels is not None else sorted(found):
+        if channel not in found:
+            missing[channel] = []  # absent altogether
+            continue
+        lacking = sorted(set(range(1, totals[channel] + 1)) - found[channel])
+        if lacking:
+            missing[channel] = lacking
+    return missing
+
+
 def get_products_for_date_range_himawari(
     bucket: str,
     product_id: str,
@@ -64,7 +109,8 @@ def get_products_for_date_range_himawari(
         cache_dir: Optional directory to cache S3 listing results to disk.
 
     Yields:
-        List of product file paths for each unique start time.
+        List of product file paths for each unique start time within
+        [start, end], leaving out recent scans whose segments are still arriving.
     """
     fs = s3fs.S3FileSystem(anon=True)
 
@@ -105,7 +151,24 @@ def get_products_for_date_range_himawari(
                 start_time = get_timestamp_from_filename(result.split("/")[-1])
                 index = unique_start_times.index(start_time)
                 start_lists[index].append(result)
-            yield from start_lists
+            # The glob is the whole day's, so keep only the scans asked for.
+            for start_time, group in zip(unique_start_times, start_lists, strict=True):
+                if not start <= start_time <= end:
+                    continue
+                missing = missing_segments(group, channels)
+                if missing and start_time > dt.datetime.now(tz=dt.UTC) - UPLOAD_GRACE:
+                    # Still being uploaded: a later run gets it once whole.
+                    log.warning(
+                        f"Skipping Himawari scan {start_time:%Y-%m-%dT%H:%M} still arriving: "
+                        f"missing segments {missing}",
+                    )
+                    continue
+                if missing:
+                    # Long enough ago that it stays so: satpy pads the gaps with NaN.
+                    log.warning(
+                        f"Himawari scan {start_time:%Y-%m-%dT%H:%M} lacks segments {missing}",
+                    )
+                yield group
     finally:
         # Also when the consumer stops iterating early.
         cache.flush()
