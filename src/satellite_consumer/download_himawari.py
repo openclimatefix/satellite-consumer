@@ -126,7 +126,9 @@ def get_products_for_date_range_himawari(
     )
     found_any = False
     try:
-        for date in pd.date_range(start, end, freq="D"):
+        # By calendar date: from 22:00 a step of a day lands past an end at
+        # 05:30 the next morning, so the second day would never be listed.
+        for date in pd.date_range(start.date(), end.date(), freq="D"):
             cache_key = f"{date.year}{date.month:02d}{date.day:02d}"
 
             pattern = (
