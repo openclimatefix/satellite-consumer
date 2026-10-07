@@ -3,7 +3,9 @@
 import datetime as dt
 import itertools
 import logging
+import os
 import re
+import shutil
 from collections.abc import Iterator
 
 import fsspec
@@ -340,3 +342,34 @@ def download_raw_himawari(
             return []
 
     return downloaded_files
+
+
+def decompress_bz2(paths: list[str], dest_dir: str) -> list[str]:
+    """Decompress a scan's ``.DAT.bz2`` segments into ``dest_dir`` for satpy to read.
+
+    satpy can decompress the segments itself, but it writes them to its global
+    ``tmp_dir`` setting, which is shared by every scan the thread pool processes at
+    once: one scan's cleanup would delete another's segments while it still reads
+    them. Decompressing into a directory of the scan's own, and handing satpy the
+    plain ``.DAT`` files (which its ``ahi_hsd`` reader also accepts), keeps each
+    scan's files under its own control.
+
+    Args:
+        paths: The scan's downloaded files. Files not ending in ``.bz2`` are
+            returned as they are.
+        dest_dir: A local directory owned by this scan alone.
+
+    Returns:
+        The paths satpy should read, in the order given.
+    """
+    out: list[str] = []
+    for path in paths:
+        name = path.rstrip("/").rsplit("/", 1)[-1]
+        if not name.endswith(".bz2"):
+            out.append(path)
+            continue
+        dst = os.path.join(dest_dir, name.removesuffix(".bz2"))
+        with fsspec.open(path, "rb", compression="bz2") as src, open(dst, "wb") as f:
+            shutil.copyfileobj(src, f, length=16 * 1024 * 1024)
+        out.append(dst)
+    return out

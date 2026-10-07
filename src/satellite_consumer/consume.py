@@ -34,6 +34,7 @@ from satellite_consumer.download_goes import (
     get_timestamp_from_filename as goes_timestamp_from_filename,
 )
 from satellite_consumer.download_himawari import (
+    decompress_bz2,
     download_raw_himawari,
     get_products_iterator_himawari,
 )
@@ -129,6 +130,23 @@ async def _buffered_apply[T, R](
             yield await tasks.popleft()
 
 
+#: How many more times a scan is tried after it fails for a filesystem reason (a file
+#: missing or unreadable), which is likelier to be passing than a fault in the data.
+TRANSIENT_RETRIES = 1
+
+
+def _is_transient(error: Exception) -> bool:
+    """Whether an error, or one it was raised from, is a filesystem error."""
+    seen: set[int] = set()
+    e: BaseException | None = error
+    while e is not None and id(e) not in seen:
+        if isinstance(e, OSError):
+            return True
+        seen.add(id(e))
+        e = e.__cause__ or e.__context__
+    return False
+
+
 def _download_and_process(
     product: eumdac.product.Product,
     folder: str,
@@ -139,9 +157,12 @@ def _download_and_process(
     keep_raw: bool,
     source: str = "eumetsat",
 ) -> xr.Dataset | Exception:
-    """Wrapper of the download and process functions."""
+    """Wrapper of the download and process functions.
+
+    A scan that fails for a filesystem reason is tried again, up to `TRANSIENT_RETRIES`
+    times, before its error is returned. Files already downloaded are kept for the retry.
+    """
     raw_filepaths: list[str] = []
-    himawari_tmpdir: str | None = None
 
     # Choose the downloader based on the data source the satellite is served from
     downloader = DOWNLOADERS.get(source)
@@ -154,24 +175,84 @@ def _download_and_process(
     #    return ValidationError(f"Product {product} qualityStatus is {product.qualityStatus}")
 
     try:
+        for attempt in range(TRANSIENT_RETRIES + 1):
+            result = _download_and_process_once(
+                product=product,
+                downloader=downloader,
+                folder=folder,
+                filter_regex=filter_regex,
+                channels=channels,
+                resolution_meters=resolution_meters,
+                crop_region_lonlat=crop_region_lonlat,
+                keep_raw=keep_raw,
+                source=source,
+                raw_filepaths=raw_filepaths,
+            )
+            if (
+                isinstance(result, Exception)
+                and attempt < TRANSIENT_RETRIES
+                and _is_transient(result)
+            ):
+                log.warning("retrying a scan after a filesystem error: %s", result)
+                continue
+            return result
+        raise AssertionError("unreachable")
+
+    finally:
+        # Cleanup files
+        if not keep_raw and raw_filepaths:
+            try:
+                fs = storage.get_fs(folder)
+                for path in raw_filepaths:
+                    if fs.exists(path):
+                        fs.delete(path)
+            except Exception:
+                # log this rather than returning it, since an error is already returned from the
+                # except block
+                log.warning(f"failed to clean up {raw_filepaths}")
+
+
+def _download_and_process_once(
+    product: eumdac.product.Product,
+    downloader: Callable[..., list[str]],
+    folder: str,
+    filter_regex: str,
+    channels: list[models.SpectralChannel],
+    resolution_meters: int,
+    crop_region_lonlat: tuple[float, float, float, float] | None,
+    keep_raw: bool,
+    source: str,
+    raw_filepaths: list[str],
+) -> xr.Dataset | Exception:
+    """Download and process one scan, once.
+
+    The downloaded paths are added to `raw_filepaths`, for the caller to clean up.
+    """
+    scan_tmpdir: str | None = None
+    try:
         t_start = time.time()
-        raw_filepaths = downloader(
+        downloaded = downloader(
             product=product,
             folder=folder,
             filter_regex=filter_regex,
             nest_by_date=keep_raw,
         )
+        raw_filepaths.extend(p for p in downloaded if p not in raw_filepaths)
 
-        # For Himawari, satpy decompresses .bz2 files to a temp dir.
-        # Override satpy's tmp_dir to use a local folder instead of /tmp.
+        paths = downloaded
         if source == "himawari":
-            import satpy as _satpy
-            himawari_tmpdir = tempfile.mkdtemp(dir=".")
-            _satpy.config.set(tmp_dir=himawari_tmpdir)
+            # Decompress the .bz2 segments into a directory of this scan's own, rather than
+            # leave it to satpy: satpy decompresses into its global `tmp_dir` setting, which
+            # every worker thread shares, so one scan's cleanup deleted segments another
+            # scan was still reading. The directory goes only once the scan is in memory.
+            scan_tmpdir = tempfile.mkdtemp(prefix="himawari-", dir=".")
+            paths = decompress_bz2(downloaded, scan_tmpdir)
 
         t_dl = time.time()
+        # `process_raw` loads the scene's data into memory, so nothing reads the
+        # decompressed files after it returns.
         ds = process_raw(
-            paths=raw_filepaths,
+            paths=paths,
             channels=channels,
             resolution_meters=resolution_meters,
             crop_region_lonlat=crop_region_lonlat,
@@ -190,23 +271,8 @@ def _download_and_process(
         return e
 
     finally:
-        # Cleanup Himawari decompression temp dir
-        if himawari_tmpdir is not None:
-            try:
-                shutil.rmtree(himawari_tmpdir)
-            except Exception:
-                log.warning(f"failed to clean up temp dir {himawari_tmpdir}")
-        # Cleanup files
-        if not keep_raw and raw_filepaths:
-            try:
-                fs = storage.get_fs(folder)
-                for path in raw_filepaths:
-                    if fs.exists(path):
-                        fs.delete(path)
-            except Exception:
-                # log this rather than returning it, since an error is already returned from the
-                # except block
-                log.warning(f"failed to clean up {raw_filepaths}")
+        if scan_tmpdir is not None:
+            shutil.rmtree(scan_tmpdir, ignore_errors=True)
 
 
 class EMA:
