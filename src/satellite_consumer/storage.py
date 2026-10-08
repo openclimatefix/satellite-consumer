@@ -93,8 +93,8 @@ def write_to_store(
     if not write_new:
         if "time" in ds.dims and ds["time"].values[0] in get_existing_dataset(dst=dst).coords["time"].values:
             log.debug(
-                "Skipping dataset with time that already exists in store",
-                time=ds["time"].values[0],
+                "Skipping dataset with time %s that already exists in store",
+                ds["time"].values[0],
             )
             return
 

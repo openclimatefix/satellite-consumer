@@ -16,13 +16,33 @@ import eumdac.token
 import pandas as pd
 from fsspec.implementations.local import LocalFileSystem
 
-from satellite_consumer.exceptions import DownloadError
+from satellite_consumer.exceptions import DownloadError, NotYetAvailableError
 from satellite_consumer.storage import get_fs
 
 if TYPE_CHECKING:
     from eumdac.collection import Collection, SearchResults
 
 log = logging.getLogger("sat_consumer")
+
+#: How long after sensing a 403 from the Data Store is taken to mean the scan is not yet
+#: released to this account, rather than that the account may not have it at all. EUMETSAT
+#: releases the full-cadence Meteosat scans to unlicensed users some time after sensing
+#: (about an hour, as observed for MTG FCI; its data policy allows up to three).
+EMBARGO = dt.timedelta(hours=3)
+
+
+def _is_forbidden(error: BaseException) -> bool:
+    """Whether an error is eumdac's for an HTTP 403 from the Data Store."""
+    extra_info = getattr(error, "extra_info", None)
+    return isinstance(extra_info, dict) and extra_info.get("status") == 403
+
+
+def _sensed_within(product: eumdac.product.Product, period: dt.timedelta) -> bool:
+    """Whether a product finished sensing less than `period` ago."""
+    sensing_end = pd.Timestamp(product.sensing_end)
+    if sensing_end.tzinfo is None:
+        sensing_end = sensing_end.tz_localize("UTC")  # EUMETSAT's times are UTC
+    return pd.Timestamp.now(tz="UTC") - sensing_end < period
 
 
 def get_products_iterator(
@@ -139,6 +159,12 @@ def download_raw(
                 log.debug(
                     f"error downloading product '{product._id}' (attempt {i}/{retries}): '{e}'",
                 )
+                # A recent scan the account is not yet entitled to stays forbidden for a
+                # while yet: retrying it now only spends the run's time.
+                if _is_forbidden(e) and _sensed_within(product, EMBARGO):
+                    raise NotYetAvailableError(
+                        f"Product '{product._id}' is not yet released to this account: '{e}'",
+                    ) from e
                 if i + 1 == retries:
                     raise DownloadError(
                         f"Failed to download output '{product._id}': '{e}'",

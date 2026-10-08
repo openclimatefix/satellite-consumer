@@ -41,7 +41,7 @@ from satellite_consumer.download_himawari import (
 from satellite_consumer.download_himawari import (
     get_timestamp_from_filename as himawari_timestamp_from_filename,
 )
-from satellite_consumer.exceptions import DownloadError, ValidationError
+from satellite_consumer.exceptions import DownloadError, NotYetAvailableError, ValidationError
 from satellite_consumer.process import process_raw
 from satellite_consumer.request_patch import construct_patched_request_function
 
@@ -190,6 +190,7 @@ def _download_and_process(
             )
             if (
                 isinstance(result, Exception)
+                and not isinstance(result, NotYetAvailableError)
                 and attempt < TRANSIENT_RETRIES
                 and _is_transient(result)
             ):
@@ -348,8 +349,17 @@ async def consume_to_store(
     source: str = "eumetsat",
     s3_listing_cache_dir: str | None = None,
     low_memory: bool = False,
+    allow_out_of_order: bool = False,
 ) -> None:
-    """Consume satellite data into a zarr store."""
+    """Consume satellite data into a zarr store.
+
+    Scans are appended along time, so a scan older than the store's newest time would put
+    the time axis out of order. Unless `allow_out_of_order` (for a backfill of a range
+    before the store's newest scan), such a scan is skipped with a warning rather than
+    appended, and once a scan fails to download - as a recent EUMETSAT scan does until it
+    is released to the account - the scans after it are held back, for a later run to
+    append in order once the failed one is stored.
+    """
     if low_memory:
         buffer_size = 1
         max_workers = 1
@@ -441,14 +451,21 @@ async def consume_to_store(
     # This function is run in all worker processes
     bound_initializer = partial(init_worker, request_timeout)
 
-    def _not_stored(product: eumdac.product.Product | list[str]) -> bool:
+    def _scan_time(product: eumdac.product.Product | list[str]) -> dt.datetime:
+        """The time the store keys a scan by: its nominal end, on the cadence."""
         if isinstance(product, eumdac.product.Product):
+            # The store's time is the scan's nominal end (see `_map_scene_to_dataset`):
+            # the end of the repeat cycle the scan was sensed in. The middle of the
+            # sensing is well inside that cycle, whereas its start and end lie only
+            # seconds from the cycle's edges.
+            sensing_start = pd.Timestamp(product.sensing_start)
+            sensing_end = pd.Timestamp(product.sensing_end)
             rounded_time: dt.datetime = (
-                pd.Timestamp(product.sensing_end)
+                (sensing_start + (sensing_end - sensing_start) / 2)
                 .floor(f"{cadence_mins}min")
                 .to_pydatetime()
                 .replace(tzinfo=dt.UTC)  # EUMETSAT files are UTC without an explicit timezone
-            )
+            ) + dt.timedelta(minutes=cadence_mins)
         elif isinstance(product, list) and timestamp_from_filename is not None:
             rounded_time = (
                 pd.Timestamp(timestamp_from_filename(product[0]))
@@ -462,7 +479,25 @@ async def consume_to_store(
                 rounded_time += dt.timedelta(minutes=cadence_mins)
         else:
             raise TypeError(f"Unexpected product type {type(product)} for source {source}")
-        return rounded_time not in existing_times
+        return rounded_time
+
+    def _dataset_time(ds: xr.Dataset) -> dt.datetime:
+        return (
+            pd.Timestamp(ds.time.values[0])
+            .floor(f"{cadence_mins}min")
+            .to_pydatetime()
+            .replace(tzinfo=dt.UTC)
+        )
+
+    # The newest time in the store, or pending a write to it. Nothing older is appended
+    # unless `allow_out_of_order`.
+    newest: dt.datetime | None = max(existing_times) if existing_times else None
+    # Set once a scan fails to download, unless `allow_out_of_order`: the scans after it
+    # are held back.
+    halted: bool = False
+
+    def _out_of_order(scan_time: dt.datetime) -> bool:
+        return not allow_out_of_order and newest is not None and scan_time <= newest
 
     # Iterate through all products in search
     num_skips: int = 0
@@ -471,8 +506,30 @@ async def consume_to_store(
     results: list[xr.Dataset] = []
     t_last: float = 0
     get_iter_time_ema = EMA()
+
+    def _to_fetch() -> Iterator[eumdac.product.Product | list[str]]:
+        """The products to download: those the store lacks, until a download fails."""
+        nonlocal num_skips, total_num
+        for product in product_iter:
+            if halted:
+                return
+            scan_time = _scan_time(product)
+            if scan_time in existing_times:
+                continue
+            if _out_of_order(scan_time):
+                log.warning(
+                    "skipping the scan for %s: the store already has a newer time, %s, "
+                    "and appending it would put the time axis out of order",
+                    scan_time.isoformat(),
+                    newest.isoformat() if newest else None,
+                )
+                num_skips += 1
+                total_num += 1
+                continue
+            yield product
+
     async for item in _buffered_apply(
-        (p for p in product_iter if _not_stored(p)),
+        _to_fetch(),
         bound_func,
         buffer_size=buffer_size,
         max_workers=max_workers,
@@ -482,6 +539,23 @@ async def consume_to_store(
         total_num += 1
 
         if isinstance(item, xr.Dataset):
+            scan_time = _dataset_time(item)
+            if halted:
+                log.warning(
+                    "holding back the scan for %s until the earlier scan that failed is stored",
+                    scan_time.isoformat(),
+                )
+                num_skips += 1
+                continue
+            if _out_of_order(scan_time):
+                log.warning(
+                    "skipping the scan for %s: the store already has a newer time, %s, "
+                    "and appending it would put the time axis out of order",
+                    scan_time.isoformat(),
+                    newest.isoformat() if newest else None,
+                )
+                num_skips += 1
+                continue
             # A scan assembled to another grid than the store's (say from segments that
             # did not all arrive) cannot be appended: skip it rather than fail the run.
             grid = {d: n for d, n in item.sizes.items() if d != "time"}
@@ -504,6 +578,7 @@ async def consume_to_store(
                 num_errs += 1
                 continue
             results.append(item)
+            newest = scan_time if newest is None else max(newest, scan_time)
 
             # If we've reached the write block size, concat the datasets and write out
             if len(results) == accum_writes:
@@ -560,9 +635,16 @@ async def consume_to_store(
             log.warning("skipping invalid product %s", str(item))
             num_skips += 1
 
+        elif isinstance(item, NotYetAvailableError):
+            # Expected for EUMETSAT's recent full-cadence scans: a later run gets it.
+            log.warning("skipping a scan not yet available: %s", str(item))
+            num_skips += 1
+            halted = not allow_out_of_order
+
         elif isinstance(item, DownloadError):
             log.error("error downloading product %s", str(item))
             num_errs += 1
+            halted = not allow_out_of_order
 
         elif isinstance(item, Exception):
             raise item
