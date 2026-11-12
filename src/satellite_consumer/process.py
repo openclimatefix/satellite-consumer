@@ -138,7 +138,7 @@ def _map_scene_to_dataset(
     if nan_frac > 0.2:
         raise ValidationError(
             f"Too many NaN values on earth-disk in the data array: "
-            f"{nan_frac:.4%}. This is for time {time}"
+            f"{nan_frac:.4%} at {time}"
         )
 
     # Stack channels into a new dimension and compile the metadata
