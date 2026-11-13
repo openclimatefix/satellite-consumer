@@ -133,7 +133,7 @@ def _map_scene_to_dataset(
     cal_slope, cal_offset = _get_calib_coefficients(ds, channels)
     orbital_params = _get_orbital_params(ds)
 
-    # RSS has 12.5% on-disk NaNs for their L1.5 data, so we allow up to 13.5%
+    # RSS has ~19.5% on-disk NaNs (Nov 2026) for their L1.5 data, so we allow up to 21%
     nan_frac = _get_earthdisk_nan_frac(ds, area_def)
     if nan_frac > 0.21:
         raise ValidationError(
