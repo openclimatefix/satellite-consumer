@@ -7,7 +7,7 @@ import xarray as xr
 
 from satellite_consumer.exceptions import ValidationError
 from satellite_consumer.models import SpectralChannel
-from satellite_consumer.process import _map_scene_to_dataset
+from satellite_consumer.process import _map_scene_to_dataset, store_dtypes
 
 
 def _make_mock_scene(data_vars: list[str]) -> MagicMock:
@@ -94,3 +94,53 @@ class TestMapSceneToDatasetMissingChannels(unittest.TestCase):
         # Should not raise
         ds = _map_scene_to_dataset(scene=scene, channels=channels)
         self.assertIsInstance(ds, xr.Dataset)
+
+
+class TestStoreDtypes(unittest.TestCase):
+    """The image is computed straight into the dtype the store keeps it in."""
+
+    channels = [
+        SpectralChannel(representation="reflectance", satpy_index=0, name="IR105"),
+        SpectralChannel(representation="reflectance", satpy_index=1, name="IR096"),
+    ]
+
+    def test_only_narrower_floats(self):
+        """Only a float narrower than float32 is cast early."""
+        encoding = {
+            "IR105": {"dtype": "float16", "chunks": [1, -1, -1]},
+            "IR096": {"dtype": "float32"},
+            "time": {"dtype": "int"},
+        }
+        self.assertEqual(store_dtypes(encoding, self.channels), {"IR105": np.dtype("float16")})
+
+    def test_channel_without_encoding(self):
+        """A channel the encoding does not name is left at float32."""
+        self.assertEqual(store_dtypes({}, self.channels), {})
+
+    def test_values_match_casting_at_write(self):
+        """Casting during the compute gives the values xarray's encoding cast would."""
+        scene = _make_mock_scene(["IR105", "IR096"])
+        # A descending, chunked y axis, as several readers give, so the flip runs lazily.
+        source = scene.to_xarray_dataset.return_value
+        scene.to_xarray_dataset.return_value = source.isel(y=slice(None, None, -1)).chunk(
+            {"y": 3, "x": 4},
+        )
+        plain = _map_scene_to_dataset(scene=scene, channels=self.channels)
+        narrow = _map_scene_to_dataset(
+            scene=scene,
+            channels=self.channels,
+            store_dtypes={"IR105": np.dtype("float16")},
+        )
+        self.assertEqual(narrow["IR105"].dtype, np.float16)
+        self.assertEqual(narrow["IR096"].dtype, np.float32)
+        np.testing.assert_array_equal(
+            narrow["IR105"].values,
+            plain["IR105"].values.astype(np.float16),
+        )
+        np.testing.assert_array_equal(narrow["IR096"].values, plain["IR096"].values)
+        np.testing.assert_array_equal(
+            narrow["y_geostationary"].values,
+            plain["y_geostationary"].values,
+        )
+        self.assertTrue((np.diff(narrow["y_geostationary"].values) > 0).all())
+        self.assertTrue(narrow["IR105"].values.flags["C_CONTIGUOUS"])
