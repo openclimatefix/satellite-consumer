@@ -8,6 +8,7 @@ import datetime as dt
 import logging
 import shutil
 import tempfile
+import threading
 import time
 import warnings
 from collections import deque
@@ -41,7 +42,7 @@ from satellite_consumer.download_himawari import (
     get_timestamp_from_filename as himawari_timestamp_from_filename,
 )
 from satellite_consumer.exceptions import DownloadError, ValidationError
-from satellite_consumer.process import process_raw
+from satellite_consumer.process import process_raw, release_freed_memory, store_dtypes
 from satellite_consumer.request_patch import construct_patched_request_function
 
 if TYPE_CHECKING:
@@ -79,6 +80,56 @@ def init_worker(timeout: int) -> None:
 
 T = TypeVar("T")  # Type of the input
 R = TypeVar("R")  # Type of the return
+
+
+class _InOrderGate:
+    """Bounds how many images are decoded and not yet taken by the writer, in input order.
+
+    Downloads run ``max_workers`` at a time and leave only files on disk; decoding is what
+    holds an image in memory. Item ``i`` may start decoding once fewer than ``slots``
+    earlier items are still decoding or waiting for the writer, so the writer works on one
+    image while at most ``slots`` more are decoded. Turns are granted in input order, the
+    order results are taken in, so the oldest item can always proceed: no deadlock.
+    """
+
+    def __init__(self, slots: int) -> None:
+        self._slots = slots
+        self._taken = 0
+        self._cond = threading.Condition()
+
+    def wait_turn(self, index: int) -> None:
+        """Block until item ``index`` may start decoding."""
+        with self._cond:
+            self._cond.wait_for(lambda: index < self._taken + self._slots)
+
+    def taken_one(self) -> None:
+        """Record that the writer has taken the oldest item."""
+        with self._cond:
+            self._taken += 1
+            self._cond.notify_all()
+
+
+def _gated[R](
+    func: Callable[..., R],
+    gate: _InOrderGate,
+    job: tuple[int, Any],
+) -> R:
+    """Call ``func`` on an enumerated product, decoding only when the gate allows."""
+    index, product = job
+    return func(product, wait_turn=partial(gate.wait_turn, index))
+
+
+async def _taken_by_writer[R](
+    items: AsyncIterator[R],
+    gate: _InOrderGate | None,
+) -> AsyncIterator[R]:
+    """Yield ``items``, telling ``gate`` as each one is handed to the consumer."""
+    async for item in items:
+        if gate is not None:
+            gate.taken_one()
+        yield item
+        # Not held through the next wait: an item can be a whole decoded image.
+        del item
 
 
 async def _buffered_apply[T, R](
@@ -123,6 +174,8 @@ async def _buffered_apply[T, R](
             result = await tasks.popleft()
             tasks.append(loop.run_in_executor(pool, func, item))
             yield result
+            # Not held through the next wait: a result can be a whole decoded image.
+            del result
 
         # Drain the remaining tasks in the buffer
         while tasks:
@@ -138,8 +191,16 @@ def _download_and_process(
     crop_region_lonlat: tuple[float, float, float, float] | None,
     keep_raw: bool,
     source: str = "eumetsat",
+    dtypes: dict[str, np.dtype] | None = None,
+    wait_turn: Callable[[], None] | None = None,
+    decodes_alone: bool = False,
 ) -> xr.Dataset | Exception:
-    """Wrapper of the download and process functions."""
+    """Wrapper of the download and process functions.
+
+    ``wait_turn``, when given, is called between the download and the decode, to hold the
+    downloaded files on disk until this image may be decoded. ``decodes_alone`` says no
+    other image is decoded at the same time, so the decode may collect its garbage.
+    """
     raw_filepaths: list[str] = []
     himawari_tmpdir: str | None = None
 
@@ -170,17 +231,23 @@ def _download_and_process(
             _satpy.config.set(tmp_dir=himawari_tmpdir)
 
         t_dl = time.time()
+        if wait_turn is not None:
+            wait_turn()
+        t_turn = time.time()
         ds = process_raw(
             paths=raw_filepaths,
             channels=channels,
             resolution_meters=resolution_meters,
             crop_region_lonlat=crop_region_lonlat,
             source=source,
+            store_dtypes=dtypes,
+            collect_garbage=decodes_alone,
         )
 
         t_end = time.time()
         log.debug(
-            f"Downloaded ({t_dl - t_start:.2f}s) and processed ({t_end - t_dl:.2f}s)"
+            f"Downloaded ({t_dl - t_start:.2f}s), waited ({t_turn - t_dl:.2f}s) and processed"
+            f" ({t_end - t_turn:.2f}s)"
             f" for timestamp {np.datetime_as_string(ds.time.values[0], unit='s')}"
         )
 
@@ -298,9 +365,24 @@ async def consume_to_store(
     source: str = "eumetsat",
     s3_listing_cache_dir: str | None = None,
     low_memory: bool = False,
+    decode_slots: int = 0,
 ) -> None:
-    """Consume satellite data into a zarr store."""
-    if low_memory:
+    """Consume satellite data into a zarr store.
+
+    ``decode_slots`` > 0 bounds the images decoding or decoded and not yet taken by the
+    writer to that many (with the "threads" executor), while downloads still run
+    ``max_workers`` at a time; 0 leaves every worker free to decode, so up to
+    ``buffer_size`` images can be held.
+    """
+    if low_memory and executor == "threads":
+        # One image decoded at a time, as before, but the next image's download no longer
+        # waits for it: a second worker fetches ahead and holds only files on disk.
+        buffer_size = 2
+        max_workers = 2
+        accum_writes = 1
+        decode_slots = 1
+        log.info("Low memory mode: buffer_size=2, max_workers=2, decode_slots=1, accum_writes=1")
+    elif low_memory:
         buffer_size = 1
         max_workers = 1
         accum_writes = 1
@@ -376,6 +458,7 @@ async def consume_to_store(
             raise ValueError(f"Unknown source {source}. Expected one of {list(DOWNLOADERS)}")
 
 
+    gate = _InOrderGate(decode_slots) if decode_slots > 0 and executor == "threads" else None
     # This function will be applied to all products
     bound_func = partial(
         _download_and_process,
@@ -386,6 +469,8 @@ async def consume_to_store(
         crop_region_lonlat=crop_region_lonlat,
         keep_raw=keep_raw,
         source=source,
+        dtypes=store_dtypes(encoding, channels),
+        decodes_alone=max_workers == 1 or (gate is not None and decode_slots == 1),
     )
 
     # This function is run in all worker processes
@@ -417,13 +502,22 @@ async def consume_to_store(
     results: list[xr.Dataset] = []
     t_last: float = 0
     get_iter_time_ema = EMA()
-    async for item in _buffered_apply(
-        (p for p in product_iter if _not_stored(p)),
-        bound_func,
-        buffer_size=buffer_size,
-        max_workers=max_workers,
-        executor=executor,
-        initializer=bound_initializer,
+    products: Iterator[Any] = (p for p in product_iter if _not_stored(p))
+    func: Callable[[Any], xr.Dataset | Exception] = bound_func
+    if gate is not None:
+        products = enumerate(products)
+        func = partial(_gated, bound_func, gate)
+        log.info(f"decoding at most {decode_slots} image(s) at a time")
+    async for item in _taken_by_writer(
+        _buffered_apply(
+            products,
+            func,
+            buffer_size=buffer_size,
+            max_workers=max_workers,
+            executor=executor,
+            initializer=bound_initializer,
+        ),
+        gate,
     ):
         total_num += 1
 
@@ -447,7 +541,9 @@ async def consume_to_store(
                 # Check the non-append coords match the coords already in the store
                 if store_ds is None:
                     write_new_store = True
-                    store_ds = ds
+                    # Only the coordinates are compared against later images; keeping the
+                    # whole first image here held its data for the rest of the run.
+                    store_ds = ds.drop_vars(list(ds.data_vars))
                 else:
                     write_new_store = False
                     try:
@@ -490,6 +586,11 @@ async def consume_to_store(
                     time_per_image,
                     eta,
                 )
+
+                # Drop the written image before waiting on the next: `ds` and `item` would
+                # otherwise keep it resident through the wait. Then return the freed pages.
+                del ds, item
+                release_freed_memory()
 
         elif isinstance(item, ValidationError):
             log.warning("skipping invalid product %s", str(item))

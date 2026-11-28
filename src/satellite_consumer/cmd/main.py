@@ -121,6 +121,7 @@ def main() -> None:
             source=conf.get_string(f"satellites.{sat}.source"),
             s3_listing_cache_dir=conf.get_string("consumer.s3_listing_cache_dir") or None,
             low_memory=conf.get_bool("consumer.low_memory"),
+            decode_slots=conf.get_int("consumer.decode_slots"),
         ),
     )
 
