@@ -71,6 +71,36 @@ def _sanitize_encoding(
     return data
 
 
+def _store_renames() -> dict[str, str]:
+    """Variable renames for the destination store, from ``SATCONS_RENAME_JSON``.
+
+    The file maps source names to the store's readable names (written per store by
+    planetary-datasets' ``scripts/store_names_json.py``). Unset, nothing is renamed.
+    """
+    import json
+    import os
+
+    path = os.environ.get("SATCONS_RENAME_JSON")
+    if not path:
+        return {}
+    with open(path) as handle:
+        return {str(k): str(v) for k, v in json.load(handle).items()}
+
+
+def _rename_for_store(
+    ds: xr.Dataset, encoding: dict[str, Any]
+) -> tuple[xr.Dataset, dict[str, Any]]:
+    """``ds`` and its encoding with variables named as the store names them."""
+    renames = {old: new for old, new in _store_renames().items() if old in ds.variables}
+    if not renames:
+        return ds, encoding
+    ds = ds.rename_vars(renames)
+    for old, new in renames.items():
+        ds[new].attrs.setdefault("source_name", old)
+    encoding = {renames.get(k, k): v for k, v in encoding.items()}
+    return ds, encoding
+
+
 def write_to_store(
     ds: xr.Dataset,
     dst: str | icechunk.repository.Repository,
@@ -82,6 +112,7 @@ def write_to_store(
 
     If a store already exists at the given path, the dataset will be appended to it.
     """
+    ds, encoding = _rename_for_store(ds, encoding)
     dims = encoding["_ARRAY_DIMENSIONS"]
     if dims != list(ds.dims):
         raise ValueError(

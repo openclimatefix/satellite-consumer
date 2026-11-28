@@ -242,6 +242,22 @@ def check_coords(ds: xr.Dataset, store_ds: xr.Dataset, skip_dims: list[str]) -> 
     ):
         raise ValueError(f"Non-appending dimensions do not match existing store Found: {[d for d in ds.dims if d not in skip_dims]} Required: {[d for d in store_ds.dims if d not in skip_dims]}")
 
+def grid_mismatch(ds: xr.Dataset, reference: xr.Dataset | None) -> dict[str, tuple[int, int]]:
+    """Dimensions (other than time) whose size in ``ds`` differs from ``reference``.
+
+    A scan decoded from damaged or incomplete segments can come out on a different grid
+    (Himawari AHI 2022-03 and 2022-11 gave 17629 and 18653 rows, not 11000); appending it
+    fails, and with it the whole run.
+    """
+    if reference is None:
+        return {}
+    return {
+        str(d): (int(ds.sizes[d]), int(reference.sizes[d]))
+        for d in ds.dims
+        if d != "time" and d in reference.dims and ds.sizes[d] != reference.sizes[d]
+    }
+
+
 def force_coords(ds: xr.Dataset, store_ds: xr.Dataset, skip_dims: list[str]) -> xr.Dataset:
     """Force the dimensions of the two datasets to be identical."""
     if not ds[[d for d in ds.dims if d not in skip_dims]].equals(
@@ -412,6 +428,14 @@ async def consume_to_store(
         total_num += 1
 
         if isinstance(item, xr.Dataset):
+            mismatch = grid_mismatch(item, store_ds if store_ds is not None else (results[0] if results else None))
+            if mismatch:
+                log.warning(
+                    "skipping invalid product at %s: grid sizes (got, expected) %s",
+                    item.time.values, mismatch,
+                )
+                num_skips += 1
+                continue
             results.append(item)
 
             # If we've reached the write block size, concat the datasets and write out
@@ -430,6 +454,8 @@ async def consume_to_store(
                         force_coords(ds, store_ds, skip_dims=["time"])
                     except ValueError as e:
                         log.error("Non-append dimensions do not match existing store: %s", e)
+                        num_skips += len(results)
+                        results = []
                         continue
 
                 storage.write_to_store(
